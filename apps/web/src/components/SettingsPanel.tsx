@@ -125,7 +125,7 @@ export default function SettingsPanel() {
                 <div className="py-3 px-3 rounded-lg bg-surface-2/50">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-semibold text-text-primary">
-                      Any<span className="text-accent">OS</span>
+                      Vibe<span className="text-accent">OS</span>
                     </span>
                   </div>
                   <span className="text-[11px] text-text-tertiary font-mono">

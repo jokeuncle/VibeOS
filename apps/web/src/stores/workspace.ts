@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workspace, Message, PhaseStatus, PhaseType } from '../types'
+import type { Workspace, Message, PhaseStatus, PhaseType, WorkspaceColor } from '../types'
 
 const MOCK_WORKSPACES: Workspace[] = [
   {
@@ -8,6 +8,7 @@ const MOCK_WORKSPACES: Workspace[] = [
     description: 'Gamification & loyalty program',
     progress: 42,
     currentPhaseId: 'arch',
+    color: 'indigo',
     phases: [
       {
         id: 'req', type: 'requirement', name: 'Requirements', status: 'completed', progress: 100,
@@ -88,6 +89,7 @@ const MOCK_WORKSPACES: Workspace[] = [
     description: 'Third-party payment integration',
     progress: 15,
     currentPhaseId: 'req',
+    color: 'emerald',
     phases: [
       {
         id: 'req', type: 'requirement', name: 'Requirements', status: 'in_progress', progress: 45,
@@ -143,6 +145,9 @@ interface WorkspaceState {
   addTask: (workspaceId: string, phaseId: string, title: string) => void
   updateTask: (workspaceId: string, phaseId: string, taskId: string, updates: Partial<{ title: string; status: PhaseStatus; description: string; assignedAgent: string }>) => void
   deleteTask: (workspaceId: string, phaseId: string, taskId: string) => void
+
+  updatePhaseStatus: (workspaceId: string, phaseId: string, status: PhaseStatus) => void
+  createWorkspaceFromTemplate: (name: string, description: string, color: WorkspaceColor) => string
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -169,6 +174,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           id,
           name: '',
           description: '',
+          color: 'indigo' as WorkspaceColor,
           progress: 0,
           currentPhaseId: '',
           phases: defaultPhases(),
@@ -244,4 +250,41 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           : w,
       ),
     })),
+
+  updatePhaseStatus: (workspaceId, phaseId, status) =>
+    set((s) => ({
+      workspaces: s.workspaces.map((w) =>
+        w.id === workspaceId
+          ? {
+              ...w,
+              updatedAt: new Date().toISOString(),
+              phases: w.phases.map((p) =>
+                p.id === phaseId ? { ...p, status, progress: status === 'completed' ? 100 : status === 'in_progress' ? 50 : 0 } : p,
+              ),
+            }
+          : w,
+      ),
+    })),
+
+  createWorkspaceFromTemplate: (name, description, color) => {
+    const id = `ws-${Date.now()}`
+    set((s) => ({
+      workspaces: [
+        ...s.workspaces,
+        {
+          id,
+          name,
+          description,
+          color,
+          progress: 0,
+          currentPhaseId: '',
+          phases: defaultPhases(),
+          agents: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    }))
+    return id
+  },
 }))

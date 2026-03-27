@@ -65,7 +65,7 @@ export default function StatusBar() {
         )}
       </div>
       <div className="flex items-center gap-3">
-        <span className="text-text-tertiary/60">AnyOS v0.1.0</span>
+        <span className="text-text-tertiary/60">VibeOS v0.1.0</span>
       </div>
     </footer>
   )

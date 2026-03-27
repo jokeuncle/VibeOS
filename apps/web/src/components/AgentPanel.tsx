@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { Bot } from 'lucide-react'
+import { Bot, MessageCircle } from 'lucide-react'
 import { useT } from '../i18n'
+import { useUIStore } from '../stores/ui'
 import type { Agent, AgentStatus } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -23,6 +24,7 @@ function AgentStatusBadge({ status }: { status: AgentStatus }) {
 
 export default function AgentPanel({ agents }: { agents: Agent[] }) {
   const t = useT()
+  const { openAgentChat } = useUIStore()
   const running = agents.filter((a) => a.status === 'running')
   const others = agents.filter((a) => a.status !== 'running')
 
@@ -35,9 +37,7 @@ export default function AgentPanel({ agents }: { agents: Agent[] }) {
     >
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
         <Bot className="w-4 h-4 text-text-tertiary" />
-        <span className="text-xs font-medium text-text-secondary">
-          {t('agent.agents')}
-        </span>
+        <span className="text-xs font-medium text-text-secondary">{t('agent.agents')}</span>
         {running.length > 0 && (
           <span className="ml-auto flex items-center gap-1.5 text-[10px] text-accent font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow" />
@@ -50,37 +50,29 @@ export default function AgentPanel({ agents }: { agents: Agent[] }) {
         {[...running, ...others].map((agent) => {
           const nameKey = `agent.name.${agent.type}` as TranslationKey
           return (
-            <div
+            <button
               key={agent.id}
-              className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
-                agent.status === 'running'
-                  ? 'bg-accent/[0.04]'
-                  : 'hover:bg-surface-2/30'
+              onClick={() => openAgentChat(agent.id)}
+              className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-colors cursor-pointer group ${
+                agent.status === 'running' ? 'bg-accent/[0.04]' : 'hover:bg-surface-2/30'
               }`}
             >
-              <div
-                className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold ${
-                  agent.status === 'running'
-                    ? 'bg-accent/15 text-accent'
-                    : 'bg-surface-3 text-text-tertiary'
-                }`}
-              >
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold ${
+                agent.status === 'running' ? 'bg-accent/15 text-accent' : 'bg-surface-3 text-text-tertiary'
+              }`}>
                 {agent.avatar}
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-text-primary truncate">
-                    {t(nameKey)}
-                  </span>
+                  <span className="text-xs font-medium text-text-primary truncate">{t(nameKey)}</span>
                   <AgentStatusBadge status={agent.status} />
                 </div>
                 {agent.currentTask && (
-                  <p className="text-[11px] text-text-tertiary mt-0.5 truncate">
-                    {agent.currentTask}
-                  </p>
+                  <p className="text-[11px] text-text-tertiary mt-0.5 truncate">{agent.currentTask}</p>
                 )}
               </div>
-            </div>
+              <MessageCircle className="w-3.5 h-3.5 text-text-tertiary/0 group-hover:text-text-tertiary transition-colors" />
+            </button>
           )
         })}
       </div>

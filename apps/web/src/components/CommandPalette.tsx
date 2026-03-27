@@ -20,8 +20,8 @@ export default function CommandPalette() {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { commandPaletteOpen, setCommandPaletteOpen, setSettingsOpen, toggleSidebar } = useUIStore()
-  const { workspaces, setActiveWorkspace, createWorkspace, activeWorkspaceId } = useWorkspaceStore()
+  const { commandPaletteOpen, setCommandPaletteOpen, setSettingsOpen, toggleSidebar, setTemplatePickerOpen } = useUIStore()
+  const { workspaces, setActiveWorkspace, activeWorkspaceId } = useWorkspaceStore()
   const { toggleLocale } = useI18nStore()
   const t = useT()
 
@@ -57,8 +57,7 @@ export default function CommandPalette() {
         icon: <Plus className="w-4 h-4" />,
         category: t('command.actions'),
         action: () => {
-          const id = createWorkspace()
-          setActiveWorkspace(id)
+          setTemplatePickerOpen(true)
         },
       },
       {
@@ -85,7 +84,7 @@ export default function CommandPalette() {
     )
 
     return cmds
-  }, [activeWorkspaceId, workspaces, t, setActiveWorkspace, createWorkspace, toggleSidebar, setSettingsOpen, toggleLocale])
+  }, [activeWorkspaceId, workspaces, t, setActiveWorkspace, setTemplatePickerOpen, toggleSidebar, setSettingsOpen, toggleLocale])
 
   const filtered = useMemo(() => {
     if (!query.trim()) return commands

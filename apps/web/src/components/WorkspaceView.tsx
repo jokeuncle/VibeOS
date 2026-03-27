@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { List, LayoutGrid } from 'lucide-react'
+import { List, LayoutGrid, Check, X } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -37,10 +38,29 @@ function ProgressRing({ progress }: { progress: number }) {
 }
 
 export default function WorkspaceView() {
-  const { activeWorkspaceId, activePhaseId, workspaces } = useWorkspaceStore()
-  const { viewMode, setViewMode } = useUIStore()
+  const { activeWorkspaceId, activePhaseId, workspaces, updateWorkspace } = useWorkspaceStore()
+  const { viewMode, setViewMode, addToast } = useUIStore()
   const t = useT()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)!
+
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(workspace.name)
+  const [draftDesc, setDraftDesc] = useState(workspace.description)
+
+  function saveTitle() {
+    if (draftTitle.trim()) {
+      updateWorkspace(workspace.id, { name: draftTitle.trim() })
+      addToast({ type: 'success', message: t('workspace.updated') })
+    }
+    setEditingTitle(false)
+  }
+
+  function saveDesc() {
+    updateWorkspace(workspace.id, { description: draftDesc.trim() })
+    addToast({ type: 'success', message: t('workspace.updated') })
+    setEditingDesc(false)
+  }
 
   const displayedPhases = activePhaseId
     ? workspace.phases.filter((p) => p.id === activePhaseId)
@@ -78,12 +98,48 @@ export default function WorkspaceView() {
             </div>
 
             <div className="flex-1">
-              <h2 className="text-xl font-semibold tracking-tight text-text-primary">
-                {workspace.name || t('workspace.untitled')}
-              </h2>
-              <p className="text-sm text-text-tertiary mt-1">
-                {workspace.description || t('workspace.untitledDesc')}
-              </p>
+              {editingTitle ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={draftTitle}
+                    onChange={(e) => setDraftTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setEditingTitle(false) }}
+                    className="text-xl font-semibold tracking-tight text-text-primary bg-surface-2 rounded-lg px-2 py-1 outline-none border border-accent/40 w-full"
+                  />
+                  <button onClick={saveTitle} className="p-1 text-success hover:bg-surface-3 rounded cursor-pointer"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => setEditingTitle(false)} className="p-1 text-text-tertiary hover:bg-surface-3 rounded cursor-pointer"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <h2
+                  className="text-xl font-semibold tracking-tight text-text-primary cursor-pointer hover:bg-surface-2/50 rounded-lg px-2 py-1 -ml-2 transition-colors"
+                  onClick={() => { setDraftTitle(workspace.name); setEditingTitle(true) }}
+                  title={t('workspace.rename')}
+                >
+                  {workspace.name || t('workspace.untitled')}
+                </h2>
+              )}
+
+              {editingDesc ? (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <input
+                    autoFocus
+                    value={draftDesc}
+                    onChange={(e) => setDraftDesc(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveDesc(); if (e.key === 'Escape') setEditingDesc(false) }}
+                    className="text-sm text-text-tertiary bg-surface-2 rounded-lg px-2 py-1 outline-none border border-accent/40 w-full"
+                  />
+                  <button onClick={saveDesc} className="p-1 text-success hover:bg-surface-3 rounded cursor-pointer"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => setEditingDesc(false)} className="p-1 text-text-tertiary hover:bg-surface-3 rounded cursor-pointer"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <p
+                  className="text-sm text-text-tertiary mt-1 cursor-pointer hover:bg-surface-2/50 rounded-lg px-2 py-1 -ml-2 transition-colors"
+                  onClick={() => { setDraftDesc(workspace.description); setEditingDesc(true) }}
+                >
+                  {workspace.description || t('workspace.untitledDesc')}
+                </p>
+              )}
               <div className="flex items-center gap-4 mt-3">
                 <span className="text-[11px] font-mono text-text-tertiary">
                   {completedPhases} {t('progress.of')} {workspace.phases.length} {t('progress.phasesComplete')}

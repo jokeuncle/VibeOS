@@ -21,10 +21,14 @@ export type AgentType =
 
 export type AgentStatus = 'idle' | 'running' | 'waiting' | 'error'
 
+export const WORKSPACE_COLORS = ['indigo', 'emerald', 'rose', 'amber', 'cyan', 'violet'] as const
+export type WorkspaceColor = (typeof WORKSPACE_COLORS)[number]
+
 export interface Task {
   id: string
   title: string
   status: PhaseStatus
+  description?: string
   assignedAgent?: AgentType
 }
 
@@ -53,6 +57,7 @@ export interface Workspace {
   description: string
   progress: number
   currentPhaseId: string
+  color: WorkspaceColor
   phases: Phase[]
   agents: Agent[]
   createdAt: string

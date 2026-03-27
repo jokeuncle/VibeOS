@@ -11,6 +11,9 @@ import CommandPalette from './components/CommandPalette'
 import SettingsPanel from './components/SettingsPanel'
 import TaskDetail from './components/TaskDetail'
 import ToastContainer from './components/ui/Toast'
+import ConfirmDialog from './components/ui/ConfirmDialog'
+import AgentChat from './components/AgentChat'
+import WorkspaceTemplates from './components/WorkspaceTemplates'
 
 export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
@@ -67,6 +70,9 @@ export default function App() {
       <CommandPalette />
       <SettingsPanel />
       <TaskDetail />
+      <AgentChat />
+      <WorkspaceTemplates />
+      <ConfirmDialog />
       <ToastContainer />
     </div>
   )

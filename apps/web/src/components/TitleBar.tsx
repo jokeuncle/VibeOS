@@ -37,7 +37,7 @@ export default function TitleBar() {
 
         <div className="flex items-center gap-2.5">
           <span className="text-sm font-semibold tracking-tight text-text-primary">
-            Any<span className="text-accent">OS</span>
+            Vibe<span className="text-accent">OS</span>
           </span>
           {workspace && (
             <>

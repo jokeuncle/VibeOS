@@ -14,6 +14,13 @@ export interface Notification {
   read: boolean
 }
 
+export interface ConfirmDialogState {
+  title: string
+  message: string
+  danger: boolean
+  onConfirm: () => void
+}
+
 const MOCK_NOTIFICATIONS: Notification[] = [
   { id: 'n1', title: 'Arch Agent completed database schema design', description: 'User Points System', time: '2026-03-27T14:20:00Z', read: false },
   { id: 'n2', title: 'Requirements phase completed', description: 'User Points System', time: '2026-03-27T12:00:00Z', read: false },
@@ -24,6 +31,10 @@ interface UIState {
   toasts: Toast[]
   addToast: (toast: Omit<Toast, 'id'>) => void
   removeToast: (id: string) => void
+
+  confirmDialog: ConfirmDialogState | null
+  showConfirm: (opts: { title: string; message: string; danger?: boolean; onConfirm: () => void }) => void
+  hideConfirm: () => void
 
   commandPaletteOpen: boolean
   setCommandPaletteOpen: (open: boolean) => void
@@ -49,6 +60,17 @@ interface UIState {
   notifications: Notification[]
   markNotificationRead: (id: string) => void
   markAllRead: () => void
+
+  agentChatOpen: boolean
+  agentChatAgentId: string | null
+  openAgentChat: (agentId: string) => void
+  closeAgentChat: () => void
+
+  homeSearchQuery: string
+  setHomeSearchQuery: (query: string) => void
+
+  templatePickerOpen: boolean
+  setTemplatePickerOpen: (open: boolean) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -62,6 +84,12 @@ export const useUIStore = create<UIState>((set) => ({
   },
   removeToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+
+  confirmDialog: null,
+  showConfirm: (opts) =>
+    set({ confirmDialog: { danger: false, ...opts } }),
+  hideConfirm: () =>
+    set({ confirmDialog: null }),
 
   commandPaletteOpen: false,
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
@@ -97,4 +125,17 @@ export const useUIStore = create<UIState>((set) => ({
     set((s) => ({
       notifications: s.notifications.map((n) => ({ ...n, read: true })),
     })),
+
+  agentChatOpen: false,
+  agentChatAgentId: null,
+  openAgentChat: (agentId) =>
+    set({ agentChatOpen: true, agentChatAgentId: agentId }),
+  closeAgentChat: () =>
+    set({ agentChatOpen: false, agentChatAgentId: null }),
+
+  homeSearchQuery: '',
+  setHomeSearchQuery: (query) => set({ homeSearchQuery: query }),
+
+  templatePickerOpen: false,
+  setTemplatePickerOpen: (open) => set({ templatePickerOpen: open }),
 }))

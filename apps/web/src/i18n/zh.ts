@@ -139,6 +139,38 @@ const zh: Record<TranslationKey, string> = {
 
   'empty.title': '暂无任务',
   'empty.description': '添加你的第一个任务开始吧',
+
+  'confirm.cancel': '取消',
+  'confirm.confirm': '确认',
+  'confirm.deleteTask': '删除此任务？',
+  'confirm.deleteTaskMsg': '此操作无法撤销。',
+  'confirm.deleteWorkspaceMsg': '该空间下的所有阶段、任务和数据将被永久删除。',
+
+  'phase.markCompleted': '标记为已完成',
+  'phase.markInProgress': '标记为进行中',
+  'phase.markPending': '标记为待开始',
+  'phase.statusUpdated': '阶段状态已更新',
+
+  'template.title': '创建空间',
+  'template.pickColor': '颜色',
+  'template.name': '名称',
+  'template.description': '描述',
+  'template.namePlaceholder': '我的新项目…',
+  'template.descPlaceholder': '你要构建什么？',
+  'template.create': '创建',
+  'template.templates': '模板',
+  'template.blank': '空白',
+  'template.blankDesc': '从零开始',
+  'template.webapp': 'Web 应用',
+  'template.webappDesc': '全栈 Web 应用',
+  'template.mobile': '移动应用',
+  'template.mobileDesc': 'iOS / Android 应用',
+  'template.api': 'API 服务',
+  'template.apiDesc': '后端 API / 微服务',
+
+  'agent.chat': '与 Agent 对话',
+  'agent.chatPlaceholder': '向这个 Agent 提问…',
+  'agent.mockReply': '我已就绪，需要我做什么？',
 }
 
 export default zh

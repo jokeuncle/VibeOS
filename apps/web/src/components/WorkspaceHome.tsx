@@ -5,7 +5,24 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
-import type { Workspace } from '../types'
+import type { Workspace, WorkspaceColor } from '../types'
+
+const COLOR_BG: Record<WorkspaceColor, string> = {
+  indigo: 'bg-indigo-500/10 border-indigo-500/15',
+  emerald: 'bg-emerald-500/10 border-emerald-500/15',
+  rose: 'bg-rose-500/10 border-rose-500/15',
+  amber: 'bg-amber-500/10 border-amber-500/15',
+  cyan: 'bg-cyan-500/10 border-cyan-500/15',
+  violet: 'bg-violet-500/10 border-violet-500/15',
+}
+const COLOR_TEXT: Record<WorkspaceColor, string> = {
+  indigo: 'text-indigo-400',
+  emerald: 'text-emerald-400',
+  rose: 'text-rose-400',
+  amber: 'text-amber-400',
+  cyan: 'text-cyan-400',
+  violet: 'text-violet-400',
+}
 
 const container = {
   hidden: { opacity: 0 },
@@ -29,7 +46,7 @@ function WorkspaceCard({
 }) {
   const t = useT()
   const { deleteWorkspace, updateWorkspace } = useWorkspaceStore()
-  const { addToast } = useUIStore()
+  const { addToast, showConfirm } = useUIStore()
   const { menu, onContextMenu, closeMenu } = useContextMenu()
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(workspace.name)
@@ -49,8 +66,15 @@ function WorkspaceCard({
       icon: <Trash2 className="w-3.5 h-3.5" />,
       danger: true,
       onClick: () => {
-        deleteWorkspace(workspace.id)
-        addToast({ type: 'info', message: t('workspace.deleted') })
+        showConfirm({
+          title: t('workspace.deleteConfirm'),
+          message: t('confirm.deleteWorkspaceMsg'),
+          danger: true,
+          onConfirm: () => {
+            deleteWorkspace(workspace.id)
+            addToast({ type: 'info', message: t('workspace.deleted') })
+          },
+        })
       },
     },
   ]
@@ -80,8 +104,8 @@ function WorkspaceCard({
 
           <div className="relative">
             <div className="flex items-start justify-between mb-5">
-              <div className="w-11 h-11 rounded-xl bg-accent/8 border border-accent/10 flex items-center justify-center">
-                <Layers className="w-5 h-5 text-accent/80" />
+              <div className={`w-11 h-11 rounded-xl border flex items-center justify-center ${COLOR_BG[workspace.color] || COLOR_BG.indigo}`}>
+                <Layers className={`w-5 h-5 ${COLOR_TEXT[workspace.color] || COLOR_TEXT.indigo}`} />
               </div>
               <ChevronRight className="w-4 h-4 text-text-tertiary opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200" />
             </div>
@@ -148,15 +172,19 @@ function WorkspaceCard({
 }
 
 export default function WorkspaceHome() {
-  const { workspaces, setActiveWorkspace, createWorkspace } = useWorkspaceStore()
-  const { addToast } = useUIStore()
+  const { workspaces, setActiveWorkspace } = useWorkspaceStore()
+  const { setTemplatePickerOpen, homeSearchQuery } = useUIStore()
   const t = useT()
 
-  function handleCreate() {
-    const id = createWorkspace()
-    setActiveWorkspace(id)
-    addToast({ type: 'success', message: t('workspace.created') })
-  }
+  const filtered = homeSearchQuery.trim()
+    ? workspaces.filter((ws) => {
+        const q = homeSearchQuery.toLowerCase()
+        return (
+          (ws.name || '').toLowerCase().includes(q) ||
+          (ws.description || '').toLowerCase().includes(q)
+        )
+      })
+    : workspaces
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -168,7 +196,7 @@ export default function WorkspaceHome() {
           className="text-center mb-14"
         >
           <h1 className="text-[42px] font-light tracking-tight text-text-primary leading-tight">
-            Any
+            Vibe
             <span className="font-semibold bg-gradient-to-r from-accent to-violet-400 bg-clip-text text-transparent">
               OS
             </span>
@@ -186,7 +214,7 @@ export default function WorkspaceHome() {
           animate="show"
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl w-full mb-8"
         >
-          {workspaces.map((ws) => (
+          {filtered.map((ws) => (
             <WorkspaceCard
               key={ws.id}
               workspace={ws}
@@ -196,7 +224,7 @@ export default function WorkspaceHome() {
 
           <motion.button
             variants={item}
-            onClick={handleCreate}
+            onClick={() => setTemplatePickerOpen(true)}
             whileHover={{ y: -6, transition: { duration: 0.2 } }}
             whileTap={{ scale: 0.97 }}
             className="p-6 rounded-2xl border border-dashed border-border-subtle hover:border-accent/30 transition-all duration-300 flex flex-col items-center justify-center gap-3 text-text-tertiary hover:text-accent cursor-pointer group min-h-[200px]"

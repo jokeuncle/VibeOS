@@ -13,7 +13,7 @@ interface I18nState {
 }
 
 function detectLocale(): Locale {
-  const stored = localStorage.getItem('anyos-locale') as Locale | null
+  const stored = localStorage.getItem('VibeOS-locale') as Locale | null
   if (stored && (stored === 'en' || stored === 'zh')) return stored
   const nav = navigator.language.toLowerCase()
   return nav.startsWith('zh') ? 'zh' : 'en'
@@ -23,14 +23,14 @@ export const useI18nStore = create<I18nState>((set) => ({
   locale: detectLocale(),
 
   setLocale: (locale) => {
-    localStorage.setItem('anyos-locale', locale)
+    localStorage.setItem('VibeOS-locale', locale)
     set({ locale })
   },
 
   toggleLocale: () =>
     set((s) => {
       const next = s.locale === 'en' ? 'zh' : 'en'
-      localStorage.setItem('anyos-locale', next)
+      localStorage.setItem('VibeOS-locale', next)
       return { locale: next }
     }),
 }))

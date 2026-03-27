@@ -137,6 +137,38 @@ const en = {
 
   'empty.title': 'No tasks yet',
   'empty.description': 'Add your first task to get started',
+
+  'confirm.cancel': 'Cancel',
+  'confirm.confirm': 'Confirm',
+  'confirm.deleteTask': 'Delete this task?',
+  'confirm.deleteTaskMsg': 'This action cannot be undone.',
+  'confirm.deleteWorkspaceMsg': 'All phases, tasks, and data in this workspace will be permanently removed.',
+
+  'phase.markCompleted': 'Mark completed',
+  'phase.markInProgress': 'Mark in progress',
+  'phase.markPending': 'Mark pending',
+  'phase.statusUpdated': 'Phase status updated',
+
+  'template.title': 'Create Workspace',
+  'template.pickColor': 'Color',
+  'template.name': 'Name',
+  'template.description': 'Description',
+  'template.namePlaceholder': 'My awesome project…',
+  'template.descPlaceholder': 'What are you building?',
+  'template.create': 'Create',
+  'template.templates': 'Templates',
+  'template.blank': 'Blank',
+  'template.blankDesc': 'Start from scratch',
+  'template.webapp': 'Web App',
+  'template.webappDesc': 'Full-stack web application',
+  'template.mobile': 'Mobile App',
+  'template.mobileDesc': 'iOS / Android application',
+  'template.api': 'API Service',
+  'template.apiDesc': 'Backend API / microservice',
+
+  'agent.chat': 'Chat with agent',
+  'agent.chatPlaceholder': 'Ask this agent…',
+  'agent.mockReply': 'I\'m ready to help. What would you like me to work on?',
 } as const
 
 export type TranslationKey = keyof typeof en

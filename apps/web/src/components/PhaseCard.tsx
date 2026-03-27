@@ -19,13 +19,25 @@ function StatusIcon({ status }: { status: PhaseStatus }) {
   }
 }
 
+const NEXT_STATUS: Record<PhaseStatus, PhaseStatus> = {
+  pending: 'in_progress',
+  in_progress: 'completed',
+  completed: 'pending',
+}
+
+const STATUS_TOOLTIP: Record<PhaseStatus, TranslationKey> = {
+  pending: 'phase.markInProgress',
+  in_progress: 'phase.markCompleted',
+  completed: 'phase.markPending',
+}
+
 export default function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
   const t = useT()
   const [expanded, setExpanded] = useState(phase.status === 'in_progress')
   const [adding, setAdding] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
-  const { activeWorkspaceId, addTask, deleteTask } = useWorkspaceStore()
-  const { openTaskDetail, addToast } = useUIStore()
+  const { activeWorkspaceId, addTask, deleteTask, updatePhaseStatus } = useWorkspaceStore()
+  const { openTaskDetail, addToast, showConfirm } = useUIStore()
 
   const completedTasks = phase.tasks.filter((t) => t.status === 'completed').length
   const nameKey = `phase.${phase.type}` as TranslationKey
@@ -42,8 +54,15 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
 
   function handleDeleteTask(taskId: string) {
     if (!activeWorkspaceId) return
-    deleteTask(activeWorkspaceId, phase.id, taskId)
-    addToast({ type: 'info', message: t('task.deleted') })
+    showConfirm({
+      title: t('confirm.deleteTask'),
+      message: t('confirm.deleteTaskMsg'),
+      danger: true,
+      onConfirm: () => {
+        deleteTask(activeWorkspaceId!, phase.id, taskId)
+        addToast({ type: 'info', message: t('task.deleted') })
+      },
+    })
   }
 
   return (
@@ -59,12 +78,20 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
             : 'border-border-subtle bg-surface-1/20'
       }`}
     >
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full p-4 flex items-center gap-3 cursor-pointer hover:bg-surface-2/30 transition-colors"
-      >
-        <StatusIcon status={phase.status} />
-        <div className="flex-1 text-left">
+      <div className="w-full p-4 flex items-center gap-3">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!activeWorkspaceId) return
+            updatePhaseStatus(activeWorkspaceId, phase.id, NEXT_STATUS[phase.status])
+            addToast({ type: 'info', message: t('phase.statusUpdated') })
+          }}
+          title={t(STATUS_TOOLTIP[phase.status])}
+          className="cursor-pointer hover:scale-110 transition-transform"
+        >
+          <StatusIcon status={phase.status} />
+        </button>
+        <div className="flex-1 text-left cursor-pointer" onClick={() => setExpanded(!expanded)}>
           <div className="flex items-center gap-2">
             <span className={`text-sm font-medium ${phase.status === 'pending' ? 'text-text-tertiary' : 'text-text-primary'}`}>
               {t(nameKey)}
@@ -84,8 +111,13 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
             {completedTasks}/{phase.tasks.length}
           </span>
         )}
-        <ChevronDown className={`w-4 h-4 text-text-tertiary transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
-      </button>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="cursor-pointer p-1 hover:bg-surface-3 rounded-lg transition-colors"
+        >
+          <ChevronDown className={`w-4 h-4 text-text-tertiary transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
 
       <motion.div
         initial={false}

@@ -1,9 +1,9 @@
 {
-  "name": "anyos",
+  "name": "VibeOS",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter @anyos/web dev",
-    "build": "pnpm --filter @anyos/web build",
-    "preview": "pnpm --filter @anyos/web preview"
+    "dev": "pnpm --filter @VibeOS/web dev",
+    "build": "pnpm --filter @VibeOS/web build",
+    "preview": "pnpm --filter @VibeOS/web preview"
   }
 }

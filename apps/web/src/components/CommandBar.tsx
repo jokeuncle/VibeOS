@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Sparkles, ArrowUp, Command } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 
 export default function CommandBar() {
@@ -9,7 +10,19 @@ export default function CommandBar() {
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const { activeWorkspaceId, addMessage } = useWorkspaceStore()
+  const { setHomeSearchQuery } = useUIStore()
   const t = useT()
+
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      setHomeSearchQuery(input)
+    }
+  }, [input, activeWorkspaceId, setHomeSearchQuery])
+
+  useEffect(() => {
+    setInput('')
+    setHomeSearchQuery('')
+  }, [activeWorkspaceId, setHomeSearchQuery])
 
   const handleKeydown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -30,6 +43,7 @@ export default function CommandBar() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!input.trim()) return
+    if (!activeWorkspaceId) return
 
     addMessage({
       id: `msg-${Date.now()}`,
@@ -83,7 +97,7 @@ export default function CommandBar() {
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary outline-none"
         />
 
-        {input.trim() ? (
+        {input.trim() && activeWorkspaceId ? (
           <motion.button
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
