@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
 import { useUIStore } from '../../stores/ui'
@@ -6,6 +7,18 @@ import { useT } from '../../i18n'
 export default function ConfirmDialog() {
   const t = useT()
   const { confirmDialog, hideConfirm } = useUIStore()
+
+  useEffect(() => {
+    if (!confirmDialog) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation()
+        hideConfirm()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [confirmDialog, hideConfirm])
 
   function handleConfirm() {
     confirmDialog?.onConfirm()

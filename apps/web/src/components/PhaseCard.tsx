@@ -20,7 +20,8 @@ import { useT } from '../i18n'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
-import type { Phase, PhaseStatus, TaskPriority } from '../types'
+import type { Phase, PhaseStatus, TaskPriority, LabelColor } from '../types'
+import type { DraggableAttributes } from '@dnd-kit/core'
 import type { TranslationKey } from '../i18n/en'
 
 function StatusIcon({ status }: { status: PhaseStatus }) {
@@ -223,7 +224,7 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
 }
 
 interface TaskRowProps {
-  task: { id: string; title: string; status: PhaseStatus; assignedAgent?: string; priority?: TaskPriority; labels?: string[] }
+  task: { id: string; title: string; status: PhaseStatus; assignedAgent?: string; priority?: TaskPriority; labels?: LabelColor[] }
   phaseId: string
   onOpen: () => void
   onDelete: () => void
@@ -231,7 +232,7 @@ interface TaskRowProps {
   dragHandle?: React.ReactNode
   style?: React.CSSProperties
   innerRef?: (node: HTMLElement | null) => void
-  extraProps?: Record<string, any>
+  extraProps?: DraggableAttributes
 }
 
 function SortableTaskRow(props: Omit<TaskRowProps, 'dragHandle' | 'style' | 'innerRef' | 'extraProps'>) {

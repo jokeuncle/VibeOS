@@ -16,7 +16,7 @@ import AgentLogStream from './AgentLogStream'
 import AgentTimeline from './AgentTimeline'
 import FilterToolbar, { type FilterState } from './FilterToolbar'
 import type { TranslationKey } from '../i18n/en'
-import type { Phase, TaskPriority } from '../types'
+import type { Phase, TaskPriority, Agent } from '../types'
 
 function ProgressRing({ progress }: { progress: number }) {
   const radius = 28
@@ -75,7 +75,7 @@ function applyFilter(phases: Phase[], filter: FilterState): Phase[] {
 
 function ViewContent({ mode, workspace, displayedPhases, filter, onFilterChange }: {
   mode: ViewMode
-  workspace: { phases: Phase[]; agents: any[] }
+  workspace: { phases: Phase[]; agents: Agent[] }
   displayedPhases: Phase[]
   filter: FilterState
   onFilterChange: (f: FilterState) => void
