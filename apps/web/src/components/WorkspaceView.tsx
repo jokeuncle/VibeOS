@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { List, LayoutGrid, BarChart3, Check, X } from 'lucide-react'
+import { List, LayoutGrid, BarChart3, Check, X, Plus, MessageCircle, Sparkles } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -45,12 +45,14 @@ export default function WorkspaceView() {
   const { activeWorkspaceId, activePhaseId, workspaces, updateWorkspace } = useWorkspaceStore()
   const { viewMode, setViewMode, addToast } = useUIStore()
   const t = useT()
-  const workspace = workspaces.find((w) => w.id === activeWorkspaceId)!
+  const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
-  const [draftTitle, setDraftTitle] = useState(workspace.name)
-  const [draftDesc, setDraftDesc] = useState(workspace.description)
+  const [draftTitle, setDraftTitle] = useState(workspace?.name || '')
+  const [draftDesc, setDraftDesc] = useState(workspace?.description || '')
+
+  if (!workspace) return null
 
   function saveTitle() {
     if (draftTitle.trim()) {
@@ -183,6 +185,41 @@ export default function WorkspaceView() {
               ))}
             </div>
           </div>
+
+          {/* Empty state */}
+          {totalTasks === 0 && currentViewMode !== 'dashboard' && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-dashed border-border-default bg-surface-1/30 p-10 text-center mb-8"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
+              <p className="text-sm text-text-tertiary mb-6 max-w-sm mx-auto">{t('emptyState.desc')}</p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => {
+                    const firstPhase = workspace.phases[0]
+                    if (firstPhase) {
+                      setViewMode('list')
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium cursor-pointer transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('emptyState.addTask')}
+                </button>
+                <button
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-sm font-medium cursor-pointer transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  {t('emptyState.talkAgent')}
+                </button>
+              </div>
+            </motion.div>
+          )}
 
           {/* Content */}
           {currentViewMode === 'dashboard' ? (

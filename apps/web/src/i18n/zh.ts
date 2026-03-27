@@ -210,6 +210,39 @@ const zh: Record<TranslationKey, string> = {
 
   'markdown.edit': '编辑',
   'markdown.preview': '预览',
+
+  'tabs.close': '关闭标签',
+
+  'breadcrumb.home': '首页',
+
+  'comment.title': '评论',
+  'comment.placeholder': '添加评论…',
+  'comment.empty': '暂无评论',
+  'comment.you': '你',
+  'comment.send': '发送',
+
+  'command.tasks': '任务',
+  'command.openTask': '打开任务',
+
+  'emptyState.title': '欢迎来到你的空间',
+  'emptyState.desc': '添加第一个任务或与 Agent 对话开始吧。',
+  'emptyState.addTask': '添加任务',
+  'emptyState.talkAgent': '与 Agent 对话',
+
+  'shortcuts.title': '快捷键',
+  'shortcuts.general': '通用',
+  'shortcuts.navigation': '导航',
+  'shortcuts.editing': '编辑',
+  'shortcuts.commandPalette': '命令面板',
+  'shortcuts.toggleSidebar': '切换侧边栏',
+  'shortcuts.settings': '打开设置',
+  'shortcuts.shortcuts': '显示快捷键',
+  'shortcuts.close': '关闭面板',
+  'shortcuts.goHome': '回到首页',
+
+  'attachment.title': '附件',
+  'attachment.drop': '拖拽文件到此处或点击选择',
+  'attachment.empty': '无附件',
 }
 
 export default zh

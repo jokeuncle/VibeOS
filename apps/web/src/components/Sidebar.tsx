@@ -26,6 +26,21 @@ function StatusDot({ status }: { status: PhaseStatus }) {
   return <div className="w-1.5 h-1.5 rounded-full bg-surface-4" />
 }
 
+function MiniProgress({ completed, total }: { completed: number; total: number }) {
+  if (total === 0) return null
+  const pct = Math.round((completed / total) * 100)
+  return (
+    <div className="w-full px-1.5 mt-0.5">
+      <div className="h-[2px] bg-surface-4 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full bg-accent/60 transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function Sidebar() {
   const { activeWorkspaceId, activePhaseId, workspaces, setActivePhase } = useWorkspaceStore()
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
@@ -41,7 +56,6 @@ export default function Sidebar() {
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="border-r border-border-subtle bg-surface-1/50 flex flex-col items-center py-3 gap-1 overflow-hidden shrink-0"
     >
-      {/* Collapse toggle */}
       <button
         onClick={toggleSidebar}
         className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer mb-2"
@@ -57,9 +71,11 @@ export default function Sidebar() {
         const isActive = activePhaseId === phase.id
         const icon = PHASE_ICONS[phase.type]
         const labelKey = `phase.short.${phase.type}` as TranslationKey
+        const completed = phase.tasks.filter((t) => t.status === 'completed').length
+        const total = phase.tasks.length
 
         return (
-          <div key={phase.id} className="flex flex-col items-center">
+          <div key={phase.id} className="flex flex-col items-center w-full">
             {index > 0 && (
               <div className={`w-px h-3 mb-1 transition-colors ${
                 phase.status !== 'pending' ? 'bg-accent/40' : 'bg-border-subtle'
@@ -81,11 +97,12 @@ export default function Sidebar() {
                 <StatusDot status={phase.status} />
               </div>
             </motion.button>
-            <span className={`text-[9px] font-mono font-medium mt-1 tracking-wider ${
+            <span className={`text-[9px] font-mono font-medium mt-0.5 tracking-wider ${
               isActive ? 'text-accent' : 'text-text-tertiary'
             }`}>
               {t(labelKey)}
             </span>
+            <MiniProgress completed={completed} total={total} />
           </div>
         )
       })}

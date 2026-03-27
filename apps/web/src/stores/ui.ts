@@ -74,6 +74,13 @@ interface UIState {
 
   theme: 'dark' | 'light'
   setTheme: (theme: 'dark' | 'light') => void
+
+  openTabs: string[]
+  addTab: (id: string) => void
+  removeTab: (id: string) => void
+
+  shortcutsOpen: boolean
+  setShortcutsOpen: (open: boolean) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -147,4 +154,17 @@ export const useUIStore = create<UIState>((set) => ({
     localStorage.setItem('anyos-theme', theme)
     set({ theme })
   },
+
+  openTabs: [],
+  addTab: (id) =>
+    set((s) => ({
+      openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
+    })),
+  removeTab: (id) =>
+    set((s) => ({
+      openTabs: s.openTabs.filter((t) => t !== id),
+    })),
+
+  shortcutsOpen: false,
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
 }))

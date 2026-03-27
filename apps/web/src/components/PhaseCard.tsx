@@ -1,6 +1,21 @@
 import { motion } from 'framer-motion'
-import { CheckCircle2, Circle, Loader2, ChevronDown, Plus, Trash2, Pencil } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, ChevronDown, Plus, Trash2, Pencil, GripVertical } from 'lucide-react'
 import { useState } from 'react'
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useT } from '../i18n'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -36,7 +51,9 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
   const [expanded, setExpanded] = useState(phase.status === 'in_progress')
   const [adding, setAdding] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
-  const { activeWorkspaceId, addTask, deleteTask, updatePhaseStatus } = useWorkspaceStore()
+  const { activeWorkspaceId, addTask, deleteTask, updatePhaseStatus, reorderTasks } = useWorkspaceStore()
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const { openTaskDetail, addToast, showConfirm } = useUIStore()
 
   const completedTasks = phase.tasks.filter((t) => t.status === 'completed').length
@@ -134,16 +151,32 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
             </div>
           )}
 
-          {phase.tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              phaseId={phase.id}
-              onOpen={() => openTaskDetail(phase.id, task.id)}
-              onDelete={() => handleDeleteTask(task.id)}
-              t={t}
-            />
-          ))}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(event: DragEndEvent) => {
+              const { active, over } = event
+              if (!over || active.id === over.id || !activeWorkspaceId) return
+              const oldIdx = phase.tasks.findIndex((t) => t.id === active.id)
+              const newIdx = phase.tasks.findIndex((t) => t.id === over.id)
+              if (oldIdx === -1 || newIdx === -1) return
+              const newOrder = arrayMove(phase.tasks.map((t) => t.id), oldIdx, newIdx)
+              reorderTasks(activeWorkspaceId, phase.id, newOrder)
+            }}
+          >
+            <SortableContext items={phase.tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+              {phase.tasks.map((task) => (
+                <SortableTaskRow
+                  key={task.id}
+                  task={task}
+                  phaseId={phase.id}
+                  onOpen={() => openTaskDetail(phase.id, task.id)}
+                  onDelete={() => handleDeleteTask(task.id)}
+                  t={t}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
 
           {/* Inline add */}
           {adding ? (
@@ -189,19 +222,52 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
   p3: 'bg-blue-400',
 }
 
+interface TaskRowProps {
+  task: { id: string; title: string; status: PhaseStatus; assignedAgent?: string; priority?: TaskPriority; labels?: string[] }
+  phaseId: string
+  onOpen: () => void
+  onDelete: () => void
+  t: (key: TranslationKey) => string
+  dragHandle?: React.ReactNode
+  style?: React.CSSProperties
+  innerRef?: (node: HTMLElement | null) => void
+  extraProps?: Record<string, any>
+}
+
+function SortableTaskRow(props: Omit<TaskRowProps, 'dragHandle' | 'style' | 'innerRef' | 'extraProps'>) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.task.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
+  return (
+    <TaskRow
+      {...props}
+      innerRef={setNodeRef}
+      style={style}
+      extraProps={attributes}
+      dragHandle={
+        <span {...listeners} className="cursor-grab active:cursor-grabbing p-0.5 text-text-tertiary/0 group-hover:text-text-tertiary transition-colors">
+          <GripVertical className="w-3 h-3" />
+        </span>
+      }
+    />
+  )
+}
+
 function TaskRow({
   task,
   phaseId,
   onOpen,
   onDelete,
   t,
-}: {
-  task: { id: string; title: string; status: PhaseStatus; assignedAgent?: string; priority?: TaskPriority; labels?: string[] }
-  phaseId: string
-  onOpen: () => void
-  onDelete: () => void
-  t: (key: TranslationKey) => string
-}) {
+  dragHandle,
+  style,
+  innerRef,
+  extraProps,
+}: TaskRowProps) {
   const { menu, onContextMenu, closeMenu } = useContextMenu()
 
   const menuItems: ContextMenuItem[] = [
@@ -212,10 +278,14 @@ function TaskRow({
   return (
     <>
       <div
+        ref={innerRef}
+        style={style}
+        {...extraProps}
         onContextMenu={onContextMenu}
         onClick={onOpen}
         className="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-surface-2/40 transition-colors group cursor-pointer"
       >
+        {dragHandle}
         <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
           task.status === 'completed' ? 'border-success/50 bg-success/10'
             : task.status === 'in_progress' ? 'border-accent/50 bg-accent/10'

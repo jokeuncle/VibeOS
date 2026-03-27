@@ -1,15 +1,18 @@
-import { ArrowLeft, Settings, Languages } from 'lucide-react'
+import { Settings, Languages, ChevronRight, Home } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
-import { useI18nStore } from '../i18n'
+import { useI18nStore, useT } from '../i18n'
 import NotificationPanel from './NotificationPanel'
+import type { TranslationKey } from '../i18n/en'
 
 export default function TitleBar() {
-  const { activeWorkspaceId, workspaces, setActiveWorkspace } = useWorkspaceStore()
+  const t = useT()
+  const { activeWorkspaceId, activePhaseId, workspaces, setActiveWorkspace, setActivePhase } = useWorkspaceStore()
   const { setSettingsOpen } = useUIStore()
   const { locale, toggleLocale } = useI18nStore()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  const phase = workspace?.phases.find((p) => p.id === activePhaseId)
 
   return (
     <header
@@ -23,35 +26,50 @@ export default function TitleBar() {
           <div className="w-3 h-3 rounded-full bg-[#28c840] opacity-80 hover:opacity-100 transition-opacity" />
         </div>
 
-        {workspace && (
-          <motion.button
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            onClick={() => setActiveWorkspace(null)}
-            className="flex items-center gap-1.5 text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </motion.button>
-        )}
-
-        <div className="flex items-center gap-2.5">
-          <span className="text-sm font-semibold tracking-tight text-text-primary">
-            Vibe<span className="text-accent">OS</span>
-          </span>
-          {workspace && (
+        {/* Breadcrumb navigation */}
+        <nav
+          className="flex items-center gap-1.5"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {workspace ? (
             <>
-              <span className="text-text-tertiary text-xs">/</span>
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-sm text-text-secondary font-medium"
+              <button
+                onClick={() => setActiveWorkspace(null)}
+                className="flex items-center gap-1 text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
               >
-                {workspace.name}
-              </motion.span>
+                <Home className="w-3.5 h-3.5" />
+                <span className="text-xs font-medium hidden sm:inline">{t('breadcrumb.home')}</span>
+              </button>
+              <ChevronRight className="w-3 h-3 text-text-tertiary/40" />
+              <button
+                onClick={() => setActivePhase(null)}
+                className="text-sm font-semibold tracking-tight text-text-primary hover:text-accent transition-colors cursor-pointer"
+              >
+                Vibe<span className="text-accent">OS</span>
+                <span className="text-text-tertiary text-xs mx-1.5">/</span>
+                <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-text-secondary font-medium">
+                  {workspace.name || t('workspace.untitled')}
+                </motion.span>
+              </button>
+              {phase && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-text-tertiary/40" />
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-text-tertiary font-medium"
+                  >
+                    {t(`phase.${phase.type}` as TranslationKey)}
+                  </motion.span>
+                </>
+              )}
             </>
+          ) : (
+            <span className="text-sm font-semibold tracking-tight text-text-primary">
+              Vibe<span className="text-accent">OS</span>
+            </span>
           )}
-        </div>
+        </nav>
       </div>
 
       <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

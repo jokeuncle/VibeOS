@@ -159,6 +159,7 @@ interface WorkspaceState {
   updatePhaseStatus: (workspaceId: string, phaseId: string, status: PhaseStatus) => void
   createWorkspaceFromTemplate: (name: string, description: string, color: WorkspaceColor) => string
   addActivity: (workspaceId: string, activity: Omit<ActivityItem, 'id' | 'timestamp'>) => void
+  reorderTasks: (workspaceId: string, phaseId: string, taskIds: string[]) => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -311,6 +312,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 { ...activity, id: `act-${Date.now()}`, timestamp: new Date().toISOString() },
                 ...w.activities,
               ],
+            }
+          : w,
+      ),
+    })),
+
+  reorderTasks: (workspaceId, phaseId, taskIds) =>
+    set((s) => ({
+      workspaces: s.workspaces.map((w) =>
+        w.id === workspaceId
+          ? {
+              ...w,
+              phases: w.phases.map((p) =>
+                p.id === phaseId
+                  ? { ...p, tasks: taskIds.map((id) => p.tasks.find((t) => t.id === id)!).filter(Boolean) }
+                  : p,
+              ),
             }
           : w,
       ),

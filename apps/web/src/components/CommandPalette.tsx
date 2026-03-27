@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Home, Plus, PanelLeftClose, Settings, Languages,
-  Layers, ArrowRight,
+  Layers, ArrowRight, CheckSquare,
 } from 'lucide-react'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -20,7 +20,7 @@ export default function CommandPalette() {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { commandPaletteOpen, setCommandPaletteOpen, setSettingsOpen, toggleSidebar, setTemplatePickerOpen } = useUIStore()
+  const { commandPaletteOpen, setCommandPaletteOpen, setSettingsOpen, toggleSidebar, setTemplatePickerOpen, openTaskDetail } = useUIStore()
   const { workspaces, setActiveWorkspace, activeWorkspaceId } = useWorkspaceStore()
   const { toggleLocale } = useI18nStore()
   const t = useT()
@@ -48,6 +48,23 @@ export default function CommandPalette() {
           action: () => setActiveWorkspace(ws.id),
         })
       }
+    })
+
+    workspaces.forEach((ws) => {
+      ws.phases.forEach((phase) => {
+        phase.tasks.forEach((task) => {
+          cmds.push({
+            id: `task-${ws.id}-${phase.id}-${task.id}`,
+            label: `${task.title}`,
+            icon: <CheckSquare className="w-4 h-4" />,
+            category: t('command.tasks'),
+            action: () => {
+              setActiveWorkspace(ws.id)
+              openTaskDetail(phase.id, task.id)
+            },
+          })
+        })
+      })
     })
 
     cmds.push(
@@ -84,7 +101,7 @@ export default function CommandPalette() {
     )
 
     return cmds
-  }, [activeWorkspaceId, workspaces, t, setActiveWorkspace, setTemplatePickerOpen, toggleSidebar, setSettingsOpen, toggleLocale])
+  }, [activeWorkspaceId, workspaces, t, setActiveWorkspace, setTemplatePickerOpen, toggleSidebar, setSettingsOpen, toggleLocale, openTaskDetail])
 
   const filtered = useMemo(() => {
     if (!query.trim()) return commands

@@ -11,9 +11,11 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
+import { Pencil, Trash2 } from 'lucide-react'
 import { useT } from '../i18n'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
+import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
 import type { Phase, PhaseStatus, Task, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -70,24 +72,45 @@ function Column({ status, children, count, label, borderColor, dotColor }: {
 
 function DraggableCard({ task }: { task: BoardTask }) {
   const t = useT()
-  const { openTaskDetail } = useUIStore()
+  const { openTaskDetail, showConfirm, addToast } = useUIStore()
+  const { deleteTask, activeWorkspaceId } = useWorkspaceStore()
+  const { menu, onContextMenu, closeMenu } = useContextMenu()
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${task.phaseId}:${task.id}`,
     data: { task },
   })
 
+  const menuItems: ContextMenuItem[] = [
+    { id: 'edit', label: t('task.edit'), icon: <Pencil className="w-3.5 h-3.5" />, onClick: () => openTaskDetail(task.phaseId, task.id) },
+    { id: 'delete', label: t('task.delete'), icon: <Trash2 className="w-3.5 h-3.5" />, danger: true, onClick: () => {
+      showConfirm({
+        title: t('confirm.deleteTask'),
+        message: t('confirm.deleteTaskMsg'),
+        danger: true,
+        onConfirm: () => {
+          if (activeWorkspaceId) deleteTask(activeWorkspaceId, task.phaseId, task.id)
+          addToast({ type: 'info', message: t('task.deleted') })
+        },
+      })
+    }},
+  ]
+
   return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      onClick={() => openTaskDetail(task.phaseId, task.id)}
-      className={`p-3 rounded-lg border border-border-subtle bg-surface-1/60 hover:bg-surface-2/60 hover:border-border-default cursor-grab active:cursor-grabbing transition-all group ${
-        isDragging ? 'opacity-30' : ''
-      }`}
-    >
-      <TaskCardContent task={task} t={t} />
-    </div>
+    <>
+      <div
+        ref={setNodeRef}
+        {...attributes}
+        {...listeners}
+        onClick={() => openTaskDetail(task.phaseId, task.id)}
+        onContextMenu={onContextMenu}
+        className={`p-3 rounded-lg border border-border-subtle bg-surface-1/60 hover:bg-surface-2/60 hover:border-border-default cursor-grab active:cursor-grabbing transition-all group ${
+          isDragging ? 'opacity-30' : ''
+        }`}
+      >
+        <TaskCardContent task={task} t={t} />
+      </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
+    </>
   )
 }
 

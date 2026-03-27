@@ -208,6 +208,39 @@ const en = {
 
   'markdown.edit': 'Edit',
   'markdown.preview': 'Preview',
+
+  'tabs.close': 'Close tab',
+
+  'breadcrumb.home': 'Home',
+
+  'comment.title': 'Comments',
+  'comment.placeholder': 'Add a comment…',
+  'comment.empty': 'No comments yet',
+  'comment.you': 'You',
+  'comment.send': 'Send',
+
+  'command.tasks': 'Tasks',
+  'command.openTask': 'Open task',
+
+  'emptyState.title': 'Welcome to your workspace',
+  'emptyState.desc': 'Get started by adding your first task or talking to an agent.',
+  'emptyState.addTask': 'Add a task',
+  'emptyState.talkAgent': 'Talk to Agent',
+
+  'shortcuts.title': 'Keyboard Shortcuts',
+  'shortcuts.general': 'General',
+  'shortcuts.navigation': 'Navigation',
+  'shortcuts.editing': 'Editing',
+  'shortcuts.commandPalette': 'Command palette',
+  'shortcuts.toggleSidebar': 'Toggle sidebar',
+  'shortcuts.settings': 'Open settings',
+  'shortcuts.shortcuts': 'Show shortcuts',
+  'shortcuts.close': 'Close panel',
+  'shortcuts.goHome': 'Go home',
+
+  'attachment.title': 'Attachments',
+  'attachment.drop': 'Drop files here or click to browse',
+  'attachment.empty': 'No attachments',
 } as const
 
 export type TranslationKey = keyof typeof en

@@ -81,6 +81,19 @@ export interface Workspace {
   updatedAt: string
 }
 
+export interface TaskComment {
+  id: string
+  author: string
+  content: string
+  timestamp: string
+}
+
+export interface TaskAttachment {
+  id: string
+  name: string
+  size: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'agent'
