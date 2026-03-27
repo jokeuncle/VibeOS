@@ -169,6 +169,45 @@ const en = {
   'agent.chat': 'Chat with agent',
   'agent.chatPlaceholder': 'Ask this agent…',
   'agent.mockReply': 'I\'m ready to help. What would you like me to work on?',
+
+  'priority.label': 'Priority',
+  'priority.none': 'None',
+  'priority.p0': 'Critical',
+  'priority.p1': 'High',
+  'priority.p2': 'Medium',
+  'priority.p3': 'Low',
+
+  'label.title': 'Labels',
+  'label.add': 'Toggle labels',
+
+  'dueDate.label': 'Due date',
+  'dueDate.none': 'No due date',
+
+  'activity.title': 'Activity',
+  'activity.task_created': 'Task created',
+  'activity.task_updated': 'Task updated',
+  'activity.phase_changed': 'Phase changed',
+  'activity.agent_action': 'Agent action',
+  'activity.workspace_updated': 'Workspace updated',
+  'activity.empty': 'No activity yet',
+
+  'dashboard.title': 'Dashboard',
+  'dashboard.phaseProgress': 'Phase Progress',
+  'dashboard.taskDistribution': 'Task Distribution',
+  'dashboard.agentStatus': 'Agent Status',
+  'dashboard.pending': 'Pending',
+  'dashboard.inProgress': 'In Progress',
+  'dashboard.completed': 'Completed',
+  'dashboard.totalTasks': 'Total Tasks',
+
+  'theme.label': 'Theme',
+  'theme.dark': 'Dark',
+  'theme.light': 'Light',
+
+  'view.dashboard': 'Dashboard',
+
+  'markdown.edit': 'Edit',
+  'markdown.preview': 'Preview',
 } as const
 
 export type TranslationKey = keyof typeof en

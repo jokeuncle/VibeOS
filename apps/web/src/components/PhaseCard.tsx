@@ -5,7 +5,7 @@ import { useT } from '../i18n'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
-import type { Phase, PhaseStatus } from '../types'
+import type { Phase, PhaseStatus, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 function StatusIcon({ status }: { status: PhaseStatus }) {
@@ -182,6 +182,13 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
   )
 }
 
+const PRIORITY_DOT: Record<TaskPriority, string> = {
+  p0: 'bg-red-400',
+  p1: 'bg-orange-400',
+  p2: 'bg-yellow-400',
+  p3: 'bg-blue-400',
+}
+
 function TaskRow({
   task,
   phaseId,
@@ -189,7 +196,7 @@ function TaskRow({
   onDelete,
   t,
 }: {
-  task: { id: string; title: string; status: PhaseStatus; assignedAgent?: string }
+  task: { id: string; title: string; status: PhaseStatus; assignedAgent?: string; priority?: TaskPriority; labels?: string[] }
   phaseId: string
   onOpen: () => void
   onDelete: () => void
@@ -217,6 +224,9 @@ function TaskRow({
           {task.status === 'completed' && <div className="w-1.5 h-1.5 rounded-full bg-success" />}
           {task.status === 'in_progress' && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow" />}
         </div>
+        {task.priority && (
+          <div className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority]} shrink-0`} title={t(`priority.${task.priority}` as TranslationKey)} />
+        )}
         <span className={`text-xs flex-1 ${
           task.status === 'completed' ? 'text-text-tertiary line-through'
             : task.status === 'in_progress' ? 'text-text-primary'
@@ -224,6 +234,13 @@ function TaskRow({
         }`}>
           {task.title}
         </span>
+        {task.labels && task.labels.length > 0 && (
+          <div className="flex items-center gap-0.5">
+            {task.labels.map((c) => (
+              <div key={c} className={`w-2 h-2 rounded-full ${c === 'red' ? 'bg-red-400' : c === 'orange' ? 'bg-orange-400' : c === 'yellow' ? 'bg-yellow-400' : c === 'green' ? 'bg-green-400' : c === 'blue' ? 'bg-blue-400' : 'bg-purple-400'}`} />
+            ))}
+          </div>
+        )}
         {task.assignedAgent && (
           <span className="text-[9px] font-mono text-accent/60 bg-accent/5 px-1.5 py-0.5 rounded">
             {task.assignedAgent}

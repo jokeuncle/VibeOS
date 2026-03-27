@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { List, LayoutGrid, Check, X } from 'lucide-react'
+import { List, LayoutGrid, BarChart3, Check, X } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -9,6 +9,8 @@ import PhaseCard from './PhaseCard'
 import AgentPanel from './AgentPanel'
 import MessageThread from './MessageThread'
 import BoardView from './BoardView'
+import Dashboard from './Dashboard'
+import ActivityLog from './ActivityLog'
 import type { TranslationKey } from '../i18n/en'
 
 function ProgressRing({ progress }: { progress: number }) {
@@ -36,6 +38,8 @@ function ProgressRing({ progress }: { progress: number }) {
     </svg>
   )
 }
+
+type ViewMode = 'list' | 'board' | 'dashboard'
 
 export default function WorkspaceView() {
   const { activeWorkspaceId, activePhaseId, workspaces, updateWorkspace } = useWorkspaceStore()
@@ -68,6 +72,8 @@ export default function WorkspaceView() {
 
   const completedPhases = workspace.phases.filter((p) => p.status === 'completed').length
   const totalTasks = workspace.phases.reduce((a, p) => a + p.tasks.length, 0)
+
+  const currentViewMode: ViewMode = viewMode as ViewMode
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -151,42 +157,47 @@ export default function WorkspaceView() {
             </div>
           </motion.div>
 
-          {/* View toggle + section header */}
+          {/* View toggle */}
           <div className="flex items-center gap-2 mb-4">
             <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-              {activePhaseId ? t('phase.phaseDetail') : t('phase.allPhases')}
+              {currentViewMode === 'dashboard'
+                ? t('view.dashboard')
+                : activePhaseId ? t('phase.phaseDetail') : t('phase.allPhases')}
             </span>
             <div className="flex-1 h-px bg-border-subtle" />
             <div className="flex items-center bg-surface-2 rounded-lg p-0.5 border border-border-subtle">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md cursor-pointer transition-all ${
-                  viewMode === 'list' ? 'bg-surface-4 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
-                }`}
-              >
-                <List className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setViewMode('board')}
-                className={`p-1.5 rounded-md cursor-pointer transition-all ${
-                  viewMode === 'board' ? 'bg-surface-4 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
+              {([
+                { mode: 'list' as ViewMode, Icon: List, label: 'view.list' },
+                { mode: 'board' as ViewMode, Icon: LayoutGrid, label: 'view.board' },
+                { mode: 'dashboard' as ViewMode, Icon: BarChart3, label: 'view.dashboard' },
+              ] as const).map(({ mode, Icon }) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode as any)}
+                  className={`p-1.5 rounded-md cursor-pointer transition-all ${
+                    currentViewMode === mode ? 'bg-surface-4 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Content */}
-          {viewMode === 'list' ? (
+          {currentViewMode === 'dashboard' ? (
+            <div className="mb-8">
+              <Dashboard phases={workspace.phases} agents={workspace.agents} />
+            </div>
+          ) : currentViewMode === 'board' ? (
+            <div className="mb-8">
+              <BoardView phases={displayedPhases} />
+            </div>
+          ) : (
             <div className="space-y-3 mb-8">
               {displayedPhases.map((phase, i) => (
                 <PhaseCard key={phase.id} phase={phase} index={i} />
               ))}
-            </div>
-          ) : (
-            <div className="mb-8">
-              <BoardView phases={displayedPhases} />
             </div>
           )}
 
@@ -199,6 +210,17 @@ export default function WorkspaceView() {
               <div className="flex-1 h-px bg-border-subtle" />
             </div>
             <AgentPanel agents={workspace.agents} />
+          </div>
+
+          {/* Activity Log */}
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+                {t('activity.title')}
+              </span>
+              <div className="flex-1 h-px bg-border-subtle" />
+            </div>
+            <ActivityLog activities={workspace.activities} />
           </div>
 
           <MessageThread />

@@ -17,7 +17,11 @@ import WorkspaceTemplates from './components/WorkspaceTemplates'
 
 export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
-  const { toggleSidebar, setSettingsOpen } = useUIStore()
+  const { toggleSidebar, setSettingsOpen, theme } = useUIStore()
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

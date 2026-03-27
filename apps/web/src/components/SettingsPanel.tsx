@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Command } from 'lucide-react'
+import { X, Command, Sun, Moon } from 'lucide-react'
 import { useEffect } from 'react'
 import { useUIStore } from '../stores/ui'
 import { useI18nStore, useT } from '../i18n'
@@ -13,7 +13,7 @@ const SHORTCUTS = [
 
 export default function SettingsPanel() {
   const t = useT()
-  const { settingsOpen, setSettingsOpen } = useUIStore()
+  const { settingsOpen, setSettingsOpen, theme, setTheme } = useUIStore()
   const { locale, setLocale } = useI18nStore()
 
   useEffect(() => {
@@ -84,6 +84,37 @@ export default function SettingsPanel() {
                     }`}
                   >
                     中文
+                  </button>
+                </div>
+              </div>
+
+              {/* Theme */}
+              <div>
+                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
+                  {t('theme.label')}
+                </h4>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setTheme('dark')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium border cursor-pointer transition-all ${
+                      theme === 'dark'
+                        ? 'border-accent/30 bg-accent/10 text-accent'
+                        : 'border-border-subtle bg-surface-2 text-text-tertiary hover:bg-surface-3'
+                    }`}
+                  >
+                    <Moon className="w-3.5 h-3.5" />
+                    {t('theme.dark')}
+                  </button>
+                  <button
+                    onClick={() => setTheme('light')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium border cursor-pointer transition-all ${
+                      theme === 'light'
+                        ? 'border-accent/30 bg-accent/10 text-accent'
+                        : 'border-border-subtle bg-surface-2 text-text-tertiary hover:bg-surface-3'
+                    }`}
+                  >
+                    <Sun className="w-3.5 h-3.5" />
+                    {t('theme.light')}
                   </button>
                 </div>
               </div>

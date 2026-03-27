@@ -171,6 +171,45 @@ const zh: Record<TranslationKey, string> = {
   'agent.chat': '与 Agent 对话',
   'agent.chatPlaceholder': '向这个 Agent 提问…',
   'agent.mockReply': '我已就绪，需要我做什么？',
+
+  'priority.label': '优先级',
+  'priority.none': '无',
+  'priority.p0': '紧急',
+  'priority.p1': '高',
+  'priority.p2': '中',
+  'priority.p3': '低',
+
+  'label.title': '标签',
+  'label.add': '切换标签',
+
+  'dueDate.label': '截止日期',
+  'dueDate.none': '无截止日期',
+
+  'activity.title': '活动日志',
+  'activity.task_created': '创建任务',
+  'activity.task_updated': '更新任务',
+  'activity.phase_changed': '阶段变更',
+  'activity.agent_action': 'Agent 操作',
+  'activity.workspace_updated': '空间更新',
+  'activity.empty': '暂无活动',
+
+  'dashboard.title': '仪表盘',
+  'dashboard.phaseProgress': '阶段进度',
+  'dashboard.taskDistribution': '任务分布',
+  'dashboard.agentStatus': 'Agent 状态',
+  'dashboard.pending': '待开始',
+  'dashboard.inProgress': '进行中',
+  'dashboard.completed': '已完成',
+  'dashboard.totalTasks': '总任务数',
+
+  'theme.label': '主题',
+  'theme.dark': '深色',
+  'theme.light': '浅色',
+
+  'view.dashboard': '仪表盘',
+
+  'markdown.edit': '编辑',
+  'markdown.preview': '预览',
 }
 
 export default zh

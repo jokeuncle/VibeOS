@@ -54,8 +54,8 @@ interface UIState {
   sidebarCollapsed: boolean
   toggleSidebar: () => void
 
-  viewMode: 'list' | 'board'
-  setViewMode: (mode: 'list' | 'board') => void
+  viewMode: 'list' | 'board' | 'dashboard'
+  setViewMode: (mode: 'list' | 'board' | 'dashboard') => void
 
   notifications: Notification[]
   markNotificationRead: (id: string) => void
@@ -71,6 +71,9 @@ interface UIState {
 
   templatePickerOpen: boolean
   setTemplatePickerOpen: (open: boolean) => void
+
+  theme: 'dark' | 'light'
+  setTheme: (theme: 'dark' | 'light') => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -138,4 +141,10 @@ export const useUIStore = create<UIState>((set) => ({
 
   templatePickerOpen: false,
   setTemplatePickerOpen: (open) => set({ templatePickerOpen: open }),
+
+  theme: (localStorage.getItem('anyos-theme') as 'dark' | 'light') || 'dark',
+  setTheme: (theme) => {
+    localStorage.setItem('anyos-theme', theme)
+    set({ theme })
+  },
 }))

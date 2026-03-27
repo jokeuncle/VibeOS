@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workspace, Message, PhaseStatus, PhaseType, WorkspaceColor } from '../types'
+import type { Workspace, Message, PhaseStatus, PhaseType, WorkspaceColor, ActivityItem } from '../types'
 
 const MOCK_WORKSPACES: Workspace[] = [
   {
@@ -80,6 +80,12 @@ const MOCK_WORKSPACES: Workspace[] = [
       { id: 'a7', type: 'monitoring', name: 'Mon Agent', status: 'idle', avatar: 'M' },
       { id: 'a8', type: 'pm', name: 'PM Agent', status: 'running', currentTask: 'Tracking milestone progress', avatar: 'P' },
     ],
+    activities: [
+      { id: 'a1', type: 'workspace_updated', description: 'Workspace created', timestamp: '2026-03-20T10:00:00Z' },
+      { id: 'a2', type: 'phase_changed', description: 'Requirements → completed', timestamp: '2026-03-22T15:00:00Z' },
+      { id: 'a3', type: 'task_created', description: 'Task "Design database schema" added', timestamp: '2026-03-24T09:00:00Z' },
+      { id: 'a4', type: 'agent_action', description: 'Arch Agent started schema design', timestamp: '2026-03-27T14:20:00Z', agentType: 'architecture' },
+    ],
     createdAt: '2026-03-20T10:00:00Z',
     updatedAt: '2026-03-27T14:30:00Z',
   },
@@ -109,6 +115,10 @@ const MOCK_WORKSPACES: Workspace[] = [
     agents: [
       { id: 'a10', type: 'requirement', name: 'Req Agent', status: 'running', currentTask: 'Security compliance review', avatar: 'R' },
       { id: 'a11', type: 'pm', name: 'PM Agent', status: 'idle', avatar: 'P' },
+    ],
+    activities: [
+      { id: 'a5', type: 'workspace_updated', description: 'Workspace created', timestamp: '2026-03-25T09:00:00Z' },
+      { id: 'a6', type: 'task_created', description: 'Task "Payment provider research" added', timestamp: '2026-03-26T10:00:00Z' },
     ],
     createdAt: '2026-03-25T09:00:00Z',
     updatedAt: '2026-03-27T11:00:00Z',
@@ -143,11 +153,12 @@ interface WorkspaceState {
   deleteWorkspace: (id: string) => void
 
   addTask: (workspaceId: string, phaseId: string, title: string) => void
-  updateTask: (workspaceId: string, phaseId: string, taskId: string, updates: Partial<{ title: string; status: PhaseStatus; description: string; assignedAgent: string }>) => void
+  updateTask: (workspaceId: string, phaseId: string, taskId: string, updates: Partial<{ title: string; status: PhaseStatus; description: string; assignedAgent: string; priority: string; labels: string[]; dueDate: string }>) => void
   deleteTask: (workspaceId: string, phaseId: string, taskId: string) => void
 
   updatePhaseStatus: (workspaceId: string, phaseId: string, status: PhaseStatus) => void
   createWorkspaceFromTemplate: (name: string, description: string, color: WorkspaceColor) => string
+  addActivity: (workspaceId: string, activity: Omit<ActivityItem, 'id' | 'timestamp'>) => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -179,6 +190,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           currentPhaseId: '',
           phases: defaultPhases(),
           agents: [],
+          activities: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -280,6 +292,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           currentPhaseId: '',
           phases: defaultPhases(),
           agents: [],
+          activities: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -287,4 +300,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }))
     return id
   },
+
+  addActivity: (workspaceId, activity) =>
+    set((s) => ({
+      workspaces: s.workspaces.map((w) =>
+        w.id === workspaceId
+          ? {
+              ...w,
+              activities: [
+                { ...activity, id: `act-${Date.now()}`, timestamp: new Date().toISOString() },
+                ...w.activities,
+              ],
+            }
+          : w,
+      ),
+    })),
 }))
