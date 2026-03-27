@@ -1,0 +1,9 @@
+{
+  "name": "anyos",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @anyos/web dev",
+    "build": "pnpm --filter @anyos/web build",
+    "preview": "pnpm --filter @anyos/web preview"
+  }
+}
