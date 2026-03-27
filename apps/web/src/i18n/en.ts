@@ -64,6 +64,7 @@ const en = {
 
   'command.placeholder': 'Ask anything… "Deploy to staging" "Current progress?"',
   'command.placeholderHome': 'Search workspaces or create a new one…',
+  'command.placeholderNLP': '@ Agent · / Command · or ask anything…',
   'command.title': 'Command Palette',
   'command.navigation': 'Navigation',
   'command.actions': 'Actions',
@@ -275,6 +276,15 @@ const en = {
   'filter.priority': 'Priority',
   'filter.sortBy': 'Sort',
   'filter.clear': 'Clear filters',
+  'filter.all': 'All',
+  'filter.pending': 'Pending',
+  'filter.inProgress': 'In Progress',
+  'filter.completed': 'Completed',
+  'filter.critical': 'Critical',
+  'filter.high': 'High',
+  'filter.medium': 'Medium',
+  'filter.low': 'Low',
+  'filter.name': 'Name',
 
   'homeDash.totalWorkspaces': 'Workspaces',
   'homeDash.totalTasks': 'Total Tasks',

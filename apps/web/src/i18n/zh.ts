@@ -66,6 +66,7 @@ const zh: Record<TranslationKey, string> = {
 
   'command.placeholder': '问任何事… "部署到预发环境" "当前进度？"',
   'command.placeholderHome': '搜索空间或创建新空间…',
+  'command.placeholderNLP': '@ Agent · / 命令 · 或提问任何事…',
   'command.title': '命令面板',
   'command.navigation': '导航',
   'command.actions': '操作',
@@ -277,6 +278,15 @@ const zh: Record<TranslationKey, string> = {
   'filter.priority': '优先级',
   'filter.sortBy': '排序',
   'filter.clear': '清除筛选',
+  'filter.all': '全部',
+  'filter.pending': '待办',
+  'filter.inProgress': '进行中',
+  'filter.completed': '已完成',
+  'filter.critical': '紧急',
+  'filter.high': '高',
+  'filter.medium': '中',
+  'filter.low': '低',
+  'filter.name': '名称',
 
   'homeDash.totalWorkspaces': '工作空间',
   'homeDash.totalTasks': '总任务',

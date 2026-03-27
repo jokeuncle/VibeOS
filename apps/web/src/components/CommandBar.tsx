@@ -244,7 +244,7 @@ export default function CommandBar() {
           onKeyDown={handleInputKeyDown}
           placeholder={
             activeWorkspaceId
-              ? '@ Agent · / Command · or ask anything…'
+              ? t('command.placeholderNLP')
               : t('command.placeholderHome')
           }
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary outline-none"

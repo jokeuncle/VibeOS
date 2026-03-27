@@ -236,7 +236,6 @@ export default function MessageThread() {
       <div className="max-h-[500px] overflow-y-auto">
         {sessions.map((session, si) => {
           const isCollapsed = collapsedSessions.has(session.id)
-          const isLast = si === sessions.length - 1
 
           return (
             <div key={session.id}>

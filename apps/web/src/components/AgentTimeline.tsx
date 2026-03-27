@@ -86,8 +86,9 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
       </div>
 
       <div className="p-4 overflow-x-auto">
+        <div style={{ minWidth: 380 }}>
         {/* Time axis */}
-        <div className="flex mb-1 ml-24">
+        <div className="flex mb-1 ml-20">
           {HOURS.map((h, i) => (
             <span key={h} className="text-[9px] font-mono text-text-tertiary/50" style={{ width: `${100 / HOURS.length}%` }}>
               {h}
@@ -107,7 +108,7 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
                 transition={{ delay: i * 0.04, duration: 0.3 }}
                 className="flex items-center gap-3"
               >
-                <span className="w-20 text-right text-[10px] font-mono text-text-tertiary shrink-0 truncate">
+                <span className="w-16 text-right text-[9px] font-mono text-text-tertiary shrink-0 truncate">
                   {t(`agent.name.${type}` as TranslationKey)}
                 </span>
 
@@ -149,7 +150,7 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 mt-4 ml-24">
+        <div className="flex items-center gap-4 mt-4 ml-20 flex-wrap">
           {(['running', 'waiting', 'error', 'idle'] as AgentStatus[]).map((status) => (
             <div key={status} className="flex items-center gap-1.5">
               <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: STATUS_FILL[status] }} />
@@ -160,6 +161,7 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
             <div className="w-px h-3 bg-accent" />
             <span className="text-[10px] text-text-tertiary">Now</span>
           </div>
+        </div>
         </div>
       </div>
     </div>

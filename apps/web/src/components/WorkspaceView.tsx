@@ -16,7 +16,7 @@ import AgentLogStream from './AgentLogStream'
 import AgentTimeline from './AgentTimeline'
 import FilterToolbar, { type FilterState } from './FilterToolbar'
 import type { TranslationKey } from '../i18n/en'
-import type { Phase, Task, TaskPriority } from '../types'
+import type { Phase, TaskPriority } from '../types'
 
 function ProgressRing({ progress }: { progress: number }) {
   const radius = 28
@@ -165,7 +165,7 @@ export default function WorkspaceView() {
         transition={{ duration: 0.3 }}
         className="flex-1 overflow-y-auto"
       >
-        <div className="max-w-3xl mx-auto px-8 py-8">
+        <div className={`mx-auto px-8 py-8 ${splitMode ? 'max-w-6xl' : 'max-w-3xl'}`}>
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: -12 }}

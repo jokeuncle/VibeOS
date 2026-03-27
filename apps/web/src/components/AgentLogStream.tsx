@@ -118,7 +118,7 @@ export default function AgentLogStream({ agents }: { agents: Agent[] }) {
       {/* Log area */}
       <div
         ref={scrollRef}
-        className="bg-[#0d0d11] p-3 h-64 overflow-y-auto font-mono text-[11px] leading-relaxed"
+        className="bg-surface-0 p-3 h-64 overflow-y-auto font-mono text-[11px] leading-relaxed"
       >
         <AnimatePresence>
           {filtered.map((log) => (
@@ -136,7 +136,7 @@ export default function AgentLogStream({ agents }: { agents: Agent[] }) {
               <span className={`shrink-0 ${LEVEL_COLOR[log.level]}`}>
                 {log.level === 'info' ? 'ℹ' : log.level === 'warn' ? '⚠' : log.level === 'error' ? '✕' : '✓'}
               </span>
-              <span className="text-gray-300">{log.message}</span>
+              <span className="text-text-primary/80">{log.message}</span>
             </motion.div>
           ))}
         </AnimatePresence>

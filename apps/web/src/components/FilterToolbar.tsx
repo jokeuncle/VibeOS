@@ -16,26 +16,29 @@ interface Props {
   onChange: (f: FilterState) => void
 }
 
-const STATUS_OPTIONS: { value: PhaseStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-]
-
-const PRIORITY_OPTIONS: { value: TaskPriority | 'all'; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'p0', label: 'P0 Critical' },
-  { value: 'p1', label: 'P1 High' },
-  { value: 'p2', label: 'P2 Medium' },
-  { value: 'p3', label: 'P3 Low' },
-]
-
-const SORT_OPTIONS: { value: 'title' | 'priority' | 'status'; label: string }[] = [
-  { value: 'title', label: 'Name' },
-  { value: 'priority', label: 'Priority' },
-  { value: 'status', label: 'Status' },
-]
+function useFilterOptions() {
+  const t = useT()
+  return {
+    status: [
+      { value: 'all', label: t('filter.all') },
+      { value: 'pending', label: t('filter.pending') },
+      { value: 'in_progress', label: t('filter.inProgress') },
+      { value: 'completed', label: t('filter.completed') },
+    ],
+    priority: [
+      { value: 'all', label: t('filter.all') },
+      { value: 'p0', label: 'P0 ' + t('filter.critical') },
+      { value: 'p1', label: 'P1 ' + t('filter.high') },
+      { value: 'p2', label: 'P2 ' + t('filter.medium') },
+      { value: 'p3', label: 'P3 ' + t('filter.low') },
+    ],
+    sort: [
+      { value: 'title', label: t('filter.name') },
+      { value: 'priority', label: t('filter.priority') },
+      { value: 'status', label: t('filter.status') },
+    ],
+  }
+}
 
 function Dropdown({ label, value, options, onChange }: {
   label: string
@@ -89,6 +92,7 @@ function Dropdown({ label, value, options, onChange }: {
 
 export default function FilterToolbar({ filter, onChange }: Props) {
   const t = useT()
+  const opts = useFilterOptions()
   const hasFilters = filter.status !== 'all' || filter.priority !== 'all'
 
   return (
@@ -98,14 +102,14 @@ export default function FilterToolbar({ filter, onChange }: Props) {
       <Dropdown
         label={t('filter.status')}
         value={filter.status}
-        options={STATUS_OPTIONS}
+        options={opts.status}
         onChange={(v) => onChange({ ...filter, status: v as any })}
       />
 
       <Dropdown
         label={t('filter.priority')}
         value={filter.priority}
-        options={PRIORITY_OPTIONS}
+        options={opts.priority}
         onChange={(v) => onChange({ ...filter, priority: v as any })}
       />
 
@@ -114,7 +118,7 @@ export default function FilterToolbar({ filter, onChange }: Props) {
       <Dropdown
         label={t('filter.sortBy')}
         value={filter.sortBy}
-        options={SORT_OPTIONS}
+        options={opts.sort}
         onChange={(v) => onChange({ ...filter, sortBy: v as any })}
       />
 
