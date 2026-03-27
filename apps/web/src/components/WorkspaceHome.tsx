@@ -46,7 +46,7 @@ function WorkspaceCard({
 }) {
   const t = useT()
   const { deleteWorkspace, updateWorkspace } = useWorkspaceStore()
-  const { addToast, showConfirm } = useUIStore()
+  const { addToast, showConfirm, removeTab } = useUIStore()
   const { menu, onContextMenu, closeMenu } = useContextMenu()
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(workspace.name)
@@ -71,6 +71,7 @@ function WorkspaceCard({
           message: t('confirm.deleteWorkspaceMsg'),
           danger: true,
           onConfirm: () => {
+            removeTab(workspace.id)
             deleteWorkspace(workspace.id)
             addToast({ type: 'info', message: t('workspace.deleted') })
           },

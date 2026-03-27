@@ -15,6 +15,7 @@ const zh: Record<TranslationKey, string> = {
   'workspace.created': '空间已创建',
   'workspace.deleted': '空间已删除',
   'workspace.updated': '空间已更新',
+  'workspace.selectFirst': '请先打开一个工作空间',
 
   'phase.requirement': '需求定义',
   'phase.design': '设计',

@@ -24,6 +24,14 @@ export default function SlideOver({ open, onClose, title, children }: SlideOverP
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
+  useEffect(() => {
+    if (!open) {
+      dragging.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [open])
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current = true
     startX.current = e.clientX

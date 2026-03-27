@@ -17,11 +17,11 @@ export default function Dock() {
   const {
     setCommandPaletteOpen,
     setTemplatePickerOpen,
-    openAgentChat,
     setSettingsOpen,
     splitMode,
     toggleSplitMode,
     setViewMode,
+    addToast,
   } = useUIStore()
   const t = useT()
 
@@ -50,7 +50,7 @@ export default function Dock() {
       label: t('view.agents'),
       action: () => {
         if (activeWorkspaceId) setViewMode('agents')
-        else openAgentChat('pm')
+        else addToast({ type: 'info', message: t('workspace.selectFirst') })
       },
     },
     {

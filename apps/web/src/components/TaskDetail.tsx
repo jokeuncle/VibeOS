@@ -98,7 +98,7 @@ export default function TaskDetail() {
       status,
       description,
       ...(priority ? { priority } : {}),
-      labels: labels as string[],
+      labels,
       dueDate: dueDate || undefined,
     })
     addActivity(activeWorkspaceId, {

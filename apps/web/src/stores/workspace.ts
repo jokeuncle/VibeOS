@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workspace, Message, PhaseStatus, PhaseType, WorkspaceColor, ActivityItem, RichBlock, AgentType } from '../types'
+import type { Workspace, Message, PhaseStatus, PhaseType, WorkspaceColor, ActivityItem, RichBlock, AgentType, Task, TaskPriority, LabelColor } from '../types'
 
 const MOCK_WORKSPACES: Workspace[] = [
   {
@@ -154,7 +154,7 @@ interface WorkspaceState {
   deleteWorkspace: (id: string) => void
 
   addTask: (workspaceId: string, phaseId: string, title: string) => void
-  updateTask: (workspaceId: string, phaseId: string, taskId: string, updates: Partial<{ title: string; status: PhaseStatus; description: string; assignedAgent: string; priority: string; labels: string[]; dueDate: string }>) => void
+  updateTask: (workspaceId: string, phaseId: string, taskId: string, updates: Partial<{ title: string; status: PhaseStatus; description: string; assignedAgent: AgentType; priority: TaskPriority; labels: LabelColor[]; dueDate: string }>) => void
   deleteTask: (workspaceId: string, phaseId: string, taskId: string) => void
 
   updatePhaseStatus: (workspaceId: string, phaseId: string, status: PhaseStatus) => void
@@ -422,7 +422,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               ...w,
               phases: w.phases.map((p) =>
                 p.id === phaseId
-                  ? { ...p, tasks: taskIds.map((id) => p.tasks.find((t) => t.id === id)!).filter(Boolean) }
+                  ? { ...p, tasks: taskIds.map((id) => p.tasks.find((t) => t.id === id)).filter((t): t is Task => !!t) }
                   : p,
               ),
             }

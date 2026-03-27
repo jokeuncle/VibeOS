@@ -13,6 +13,7 @@ const en = {
   'workspace.created': 'Workspace created',
   'workspace.deleted': 'Workspace deleted',
   'workspace.updated': 'Workspace updated',
+  'workspace.selectFirst': 'Please open a workspace first',
 
   'phase.requirement': 'Requirements',
   'phase.design': 'Design',

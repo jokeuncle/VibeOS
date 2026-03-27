@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { List, LayoutGrid, BarChart3, Bot, Check, X, Plus, MessageCircle, Sparkles, Columns2 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -129,6 +129,15 @@ export default function WorkspaceView() {
   const [draftTitle, setDraftTitle] = useState(workspace?.name || '')
   const [draftDesc, setDraftDesc] = useState(workspace?.description || '')
   const [filter, setFilter] = useState<FilterState>({ status: 'all', priority: 'all', sortBy: 'title', sortDir: 'asc' })
+
+  useEffect(() => {
+    if (workspace) {
+      setDraftTitle(workspace.name)
+      setDraftDesc(workspace.description)
+      setEditingTitle(false)
+      setEditingDesc(false)
+    }
+  }, [workspace?.id])
 
   if (!workspace) return null
 
