@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   DndContext,
   DragOverlay,
@@ -109,7 +109,9 @@ function DraggableCard({ task }: { task: BoardTask }) {
       >
         <TaskCardContent task={task} t={t} />
       </div>
-      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
+      <AnimatePresence>
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
+      </AnimatePresence>
     </>
   )
 }

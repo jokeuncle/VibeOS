@@ -13,7 +13,7 @@ export default function AgentChat() {
   const { activeWorkspaceId, workspaces } = useWorkspaceStore()
 
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
-  const agent = workspace?.agents.find((a) => a.id === agentChatAgentId)
+  const agent = workspace?.agents.find((a) => a.id === agentChatAgentId || a.type === agentChatAgentId)
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')

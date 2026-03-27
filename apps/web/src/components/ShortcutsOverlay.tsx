@@ -3,8 +3,18 @@ import { X, Command } from 'lucide-react'
 import { useEffect } from 'react'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
 
-const SECTIONS = [
+interface ShortcutItem {
+  keys: string[]
+  labelKey: TranslationKey
+}
+interface ShortcutSection {
+  titleKey: TranslationKey
+  items: ShortcutItem[]
+}
+
+const SECTIONS: ShortcutSection[] = [
   {
     titleKey: 'shortcuts.general',
     items: [
@@ -21,7 +31,7 @@ const SECTIONS = [
       { keys: ['⌘', '←'], labelKey: 'shortcuts.goHome' },
     ],
   },
-] as const
+]
 
 export default function ShortcutsOverlay() {
   const t = useT()
@@ -67,7 +77,7 @@ export default function ShortcutsOverlay() {
               {SECTIONS.map((section) => (
                 <div key={section.titleKey}>
                   <h4 className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-2">
-                    {t(section.titleKey as any)}
+                    {t(section.titleKey)}
                   </h4>
                   <div className="space-y-1.5">
                     {section.items.map((item) => (
@@ -76,7 +86,7 @@ export default function ShortcutsOverlay() {
                         className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-surface-2/50"
                       >
                         <span className="text-xs text-text-secondary">
-                          {t(item.labelKey as any)}
+                          {t(item.labelKey)}
                         </span>
                         <div className="flex items-center gap-1">
                           {item.keys.map((key) => (

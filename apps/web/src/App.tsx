@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useWorkspaceStore } from './stores/workspace'
 import { useUIStore } from './stores/ui'
+import { useI18nStore } from './i18n'
 import TitleBar from './components/TitleBar'
 import StatusBar from './components/StatusBar'
 import CommandBar from './components/CommandBar'
@@ -21,10 +22,15 @@ import Dock from './components/Dock'
 export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
   const { toggleSidebar, setSettingsOpen, theme, addTab, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, settingsOpen } = useUIStore()
+  const { locale } = useI18nStore()
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en'
+  }, [locale])
 
   useEffect(() => {
     if (activeWorkspaceId) addTab(activeWorkspaceId)

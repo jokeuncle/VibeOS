@@ -4,6 +4,7 @@ import { X, FileText, Globe, Smartphone, Server } from 'lucide-react'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
 import { WORKSPACE_COLORS, type WorkspaceColor } from '../types'
 
 const COLOR_MAP: Record<WorkspaceColor, string> = {
@@ -24,12 +25,12 @@ const COLOR_RING: Record<WorkspaceColor, string> = {
   violet: 'ring-violet-500',
 }
 
-const TEMPLATES = [
+const TEMPLATES: { id: string; icon: typeof FileText; nameKey: TranslationKey; descKey: TranslationKey; defaultName: string; defaultDesc: string }[] = [
   { id: 'blank', icon: FileText, nameKey: 'template.blank', descKey: 'template.blankDesc', defaultName: '', defaultDesc: '' },
   { id: 'webapp', icon: Globe, nameKey: 'template.webapp', descKey: 'template.webappDesc', defaultName: 'Web Application', defaultDesc: 'Full-stack web application' },
   { id: 'mobile', icon: Smartphone, nameKey: 'template.mobile', descKey: 'template.mobileDesc', defaultName: 'Mobile App', defaultDesc: 'iOS / Android application' },
   { id: 'api', icon: Server, nameKey: 'template.api', descKey: 'template.apiDesc', defaultName: 'API Service', defaultDesc: 'Backend API / microservice' },
-] as const
+]
 
 export default function WorkspaceTemplates() {
   const t = useT()
@@ -114,7 +115,7 @@ export default function WorkspaceTemplates() {
                       >
                         <Icon className={`w-5 h-5 mx-auto mb-1.5 ${isActive ? 'text-accent' : 'text-text-tertiary'}`} />
                         <span className={`text-[11px] font-medium ${isActive ? 'text-accent' : 'text-text-secondary'}`}>
-                          {t(tpl.nameKey as any)}
+                          {t(tpl.nameKey)}
                         </span>
                       </button>
                     )

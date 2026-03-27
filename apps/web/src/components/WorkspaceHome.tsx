@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Layers, ChevronRight, Pencil, Trash2, FolderOpen, CheckSquare, ListChecks, Bot } from 'lucide-react'
 import { useState } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -166,7 +166,9 @@ function WorkspaceCard({
           </div>
         </motion.div>
       </motion.div>
-      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
+      <AnimatePresence>
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={closeMenu} />}
+      </AnimatePresence>
     </>
   )
 }

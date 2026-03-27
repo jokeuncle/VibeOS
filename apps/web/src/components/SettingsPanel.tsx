@@ -3,13 +3,14 @@ import { X, Command, Sun, Moon } from 'lucide-react'
 import { useEffect } from 'react'
 import { useUIStore } from '../stores/ui'
 import { useI18nStore, useT } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
 
-const SHORTCUTS = [
+const SHORTCUTS: { keys: string[]; action: TranslationKey }[] = [
   { keys: ['⌘', 'K'], action: 'settings.shortcut.commandPalette' },
   { keys: ['⌘', 'B'], action: 'settings.shortcut.toggleSidebar' },
   { keys: ['⌘', ','], action: 'settings.shortcut.settings' },
   { keys: ['Esc'], action: 'settings.shortcut.close' },
-] as const
+]
 
 export default function SettingsPanel() {
   const t = useT()
@@ -131,7 +132,7 @@ export default function SettingsPanel() {
                       className="flex items-center justify-between py-2 px-3 rounded-lg bg-surface-2/50"
                     >
                       <span className="text-xs text-text-secondary">
-                        {t(s.action as any)}
+                        {t(s.action)}
                       </span>
                       <div className="flex items-center gap-1">
                         {s.keys.map((key) => (

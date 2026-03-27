@@ -103,14 +103,14 @@ export default function FilterToolbar({ filter, onChange }: Props) {
         label={t('filter.status')}
         value={filter.status}
         options={opts.status}
-        onChange={(v) => onChange({ ...filter, status: v as any })}
+        onChange={(v) => onChange({ ...filter, status: v as FilterState['status'] })}
       />
 
       <Dropdown
         label={t('filter.priority')}
         value={filter.priority}
         options={opts.priority}
-        onChange={(v) => onChange({ ...filter, priority: v as any })}
+        onChange={(v) => onChange({ ...filter, priority: v as FilterState['priority'] })}
       />
 
       <div className="w-px h-4 bg-border-subtle mx-1" />
@@ -119,7 +119,7 @@ export default function FilterToolbar({ filter, onChange }: Props) {
         label={t('filter.sortBy')}
         value={filter.sortBy}
         options={opts.sort}
-        onChange={(v) => onChange({ ...filter, sortBy: v as any })}
+        onChange={(v) => onChange({ ...filter, sortBy: v as FilterState['sortBy'] })}
       />
 
       <button

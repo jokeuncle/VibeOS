@@ -76,6 +76,17 @@ export default function TaskDetail() {
     return marked.parse(description, { async: false }) as string
   }, [description])
 
+  function addComment() {
+    if (!commentText.trim()) return
+    setComments((prev) => [...prev, {
+      id: `c-${Date.now()}`,
+      author: t('comment.you'),
+      content: commentText.trim(),
+      timestamp: new Date().toISOString(),
+    }])
+    setCommentText('')
+  }
+
   function toggleLabel(c: LabelColor) {
     setLabels((prev) => prev.includes(c) ? prev.filter((l) => l !== c) : [...prev, c])
   }
@@ -87,25 +98,8 @@ export default function TaskDetail() {
       status,
       description,
       ...(priority ? { priority } : {}),
-    })
-    const ws = workspaces.find((w) => w.id === activeWorkspaceId)
-    if (ws) {
-      const ph = ws.phases.find((p) => p.id === taskDetailPhaseId)
-      const tk = ph?.tasks.find((t) => t.id === taskDetailTaskId)
-      if (tk) {
-        const updatedTask = { ...tk, title: title.trim(), status, description, priority: priority || undefined, labels, dueDate: dueDate || undefined }
-        const wsIdx = workspaces.indexOf(ws)
-        if (wsIdx >= 0) {
-          // We already called updateTask above for the standard fields.
-          // For labels and dueDate, we call updateTask again with those fields.
-        }
-      }
-    }
-    // Save labels and dueDate
-    updateTask(activeWorkspaceId, taskDetailPhaseId, taskDetailTaskId, {
-      title: title.trim(),
-      status,
-      description,
+      labels: labels as string[],
+      dueDate: dueDate || undefined,
     })
     addActivity(activeWorkspaceId, {
       type: 'task_updated',
@@ -324,30 +318,14 @@ export default function TaskDetail() {
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && commentText.trim()) {
-                    setComments((prev) => [...prev, {
-                      id: `c-${Date.now()}`,
-                      author: t('comment.you'),
-                      content: commentText.trim(),
-                      timestamp: new Date().toISOString(),
-                    }])
-                    setCommentText('')
-                  }
+                  if (e.key === 'Enter' && commentText.trim()) addComment()
                 }}
                 placeholder={t('comment.placeholder')}
                 className="flex-1 px-3 py-1.5 rounded-lg bg-surface-2 border border-border-default text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40 transition-colors"
               />
               {commentText.trim() && (
                 <button
-                  onClick={() => {
-                    setComments((prev) => [...prev, {
-                      id: `c-${Date.now()}`,
-                      author: t('comment.you'),
-                      content: commentText.trim(),
-                      timestamp: new Date().toISOString(),
-                    }])
-                    setCommentText('')
-                  }}
+                  onClick={addComment}
                   className="px-2.5 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white cursor-pointer transition-colors"
                 >
                   <Send className="w-3.5 h-3.5" />

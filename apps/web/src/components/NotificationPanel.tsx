@@ -3,8 +3,9 @@ import { Bell, Check } from 'lucide-react'
 import { useRef, useEffect } from 'react'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
 
-function timeAgo(dateStr: string, t: (k: any) => string) {
+function timeAgo(dateStr: string, t: (k: TranslationKey) => string) {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return t('time.justNow')

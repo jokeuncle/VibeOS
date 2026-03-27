@@ -40,7 +40,7 @@ export default function CommandBar() {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const { activeWorkspaceId, workspaces, sendNLPMessage } = useWorkspaceStore()
-  const { setHomeSearchQuery } = useUIStore()
+  const { setHomeSearchQuery, commandPaletteOpen } = useUIStore()
   const t = useT()
 
   useEffect(() => {
@@ -128,6 +128,7 @@ export default function CommandBar() {
 
   const handleKeydown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (commandPaletteOpen) return
       e.preventDefault()
       inputRef.current?.focus()
     }
@@ -135,7 +136,7 @@ export default function CommandBar() {
       inputRef.current?.blur()
       setFocused(false)
     }
-  }, [])
+  }, [commandPaletteOpen])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeydown)
