@@ -207,6 +207,11 @@ const zh: Record<TranslationKey, string> = {
   'theme.light': '浅色',
 
   'view.dashboard': '仪表盘',
+  'view.agents': 'Agents',
+
+  'agent.topology': 'Agent 拓扑图',
+  'agent.logStream': '执行日志',
+  'agent.timeline': '状态时间线',
 
   'markdown.edit': '编辑',
   'markdown.preview': '预览',
@@ -243,6 +248,41 @@ const zh: Record<TranslationKey, string> = {
   'attachment.title': '附件',
   'attachment.drop': '拖拽文件到此处或点击选择',
   'attachment.empty': '无附件',
+
+  'suggest.agents': 'Agents',
+  'suggest.commands': '命令',
+  'suggest.tasks': '任务',
+
+  'cmd.createTask': '创建任务',
+  'cmd.changeStatus': '更改状态',
+  'cmd.assign': '分配给 Agent',
+  'cmd.deploy': '部署到预发布',
+  'cmd.review': '请求代码审查',
+  'cmd.report': '生成报告',
+
+  'rich.approve': '确认',
+  'rich.modify': '修改',
+  'rich.dismiss': '忽略',
+  'rich.viewTask': '查看任务',
+
+  'session.today': '今天',
+  'session.earlier': '更早',
+  'session.collapsed': '条消息',
+
+  'layout.split': '分屏视图',
+
+  'gantt.title': '甘特图时间线',
+
+  'filter.status': '状态',
+  'filter.priority': '优先级',
+  'filter.sortBy': '排序',
+  'filter.clear': '清除筛选',
+
+  'homeDash.totalWorkspaces': '工作空间',
+  'homeDash.totalTasks': '总任务',
+  'homeDash.completedTasks': '已完成',
+  'homeDash.activeAgents': '活跃 Agent',
+  'homeDash.overview': '概览',
 }
 
 export default zh

@@ -205,6 +205,11 @@ const en = {
   'theme.light': 'Light',
 
   'view.dashboard': 'Dashboard',
+  'view.agents': 'Agents',
+
+  'agent.topology': 'Agent Topology',
+  'agent.logStream': 'Execution Log',
+  'agent.timeline': 'State Timeline',
 
   'markdown.edit': 'Edit',
   'markdown.preview': 'Preview',
@@ -241,6 +246,41 @@ const en = {
   'attachment.title': 'Attachments',
   'attachment.drop': 'Drop files here or click to browse',
   'attachment.empty': 'No attachments',
+
+  'suggest.agents': 'Agents',
+  'suggest.commands': 'Commands',
+  'suggest.tasks': 'Tasks',
+
+  'cmd.createTask': 'Create task',
+  'cmd.changeStatus': 'Change status',
+  'cmd.assign': 'Assign to agent',
+  'cmd.deploy': 'Deploy to staging',
+  'cmd.review': 'Request code review',
+  'cmd.report': 'Generate report',
+
+  'rich.approve': 'Approve',
+  'rich.modify': 'Modify',
+  'rich.dismiss': 'Dismiss',
+  'rich.viewTask': 'View task',
+
+  'session.today': 'Today',
+  'session.earlier': 'Earlier',
+  'session.collapsed': 'messages',
+
+  'layout.split': 'Split View',
+
+  'gantt.title': 'Gantt Timeline',
+
+  'filter.status': 'Status',
+  'filter.priority': 'Priority',
+  'filter.sortBy': 'Sort',
+  'filter.clear': 'Clear filters',
+
+  'homeDash.totalWorkspaces': 'Workspaces',
+  'homeDash.totalTasks': 'Total Tasks',
+  'homeDash.completedTasks': 'Completed',
+  'homeDash.activeAgents': 'Active Agents',
+  'homeDash.overview': 'Overview',
 } as const
 
 export type TranslationKey = keyof typeof en

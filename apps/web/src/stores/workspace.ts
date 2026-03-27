@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workspace, Message, PhaseStatus, PhaseType, WorkspaceColor, ActivityItem } from '../types'
+import type { Workspace, Message, PhaseStatus, PhaseType, WorkspaceColor, ActivityItem, RichBlock, AgentType } from '../types'
 
 const MOCK_WORKSPACES: Workspace[] = [
   {
@@ -147,6 +147,7 @@ interface WorkspaceState {
   setActiveWorkspace: (id: string | null) => void
   setActivePhase: (id: string | null) => void
   addMessage: (message: Message) => void
+  sendNLPMessage: (input: string) => void
 
   createWorkspace: () => string
   updateWorkspace: (id: string, updates: Partial<Pick<Workspace, 'name' | 'description'>>) => void
@@ -176,6 +177,102 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   addMessage: (message) =>
     set((s) => ({ messages: [...s.messages, message] })),
+
+  sendNLPMessage: (input) => {
+    const sessionId = `s-${Math.floor(Date.now() / 300000)}`
+    const ts = new Date().toISOString()
+
+    set((s) => ({
+      messages: [...s.messages, {
+        id: `msg-${Date.now()}`,
+        role: 'user' as const,
+        content: input,
+        timestamp: ts,
+        sessionId,
+      }],
+    }))
+
+    const lower = input.toLowerCase()
+    let agentType: AgentType = 'pm'
+    let content = ''
+    let richBlocks: RichBlock[] = []
+
+    const mentionMatch = input.match(/@(\w+)/)
+    if (mentionMatch) {
+      const name = mentionMatch[1].toLowerCase()
+      if (name.includes('dev')) agentType = 'development'
+      else if (name.includes('arch')) agentType = 'architecture'
+      else if (name.includes('test')) agentType = 'testing'
+      else if (name.includes('design')) agentType = 'design'
+      else if (name.includes('req')) agentType = 'requirement'
+      else if (name.includes('ci') || name.includes('cd')) agentType = 'cicd'
+    }
+
+    if (lower.includes('deploy') || lower.includes('部署') || lower.includes('/deploy')) {
+      agentType = 'cicd'
+      content = 'Starting deployment pipeline. Building artifacts and running pre-deploy checks…'
+      richBlocks = [
+        { type: 'progress', title: 'Deployment Pipeline', percent: 35, statusLabel: 'Building…' },
+        { type: 'action_card', title: 'Deploy to Staging', description: 'v0.2.1 → staging environment. 3 checks passed, 1 pending.', actions: [
+          { id: 'approve', label: 'Approve', variant: 'primary' },
+          { id: 'cancel', label: 'Cancel', variant: 'danger' },
+        ]},
+      ]
+    } else if (lower.includes('create') || lower.includes('创建') || lower.includes('/create')) {
+      content = 'Got it. I\'ve drafted a new task based on your description.'
+      richBlocks = [
+        { type: 'task_card', taskTitle: input.replace(/@\w+\s*/g, '').replace(/\/\w+\s*/g, '').trim() || 'New task', taskStatus: 'pending', taskPriority: 'p2' },
+        { type: 'action_card', description: 'Shall I add this to the current phase?', actions: [
+          { id: 'confirm', label: 'Confirm', variant: 'primary' },
+          { id: 'modify', label: 'Modify', variant: 'secondary' },
+        ]},
+      ]
+    } else if (lower.includes('status') || lower.includes('progress') || lower.includes('进度') || lower.includes('/report')) {
+      content = 'Here\'s the current workspace progress overview:'
+      richBlocks = [
+        { type: 'checklist', title: 'Phase Status', items: [
+          { text: 'Requirements — completed', checked: true },
+          { text: 'Design — completed', checked: true },
+          { text: 'Architecture — in progress', checked: false },
+          { text: 'Development — pending', checked: false },
+          { text: 'Testing — pending', checked: false },
+        ]},
+        { type: 'progress', title: 'Overall Progress', percent: 42, statusLabel: 'On track' },
+      ]
+    } else if (lower.includes('review') || lower.includes('审查') || lower.includes('/review')) {
+      agentType = 'development'
+      content = 'I\'ll run a code review on the latest changes.'
+      richBlocks = [
+        { type: 'code', language: 'typescript', code: '// auth.service.ts\nexport class AuthService {\n  async validateToken(token: string) {\n    const payload = jwt.verify(token, SECRET)\n    return payload\n  }\n}' },
+        { type: 'action_card', title: 'Review Result', description: '2 suggestions found: missing error handling, token expiry not checked.', actions: [
+          { id: 'apply', label: 'Apply fixes', variant: 'primary' },
+          { id: 'dismiss', label: 'Dismiss', variant: 'secondary' },
+        ]},
+      ]
+    } else {
+      content = 'Understood. I\'ve analyzed your request and will coordinate with the relevant agents.'
+      richBlocks = [
+        { type: 'action_card', title: 'Next Steps', description: 'I can break this down into tasks and assign to the right agents. Shall I proceed?', actions: [
+          { id: 'proceed', label: 'Proceed', variant: 'primary' },
+          { id: 'detail', label: 'More detail', variant: 'secondary' },
+        ]},
+      ]
+    }
+
+    setTimeout(() => {
+      set((s) => ({
+        messages: [...s.messages, {
+          id: `msg-${Date.now()}`,
+          role: 'agent' as const,
+          content,
+          richBlocks,
+          agentType,
+          timestamp: new Date().toISOString(),
+          sessionId,
+        }],
+      }))
+    }, 600)
+  },
 
   createWorkspace: () => {
     const id = `ws-${Date.now()}`

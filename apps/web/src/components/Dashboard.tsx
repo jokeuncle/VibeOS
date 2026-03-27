@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { useT } from '../i18n'
 import type { Phase, Agent, PhaseStatus, AgentStatus } from '../types'
 import type { TranslationKey } from '../i18n/en'
+import GanttChart from './GanttChart'
 
 function DonutChart({ data }: { data: { value: number; color: string }[] }) {
   const total = data.reduce((a, d) => a + d.value, 0)
@@ -134,6 +135,15 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
             return <PhaseBar key={p.id} name={t(nameKey)} progress={p.progress} status={p.status} />
           })}
         </div>
+      </motion.div>
+
+      {/* Gantt timeline */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+      >
+        <GanttChart phases={phases} />
       </motion.div>
     </div>
   )

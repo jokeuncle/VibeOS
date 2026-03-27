@@ -16,6 +16,7 @@ import ConfirmDialog from './components/ui/ConfirmDialog'
 import AgentChat from './components/AgentChat'
 import WorkspaceTemplates from './components/WorkspaceTemplates'
 import ShortcutsOverlay from './components/ShortcutsOverlay'
+import Dock from './components/Dock'
 
 export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
@@ -81,6 +82,7 @@ export default function App() {
         <CommandBar />
       </div>
 
+      <Dock />
       <StatusBar />
 
       {/* Global overlays */}

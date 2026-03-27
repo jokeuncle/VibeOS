@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { List, LayoutGrid, BarChart3, Check, X, Plus, MessageCircle, Sparkles } from 'lucide-react'
+import { List, LayoutGrid, BarChart3, Bot, Check, X, Plus, MessageCircle, Sparkles, Columns2 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -11,7 +11,12 @@ import MessageThread from './MessageThread'
 import BoardView from './BoardView'
 import Dashboard from './Dashboard'
 import ActivityLog from './ActivityLog'
+import AgentTopology from './AgentTopology'
+import AgentLogStream from './AgentLogStream'
+import AgentTimeline from './AgentTimeline'
+import FilterToolbar, { type FilterState } from './FilterToolbar'
 import type { TranslationKey } from '../i18n/en'
+import type { Phase, Task, TaskPriority } from '../types'
 
 function ProgressRing({ progress }: { progress: number }) {
   const radius = 28
@@ -39,11 +44,83 @@ function ProgressRing({ progress }: { progress: number }) {
   )
 }
 
-type ViewMode = 'list' | 'board' | 'dashboard'
+type ViewMode = 'list' | 'board' | 'dashboard' | 'agents'
+
+const VIEW_MODES: { mode: ViewMode; Icon: typeof List; label: string }[] = [
+  { mode: 'list', Icon: List, label: 'view.list' },
+  { mode: 'board', Icon: LayoutGrid, label: 'view.board' },
+  { mode: 'dashboard', Icon: BarChart3, label: 'view.dashboard' },
+  { mode: 'agents', Icon: Bot, label: 'view.agents' },
+]
+
+const PRIORITY_ORDER: Record<string, number> = { p0: 0, p1: 1, p2: 2, p3: 3 }
+
+function applyFilter(phases: Phase[], filter: FilterState): Phase[] {
+  return phases.map((p) => {
+    let tasks = [...p.tasks]
+    if (filter.status !== 'all') tasks = tasks.filter((t) => t.status === filter.status)
+    if (filter.priority !== 'all') tasks = tasks.filter((t) => (t.priority || 'p3') === filter.priority)
+
+    tasks.sort((a, b) => {
+      let cmp = 0
+      if (filter.sortBy === 'title') cmp = a.title.localeCompare(b.title)
+      else if (filter.sortBy === 'priority') cmp = (PRIORITY_ORDER[a.priority || 'p3'] || 3) - (PRIORITY_ORDER[b.priority || 'p3'] || 3)
+      else if (filter.sortBy === 'status') cmp = a.status.localeCompare(b.status)
+      return filter.sortDir === 'desc' ? -cmp : cmp
+    })
+
+    return { ...p, tasks }
+  })
+}
+
+function ViewContent({ mode, workspace, displayedPhases, filter, onFilterChange }: {
+  mode: ViewMode
+  workspace: { phases: Phase[]; agents: any[] }
+  displayedPhases: Phase[]
+  filter: FilterState
+  onFilterChange: (f: FilterState) => void
+}) {
+  const filteredPhases = useMemo(() => applyFilter(displayedPhases, filter), [displayedPhases, filter])
+
+  if (mode === 'agents') {
+    return (
+      <div className="space-y-4 mb-8">
+        <AgentTopology agents={workspace.agents} />
+        <AgentTimeline agents={workspace.agents} />
+        <AgentLogStream agents={workspace.agents} />
+      </div>
+    )
+  }
+  if (mode === 'dashboard') {
+    return (
+      <div className="mb-8">
+        <Dashboard phases={workspace.phases} agents={workspace.agents} />
+      </div>
+    )
+  }
+  if (mode === 'board') {
+    return (
+      <div className="mb-8">
+        <FilterToolbar filter={filter} onChange={onFilterChange} />
+        <BoardView phases={filteredPhases} />
+      </div>
+    )
+  }
+  return (
+    <div className="mb-8">
+      <FilterToolbar filter={filter} onChange={onFilterChange} />
+      <div className="space-y-3">
+        {filteredPhases.map((phase, i) => (
+          <PhaseCard key={phase.id} phase={phase} index={i} />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function WorkspaceView() {
   const { activeWorkspaceId, activePhaseId, workspaces, updateWorkspace } = useWorkspaceStore()
-  const { viewMode, setViewMode, addToast } = useUIStore()
+  const { viewMode, setViewMode, addToast, splitMode, splitSecondaryView, setSplitSecondaryView, toggleSplitMode } = useUIStore()
   const t = useT()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
@@ -51,6 +128,7 @@ export default function WorkspaceView() {
   const [editingDesc, setEditingDesc] = useState(false)
   const [draftTitle, setDraftTitle] = useState(workspace?.name || '')
   const [draftDesc, setDraftDesc] = useState(workspace?.description || '')
+  const [filter, setFilter] = useState<FilterState>({ status: 'all', priority: 'all', sortBy: 'title', sortDir: 'asc' })
 
   if (!workspace) return null
 
@@ -164,18 +242,25 @@ export default function WorkspaceView() {
             <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
               {currentViewMode === 'dashboard'
                 ? t('view.dashboard')
-                : activePhaseId ? t('phase.phaseDetail') : t('phase.allPhases')}
+                : currentViewMode === 'agents'
+                  ? t('view.agents')
+                  : activePhaseId ? t('phase.phaseDetail') : t('phase.allPhases')}
             </span>
             <div className="flex-1 h-px bg-border-subtle" />
+            <button
+              onClick={toggleSplitMode}
+              className={`p-1.5 rounded-md cursor-pointer transition-all mr-1 ${
+                splitMode ? 'bg-accent/15 text-accent' : 'text-text-tertiary hover:text-text-secondary'
+              }`}
+              title={t('layout.split')}
+            >
+              <Columns2 className="w-3.5 h-3.5" />
+            </button>
             <div className="flex items-center bg-surface-2 rounded-lg p-0.5 border border-border-subtle">
-              {([
-                { mode: 'list' as ViewMode, Icon: List, label: 'view.list' },
-                { mode: 'board' as ViewMode, Icon: LayoutGrid, label: 'view.board' },
-                { mode: 'dashboard' as ViewMode, Icon: BarChart3, label: 'view.dashboard' },
-              ] as const).map(({ mode, Icon }) => (
+              {VIEW_MODES.map(({ mode, Icon }) => (
                 <button
                   key={mode}
-                  onClick={() => setViewMode(mode as any)}
+                  onClick={() => setViewMode(mode)}
                   className={`p-1.5 rounded-md cursor-pointer transition-all ${
                     currentViewMode === mode ? 'bg-surface-4 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
                   }`}
@@ -187,7 +272,7 @@ export default function WorkspaceView() {
           </div>
 
           {/* Empty state */}
-          {totalTasks === 0 && currentViewMode !== 'dashboard' && (
+          {totalTasks === 0 && currentViewMode !== 'dashboard' && currentViewMode !== 'agents' && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -221,33 +306,46 @@ export default function WorkspaceView() {
             </motion.div>
           )}
 
-          {/* Content */}
-          {currentViewMode === 'dashboard' ? (
-            <div className="mb-8">
-              <Dashboard phases={workspace.phases} agents={workspace.agents} />
-            </div>
-          ) : currentViewMode === 'board' ? (
-            <div className="mb-8">
-              <BoardView phases={displayedPhases} />
+          {/* Content — split or single */}
+          {splitMode ? (
+            <div className="flex gap-4 mb-8">
+              <div className="flex-1 min-w-0">
+                <ViewContent mode={currentViewMode} workspace={workspace} displayedPhases={displayedPhases} filter={filter} onFilterChange={setFilter} />
+              </div>
+              <div className="w-px bg-border-subtle shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 mb-3">
+                  {VIEW_MODES.filter((v) => v.mode !== currentViewMode).map(({ mode, Icon }) => (
+                    <button
+                      key={mode}
+                      onClick={() => setSplitSecondaryView(mode)}
+                      className={`p-1 rounded cursor-pointer transition-all ${
+                        splitSecondaryView === mode ? 'bg-surface-4 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3" />
+                    </button>
+                  ))}
+                </div>
+                <ViewContent mode={splitSecondaryView} workspace={workspace} displayedPhases={displayedPhases} filter={filter} onFilterChange={setFilter} />
+              </div>
             </div>
           ) : (
-            <div className="space-y-3 mb-8">
-              {displayedPhases.map((phase, i) => (
-                <PhaseCard key={phase.id} phase={phase} index={i} />
-              ))}
-            </div>
+            <ViewContent mode={currentViewMode} workspace={workspace} displayedPhases={displayedPhases} filter={filter} onFilterChange={setFilter} />
           )}
 
           {/* Agent panel */}
-          <div className="mb-8">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-                {t('agent.title')}
-              </span>
-              <div className="flex-1 h-px bg-border-subtle" />
+          {!splitMode && (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+                  {t('agent.title')}
+                </span>
+                <div className="flex-1 h-px bg-border-subtle" />
+              </div>
+              <AgentPanel agents={workspace.agents} />
             </div>
-            <AgentPanel agents={workspace.agents} />
-          </div>
+          )}
 
           {/* Activity Log */}
           <div className="mb-8">

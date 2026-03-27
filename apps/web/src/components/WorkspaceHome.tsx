@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Plus, Layers, ChevronRight, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Layers, ChevronRight, Pencil, Trash2, FolderOpen, CheckSquare, ListChecks, Bot } from 'lucide-react'
 import { useState } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
@@ -186,6 +186,17 @@ export default function WorkspaceHome() {
       })
     : workspaces
 
+  const totalTasks = workspaces.reduce((a, ws) => a + ws.phases.reduce((b, p) => b + p.tasks.length, 0), 0)
+  const completedTasks = workspaces.reduce((a, ws) => a + ws.phases.reduce((b, p) => b + p.tasks.filter((t) => t.status === 'completed').length, 0), 0)
+  const activeAgents = workspaces.reduce((a, ws) => a + ws.agents.filter((ag) => ag.status === 'running').length, 0)
+
+  const stats = [
+    { icon: FolderOpen, label: t('homeDash.totalWorkspaces'), value: workspaces.length, color: 'text-accent' },
+    { icon: ListChecks, label: t('homeDash.totalTasks'), value: totalTasks, color: 'text-violet-400' },
+    { icon: CheckSquare, label: t('homeDash.completedTasks'), value: completedTasks, color: 'text-success' },
+    { icon: Bot, label: t('homeDash.activeAgents'), value: activeAgents, color: 'text-amber-400' },
+  ]
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex-1 flex flex-col items-center justify-center px-8 overflow-y-auto">
@@ -193,7 +204,7 @@ export default function WorkspaceHome() {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="text-center mb-14"
+          className="text-center mb-10"
         >
           <h1 className="text-[42px] font-light tracking-tight text-text-primary leading-tight">
             Vibe
@@ -207,6 +218,30 @@ export default function WorkspaceHome() {
             <span className="text-text-tertiary/60">{t('app.tagline')}</span>
           </p>
         </motion.div>
+
+        {/* Global overview stats */}
+        {workspaces.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, duration: 0.4 }}
+            className="grid grid-cols-4 gap-3 max-w-2xl w-full mb-10"
+          >
+            {stats.map((s, i) => (
+              <motion.div
+                key={s.label}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 + i * 0.06 }}
+                className="rounded-xl border border-border-subtle bg-surface-1/40 p-4 text-center"
+              >
+                <s.icon className={`w-4 h-4 mx-auto mb-2 ${s.color}`} />
+                <span className={`text-xl font-semibold font-mono ${s.color}`}>{s.value}</span>
+                <p className="text-[10px] text-text-tertiary mt-1">{s.label}</p>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
 
         <motion.div
           variants={container}

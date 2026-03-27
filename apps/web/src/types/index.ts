@@ -94,10 +94,33 @@ export interface TaskAttachment {
   size: string
 }
 
+export interface RichAction {
+  id: string
+  label: string
+  variant: 'primary' | 'secondary' | 'danger'
+}
+
+export interface RichBlock {
+  type: 'action_card' | 'progress' | 'code' | 'task_card' | 'checklist'
+  title?: string
+  description?: string
+  actions?: RichAction[]
+  percent?: number
+  statusLabel?: string
+  language?: string
+  code?: string
+  taskTitle?: string
+  taskStatus?: PhaseStatus
+  taskPriority?: TaskPriority
+  items?: { text: string; checked: boolean }[]
+}
+
 export interface Message {
   id: string
   role: 'user' | 'agent'
   content: string
+  richBlocks?: RichBlock[]
   agentType?: AgentType
   timestamp: string
+  sessionId?: string
 }

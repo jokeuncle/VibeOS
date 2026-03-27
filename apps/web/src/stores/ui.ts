@@ -54,8 +54,13 @@ interface UIState {
   sidebarCollapsed: boolean
   toggleSidebar: () => void
 
-  viewMode: 'list' | 'board' | 'dashboard'
-  setViewMode: (mode: 'list' | 'board' | 'dashboard') => void
+  viewMode: 'list' | 'board' | 'dashboard' | 'agents'
+  setViewMode: (mode: 'list' | 'board' | 'dashboard' | 'agents') => void
+
+  splitMode: boolean
+  splitSecondaryView: 'list' | 'board' | 'dashboard' | 'agents'
+  toggleSplitMode: () => void
+  setSplitSecondaryView: (mode: 'list' | 'board' | 'dashboard' | 'agents') => void
 
   notifications: Notification[]
   markNotificationRead: (id: string) => void
@@ -123,6 +128,11 @@ export const useUIStore = create<UIState>((set) => ({
 
   viewMode: 'list',
   setViewMode: (mode) => set({ viewMode: mode }),
+
+  splitMode: false,
+  splitSecondaryView: 'board',
+  toggleSplitMode: () => set((s) => ({ splitMode: !s.splitMode })),
+  setSplitSecondaryView: (mode) => set({ splitSecondaryView: mode }),
 
   notifications: MOCK_NOTIFICATIONS,
   markNotificationRead: (id) =>
