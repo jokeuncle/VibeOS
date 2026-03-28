@@ -295,7 +295,7 @@ function TaskRow({
           {task.status === 'completed' && <div className="w-1.5 h-1.5 rounded-full bg-success" />}
           {task.status === 'in_progress' && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow" />}
         </div>
-        {task.priority && (
+        {task.priority && PRIORITY_DOT[task.priority] && (
           <div className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority]} shrink-0`} title={t(`priority.${task.priority}` as TranslationKey)} />
         )}
         <span className={`text-xs flex-1 ${

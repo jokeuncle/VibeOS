@@ -125,7 +125,7 @@ function TaskCardContent({ task, t }: { task: BoardTask; t: (key: TranslationKey
         }`}>
           {task.title}
         </p>
-        {task.priority && (
+        {task.priority && PRIORITY_BADGE[task.priority] && (
           <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${PRIORITY_BADGE[task.priority].bg} ${PRIORITY_BADGE[task.priority].text} shrink-0`}>
             {t(PRIORITY_BADGE[task.priority].label)}
           </span>

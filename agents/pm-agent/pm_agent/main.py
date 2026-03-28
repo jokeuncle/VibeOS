@@ -31,9 +31,17 @@ _TASK_EXTRACT_PROMPT = (
     "extract structured task info. Reply with ONLY a JSON object:\n"
     '{"title": "<short task title>", "description": "<1-2 sentence description>", '
     '"phase_type": "<best matching phase type from the list>", '
-    '"priority": "<high|medium|low>"}\n'
+    '"priority": "<p0|p1|p2|p3>"}\n'
+    "Priority mapping: p0 = critical, p1 = high, p2 = medium, p3 = low.\n"
     "Available phase types: requirements, design, architecture, development, testing, deployment, operations"
 )
+
+_PRIORITY_NORMALIZE: dict[str, str] = {
+    "critical": "p0", "p0": "p0",
+    "high": "p1", "p1": "p1",
+    "medium": "p2", "p2": "p2",
+    "low": "p3", "p3": "p3",
+}
 
 
 async def _handle_create_task(
@@ -60,7 +68,8 @@ async def _handle_create_task(
     title = task_data.get("title", summary[:80])
     description = task_data.get("description", summary)
     phase_type = task_data.get("phase_type", "requirements")
-    priority = task_data.get("priority", "medium")
+    raw_priority = task_data.get("priority", "medium").lower()
+    priority = _PRIORITY_NORMALIZE.get(raw_priority, "p2")
 
     phase_id = await ws_client.find_phase_by_type(workspace_id, phase_type)
     if not phase_id:

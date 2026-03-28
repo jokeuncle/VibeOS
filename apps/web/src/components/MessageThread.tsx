@@ -147,7 +147,7 @@ function RichBlockRenderer({ block }: { block: RichBlock }) {
             <p className="text-xs font-medium text-text-primary truncate">{block.taskTitle}</p>
             <div className="flex items-center gap-2 mt-1">
               {block.taskStatus && <TaskStatusBadge status={block.taskStatus} />}
-              {block.taskPriority && (
+              {block.taskPriority && PRIORITY_STYLE[block.taskPriority] && (
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${PRIORITY_STYLE[block.taskPriority]}`}>
                   {block.taskPriority.toUpperCase()}
                 </span>
