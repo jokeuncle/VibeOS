@@ -128,8 +128,14 @@ export default function CommandBar() {
 
   const handleKeydown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
+      setInput('')
       inputRef.current?.blur()
       setFocused(false)
+      return
+    }
+    if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA' && !(document.activeElement as HTMLElement)?.isContentEditable) {
+      e.preventDefault()
+      inputRef.current?.focus()
     }
   }, [])
 
@@ -150,7 +156,7 @@ export default function CommandBar() {
         setSelectedIdx((i) => (i < suggestions.length - 1 ? i + 1 : 0))
         return
       }
-      if (e.key === 'Tab') {
+      if (e.key === 'Tab' || e.key === 'Enter') {
         e.preventDefault()
         applySuggestion(suggestions[selectedIdx])
         return
@@ -176,7 +182,7 @@ export default function CommandBar() {
   const showSuggestions = focused && suggestions.length > 0
 
   return (
-    <div className="relative z-40">
+    <div className="relative z-[55]">
       {/* Suggestion dropdown (above input) */}
       <AnimatePresence>
         {showSuggestions && (
