@@ -17,6 +17,7 @@ from vibeos_agent import (
     AgentTask,
     AgentType,
     LLMGatewayClient,
+    MemoryClient,
     WSGatewayClient,
     WorkspaceClient,
     Task,
@@ -132,6 +133,7 @@ async def lifespan(app: FastAPI):
     app.state.dispatcher = Dispatcher()
     app.state.ws = WSGatewayClient()
     app.state.ws_client = WorkspaceClient()
+    app.state.memory = MemoryClient()
     app.state.workflow = WorkflowEngine(
         app.state.dispatcher, app.state.ws_client, app.state.ws,
     )
@@ -140,6 +142,7 @@ async def lifespan(app: FastAPI):
     await app.state.dispatcher.close()
     await app.state.ws.close()
     await app.state.ws_client.close()
+    await app.state.memory.close()
 
 
 app = FastAPI(title="PM Agent", version="0.1.0", lifespan=lifespan)
@@ -768,6 +771,36 @@ async def handle_run_project(req: RunProjectRequest) -> StreamingResponse:
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+class FeedbackRequest(BaseModel):
+    workspace_id: str
+    message_id: str = ""
+    agent_type: str = ""
+    action_type: str  # approve | reject
+    original_output: str = ""
+    context: dict[str, Any] | None = None
+
+
+@app.post("/api/feedback")
+async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
+    """Record user feedback (approve/reject) on agent output.
+
+    Forwards to memory-service which converts it into preference memory,
+    enabling Hindsight-style reflect operations that improve future outputs.
+    """
+    memory: MemoryClient = app.state.memory
+    try:
+        result = await memory.record_feedback(
+            workspace_id=req.workspace_id,
+            agent_type=req.agent_type,
+            action_type=req.action_type,
+            context=req.context or {},
+            original_output=req.original_output,
+        )
+        return {"status": "ok", "result": result}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
 
 
 @app.get("/health")

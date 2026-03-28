@@ -398,6 +398,7 @@ class MemoryClient:
                 "workspace_id": workspace_id,
                 "agent_type": agent_type,
                 "user_message": user_message,
+                "org_id": config.org_id,
                 "include_preferences": True,
                 "include_project_memory": True,
                 "include_org_memory": True,
@@ -985,8 +986,8 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         task_id: str | None = None,
         metadata: str = "{}",
     ) -> dict[str, Any]:
-        """Persist an artifact to workspace-svc."""
-        return await self.workspace_svc.create_artifact(
+        """Persist an artifact to workspace-svc and auto-index to RAG."""
+        result = await self.workspace_svc.create_artifact(
             workspace_id,
             agent_type=_enum_val(self.agent_type),
             artifact_type=artifact_type,
@@ -996,6 +997,21 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             task_id=task_id,
             metadata=metadata,
         )
+        if len(content) > 100:
+            import asyncio as _aio
+            _aio.create_task(self._auto_index_artifact(workspace_id, title, content, artifact_type))
+        return result
+
+    async def _auto_index_artifact(
+        self, workspace_id: str, title: str, content: str, doc_type: str
+    ) -> None:
+        try:
+            await self.rag.index_documents(
+                workspace_id,
+                [{"title": title, "content": content[:8000], "doc_type": doc_type}],
+            )
+        except Exception:
+            pass
 
     async def close(self) -> None:
         await self.workspace_svc.close()

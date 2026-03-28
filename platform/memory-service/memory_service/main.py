@@ -63,6 +63,7 @@ class ContextAssembleRequest(BaseModel):
     workspace_id: str
     agent_type: str = ""
     user_message: str = ""
+    org_id: str = ""
     include_preferences: bool = True
     include_project_memory: bool = True
     include_org_memory: bool = True
@@ -186,9 +187,10 @@ async def assemble_context(req: ContextAssembleRequest) -> dict[str, Any]:
             sections.append("## Project Memory\n" + "\n".join(lines))
 
     if req.include_org_memory and req.user_message:
+        effective_org_id = req.org_id or settings.org_id
         org_hits = await asyncio.to_thread(
             memory_client.search_org_memory,
-            query=req.user_message, org_id=req.workspace_id, limit=5,
+            query=req.user_message, org_id=effective_org_id, limit=5,
         )
         if org_hits:
             lines = [f"- {m.get('memory', m.get('text', ''))}" for m in org_hits]
@@ -213,6 +215,28 @@ async def assemble_context(req: ContextAssembleRequest) -> dict[str, Any]:
         "context": assembled,
         "section_count": len(sections),
     }
+
+
+# ── Org Memory (cross-workspace) ─────────────────────────────────
+
+
+class AddOrgMemoryRequest(BaseModel):
+    content: str
+    org_id: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/api/memory/org/add")
+async def add_org_memory(req: AddOrgMemoryRequest) -> dict[str, Any]:
+    assert memory_client is not None
+    effective_org_id = req.org_id or settings.org_id
+    result = await asyncio.to_thread(
+        memory_client.add_org_memory,
+        content=req.content,
+        org_id=effective_org_id,
+        metadata=req.metadata,
+    )
+    return {"status": "ok", "result": result}
 
 
 # ── Health ───────────────────────────────────────────────────────────

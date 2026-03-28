@@ -392,6 +392,10 @@ const zh: Record<TranslationKey, string> = {
   'member.viewer': '查看者',
   'member.emailPlaceholder': '输入邮箱邀请…',
 
+  'feedback.approve': '有帮助',
+  'feedback.reject': '没帮助',
+  'feedback.thanks': '感谢您的反馈！',
+
   'error.llmRateLimit': 'AI 模型已达到使用限制，请稍后重试或切换到其他模型。',
   'error.llmUnavailable': 'AI 服务暂时不可用，请稍后重试。',
   'error.requestFailed': '请求失败',

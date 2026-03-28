@@ -28,6 +28,7 @@ class Config:
             "KNOWLEDGE_SVC_URL", "http://knowledge-service:8070"
         )
         self.redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        self.org_id: str = os.getenv("VIBEOS_ORG_ID", "default")
         self.port: int = int(os.getenv("PORT", "8040"))
 
 

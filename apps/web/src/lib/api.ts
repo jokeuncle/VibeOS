@@ -411,4 +411,19 @@ export const memberApi = {
     request<void>(`/api/workspaces/${wsId}/members/${memberId}`, { method: 'DELETE' }),
 }
 
+export const feedbackApi = {
+  send: (body: {
+    workspace_id: string
+    message_id?: string
+    agent_type?: string
+    action_type: 'approve' | 'reject'
+    original_output?: string
+    context?: Record<string, unknown>
+  }) =>
+    request<{ status: string }>('/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+}
+
 export { mapNLPResultToMessage, mapAgentChatToMessage }

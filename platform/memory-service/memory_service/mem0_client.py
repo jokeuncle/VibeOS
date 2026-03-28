@@ -3,6 +3,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import litellm
+litellm.drop_params = True
+
 from mem0 import Memory
 
 from .config import Settings
@@ -22,13 +25,37 @@ class VibeOSMemory:
     """
 
     def __init__(self, config: Settings) -> None:
+        use_local_embedder = config.embedding_model.startswith("local/") or not config.volcengine_api_key
+
+        embedder_config: dict[str, Any]
+        embedding_dims: int
+        if use_local_embedder:
+            embedder_config = {
+                "provider": "huggingface",
+                "config": {
+                    "model": "sentence-transformers/all-MiniLM-L6-v2",
+                },
+            }
+            embedding_dims = 384
+            logger.info("Using local embeddings (all-MiniLM-L6-v2, dim=384)")
+        else:
+            embedder_config = {
+                "provider": "openai",
+                "config": {
+                    "model": config.embedding_model,
+                    "api_key": config.volcengine_api_key,
+                    "openai_base_url": config.volcengine_base_url,
+                },
+            }
+            embedding_dims = config.embedding_dim
+
         mem0_config: dict[str, Any] = {
             "vector_store": {
                 "provider": "qdrant",
                 "config": {
                     "url": config.qdrant_url,
                     "collection_name": "vibeos_memories",
-                    "embedding_model_dims": config.embedding_dim,
+                    "embedding_model_dims": embedding_dims,
                 },
             },
             "llm": {
@@ -38,14 +65,7 @@ class VibeOSMemory:
                     "api_key": config.volcengine_api_key,
                 },
             },
-            "embedder": {
-                "provider": "openai",
-                "config": {
-                    "model": config.embedding_model,
-                    "api_key": config.volcengine_api_key,
-                    "openai_base_url": config.volcengine_base_url,
-                },
-            },
+            "embedder": embedder_config,
             "version": "v1.1",
         }
         self.memory = Memory.from_config(mem0_config)

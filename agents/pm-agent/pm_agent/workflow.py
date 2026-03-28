@@ -13,10 +13,15 @@ Each phase:
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import os
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
+
+import httpx
 
 from vibeos_agent import (
     AGENT_PHASE_MAP,
@@ -26,9 +31,16 @@ from vibeos_agent import (
     PhaseStatus,
     WSGatewayClient,
     WorkspaceClient,
+    config,
 )
 
 from .dispatch import Dispatcher
+
+_logger = logging.getLogger(__name__)
+
+KNOWLEDGE_SVC_URL = os.getenv("KNOWLEDGE_SVC_URL", config.knowledge_svc_url)
+RAG_SVC_URL = os.getenv("RAG_SVC_URL", config.rag_svc_url)
+MEMORY_SVC_URL = os.getenv("MEMORY_SVC_URL", config.memory_svc_url)
 
 PHASE_ORDER = [
     "requirement",
@@ -52,6 +64,72 @@ def resolve_branch_name(task_title: str, strategy: str, default_branch: str) -> 
     if strategy == "gitflow":
         return f"feature/{slug}"
     return default_branch  # "direct" – commit straight to default
+
+
+async def _trigger_distill(workspace_id: str, access_level: str = "enterprise") -> None:
+    """Fire-and-forget knowledge distillation after a phase completes.
+
+    Follows EvolveR's offline self-distillation pattern: interaction
+    trajectories are synthesised into reusable strategic principles for
+    future retrieval.  Non-blocking — failures are logged, not raised.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{KNOWLEDGE_SVC_URL}/api/distill",
+                json={
+                    "workspace_id": workspace_id,
+                    "target_access_level": access_level,
+                },
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            _logger.info(
+                "Distillation complete for workspace=%s: stored %s items",
+                workspace_id,
+                body.get("stored_count", "?"),
+            )
+    except Exception as exc:
+        _logger.warning("Async distillation failed (non-blocking): %s", exc)
+
+
+async def _auto_index_to_rag(
+    workspace_id: str,
+    title: str,
+    content: str,
+    doc_type: str = "agent_output",
+) -> None:
+    """Index agent output to RAG for future retrieval.  Non-blocking."""
+    if len(content) < 100:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            await client.post(
+                f"{RAG_SVC_URL}/api/index/documents",
+                json={
+                    "workspace_id": workspace_id,
+                    "documents": [
+                        {"title": title, "content": content[:8000], "doc_type": doc_type}
+                    ],
+                },
+            )
+    except Exception as exc:
+        _logger.warning("Auto-RAG index failed (non-blocking): %s", exc)
+
+
+async def _store_org_memory(workspace_id: str, content: str) -> None:
+    """Promote key learnings to org-level memory for cross-workspace benefit."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            await client.post(
+                f"{MEMORY_SVC_URL}/api/memory/org/add",
+                json={
+                    "content": content,
+                    "metadata": {"source_workspace": workspace_id, "layer": "org"},
+                },
+            )
+    except Exception as exc:
+        _logger.warning("Org memory store failed (non-blocking): %s", exc)
 
 
 @dataclass
@@ -225,15 +303,20 @@ class WorkflowEngine:
                     await self.ws_client.complete_task(workspace_id, task_id)
                 except Exception:
                     pass
+                full_result = str(result)
                 done_evt = {
                     "type": "workflow:task_complete",
                     "phase": phase_type,
                     "task_id": task_id,
                     "task_title": task_title,
-                    "result_summary": str(result)[:200],
+                    "result_summary": full_result[:200],
                 }
                 yield done_evt
                 await self._broadcast(workspace_id, done_evt)
+                if len(full_result) > 100:
+                    asyncio.create_task(
+                        _auto_index_to_rag(workspace_id, f"[{phase_type}] {task_title}", full_result)
+                    )
         except Exception as exc:
             try:
                 await self.ws_client.update_task(workspace_id, task_id, {"status": "pending"})
@@ -412,6 +495,16 @@ class WorkflowEngine:
                     except Exception:
                         pass
 
+                    full_result = str(result)
+                    if len(full_result) > 100:
+                        asyncio.create_task(
+                            _auto_index_to_rag(
+                                workspace_id,
+                                f"[{phase_type}] {task_title}",
+                                full_result,
+                            )
+                        )
+
             except Exception as exc:
                 tasks_failed += 1
                 err_evt = {
@@ -453,6 +546,14 @@ class WorkflowEngine:
                 workspace_id, "pm",
                 f"Phase {phase_type} complete: {tasks_succeeded} tasks executed",
                 level="success",
+            )
+            asyncio.create_task(_trigger_distill(workspace_id))
+            asyncio.create_task(
+                _store_org_memory(
+                    workspace_id,
+                    f"Phase '{phase_type}' completed with {tasks_succeeded} tasks "
+                    f"in workspace {workspace_id}.",
+                )
             )
 
     async def run_project(

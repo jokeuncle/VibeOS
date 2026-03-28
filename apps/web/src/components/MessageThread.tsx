@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bot, User, ChevronDown, CheckCircle2, Circle, Loader2, Play, Code2 } from 'lucide-react'
+import { Bot, User, ChevronDown, CheckCircle2, Circle, Loader2, Play, Code2, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import { feedbackApi } from '../lib/api'
 import type { Message, RichBlock, RichAction, PhaseStatus, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -190,10 +191,71 @@ function SystemMessage({ msg }: { msg: Message }) {
   )
 }
 
+function FeedbackButtons({ msg }: { msg: Message }) {
+  const t = useT()
+  const { addToast } = useUIStore()
+  const { activeWorkspaceId } = useWorkspaceStore()
+  const [voted, setVoted] = useState<'approve' | 'reject' | null>(null)
+
+  const handleFeedback = useCallback(
+    async (action: 'approve' | 'reject') => {
+      if (voted || !activeWorkspaceId) return
+      setVoted(action)
+      try {
+        await feedbackApi.send({
+          workspace_id: activeWorkspaceId,
+          message_id: msg.id,
+          agent_type: msg.agentType || '',
+          action_type: action,
+          original_output: msg.content?.slice(0, 500) || '',
+        })
+        addToast({ type: 'success', message: t('feedback.thanks' as TranslationKey) })
+      } catch {
+        setVoted(null)
+      }
+    },
+    [voted, activeWorkspaceId, msg, addToast, t],
+  )
+
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      <button
+        onClick={() => handleFeedback('approve')}
+        disabled={voted !== null}
+        className={`p-1 rounded-md transition-colors cursor-pointer ${
+          voted === 'approve'
+            ? 'text-success bg-success/10'
+            : voted
+              ? 'text-text-tertiary/30'
+              : 'text-text-tertiary/50 hover:text-success hover:bg-success/10'
+        }`}
+        title={t('feedback.approve' as TranslationKey)}
+      >
+        <ThumbsUp className="w-3 h-3" />
+      </button>
+      <button
+        onClick={() => handleFeedback('reject')}
+        disabled={voted !== null}
+        className={`p-1 rounded-md transition-colors cursor-pointer ${
+          voted === 'reject'
+            ? 'text-danger bg-danger/10'
+            : voted
+              ? 'text-text-tertiary/30'
+              : 'text-text-tertiary/50 hover:text-danger hover:bg-danger/10'
+        }`}
+        title={t('feedback.reject' as TranslationKey)}
+      >
+        <ThumbsDown className="w-3 h-3" />
+      </button>
+    </div>
+  )
+}
+
 function MessageBubble({ msg }: { msg: Message }) {
   const t = useT()
   if (msg.role === 'system') return <SystemMessage msg={msg} />
 
+  const isAgent = msg.role !== 'user'
   const agentLabel = msg.agentType
     ? t(`agent.name.${msg.agentType}` as TranslationKey)
     : t('conversation.agent')
@@ -202,7 +264,7 @@ function MessageBubble({ msg }: { msg: Message }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-2.5"
+      className="flex gap-2.5 group"
     >
       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
         msg.role === 'user' ? 'bg-surface-3 text-text-tertiary' : 'bg-accent/10 text-accent'
@@ -226,6 +288,11 @@ function MessageBubble({ msg }: { msg: Message }) {
             {msg.richBlocks.map((block, i) => (
               <RichBlockRenderer key={i} block={block} />
             ))}
+          </div>
+        )}
+        {isAgent && msg.content && (
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <FeedbackButtons msg={msg} />
           </div>
         )}
       </div>

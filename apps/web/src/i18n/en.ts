@@ -390,6 +390,10 @@ const en = {
   'member.viewer': 'Viewer',
   'member.emailPlaceholder': 'Enter email to invite…',
 
+  'feedback.approve': 'Helpful',
+  'feedback.reject': 'Not helpful',
+  'feedback.thanks': 'Thanks for your feedback!',
+
   'error.llmRateLimit': 'The AI model has reached its usage limit. Please try again later or switch to another model.',
   'error.llmUnavailable': 'The AI service is temporarily unavailable. Please try again shortly.',
   'error.requestFailed': 'Request failed',

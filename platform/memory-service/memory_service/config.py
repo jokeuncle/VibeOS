@@ -33,6 +33,7 @@ class Settings:
         )
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "doubao-embedding-large")
         self.embedding_dim = int(os.getenv("EMBEDDING_DIM", "2048"))
+        self.org_id = os.getenv("VIBEOS_ORG_ID", "default")
 
 
 settings = Settings()
