@@ -329,11 +329,9 @@ export default function MessageThread() {
   const { messages, messagesHasMore, loadOlderMessages } = useWorkspaceStore()
   const t = useT()
   const bottomRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(new Set())
   const [loadingOlder, setLoadingOlder] = useState(false)
   const isLoadingOlderRef = useRef(false)
-  const prevMsgCountRef = useRef(0)
 
   const sessions = groupIntoSessions(messages)
   const lastMsgContent = messages[messages.length - 1]?.content

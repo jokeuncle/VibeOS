@@ -156,7 +156,7 @@ export default function CommandBar() {
         setSelectedIdx((i) => (i < suggestions.length - 1 ? i + 1 : 0))
         return
       }
-      if (e.key === 'Tab' || e.key === 'Enter') {
+      if (e.key === 'Tab') {
         e.preventDefault()
         applySuggestion(suggestions[selectedIdx])
         return

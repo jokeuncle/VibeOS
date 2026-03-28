@@ -55,18 +55,10 @@ function formatTime(ts: number) {
 
 const ALL_AGENTS: AgentType[] = ['pm', 'requirement', 'design', 'architecture', 'development', 'testing', 'cicd', 'monitoring']
 
-const PHASE_LABELS: Record<string, string> = {
-  requirement: 'REQ',
-  architecture: 'ARCH',
-  design: 'DES',
-  development: 'DEV',
-  testing: 'TEST',
-  deployment: 'DEPLOY',
-  monitoring: 'MON',
-}
+const WORKFLOW_PHASES = ['requirement', 'architecture', 'design', 'development', 'testing', 'deployment', 'monitoring'] as const
 
 function WorkflowProgress({ events }: { events: WorkflowEvent[] }) {
-  const phases = ['requirement', 'architecture', 'design', 'development', 'testing', 'deployment', 'monitoring']
+  const t = useT()
   const completedPhases = new Set(
     events.filter((e) => e.type === 'workflow:phase_complete').map((e) => e.phase)
   )
@@ -77,7 +69,7 @@ function WorkflowProgress({ events }: { events: WorkflowEvent[] }) {
   return (
     <div className="px-4 py-3 border-b border-border-subtle">
       <div className="flex items-center gap-1">
-        {phases.map((phase) => {
+        {WORKFLOW_PHASES.map((phase) => {
           const isCompleted = completedPhases.has(phase)
           const isCurrent = phase === currentPhase && !isCompleted
           return (
@@ -86,15 +78,15 @@ function WorkflowProgress({ events }: { events: WorkflowEvent[] }) {
               className={`flex-1 h-1.5 rounded-full transition-colors ${
                 isCompleted ? 'bg-success' : isCurrent ? 'bg-accent animate-pulse' : 'bg-surface-3'
               }`}
-              title={PHASE_LABELS[phase] || phase}
+              title={t(`phase.${phase}` as TranslationKey)}
             />
           )
         })}
       </div>
       <div className="flex justify-between mt-1.5">
-        {phases.map((phase) => (
+        {WORKFLOW_PHASES.map((phase) => (
           <span key={phase} className="text-[8px] font-mono text-text-tertiary text-center" style={{ width: `${100/7}%` }}>
-            {PHASE_LABELS[phase]}
+            {t(`phase.short.${phase}` as TranslationKey)}
           </span>
         ))}
       </div>
@@ -142,7 +134,7 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
         </span>
         {hasHistory && (
           <span className="text-[10px] font-mono text-text-tertiary">
-            {history.length} events
+            {history.length} {t('agent.timelineEvents' as TranslationKey)}
           </span>
         )}
       </div>
@@ -233,12 +225,12 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
           {(['running', 'waiting', 'error', 'idle'] as AgentStatus[]).map((status) => (
             <div key={status} className="flex items-center gap-1.5">
               <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: STATUS_FILL[status] }} />
-              <span className="text-[10px] text-text-tertiary capitalize">{status}</span>
+              <span className="text-[10px] text-text-tertiary">{t(`agent.status.${status}` as TranslationKey)}</span>
             </div>
           ))}
           <div className="flex items-center gap-1.5 ml-2">
             <div className="w-px h-3 bg-accent" />
-            <span className="text-[10px] text-text-tertiary">Now</span>
+            <span className="text-[10px] text-text-tertiary">{t('agent.timelineNow' as TranslationKey)}</span>
           </div>
           {!hasHistory && (
             <span className="text-[10px] text-text-tertiary/50 italic ml-2">

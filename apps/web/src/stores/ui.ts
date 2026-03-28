@@ -88,6 +88,9 @@ interface UIState {
   shortcutsOpen: boolean
   setShortcutsOpen: (open: boolean) => void
 
+  dockVisible: boolean
+  toggleDock: () => void
+
   closeTopmostOverlay: () => boolean
 }
 
@@ -180,6 +183,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   shortcutsOpen: false,
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+
+  dockVisible: true,
+  toggleDock: () => set((s) => ({ dockVisible: !s.dockVisible })),
 
   closeTopmostOverlay: () => {
     const s = get()

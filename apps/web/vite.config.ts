@@ -25,6 +25,10 @@ export default defineConfig({
           return path.replace(/^\/api\/agents\/([^/]+)\/chat(\/stream)?$/, '/api/chat/$1$2')
         },
       },
+      '/api/feedback': {
+        target: 'http://localhost:8040',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:8010',
         changeOrigin: true,

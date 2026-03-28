@@ -17,6 +17,7 @@ export default function AgentChat() {
 
   const chatKey = activeWorkspaceId && agent ? `${activeWorkspaceId}:${agent.type}` : ''
   const messages = agentChatMessages[chatKey] || []
+  const lastMsgContent = messages[messages.length - 1]?.content
 
   const [input, setInput] = useState('')
 
@@ -24,7 +25,7 @@ export default function AgentChat() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
+  }, [messages.length, lastMsgContent])
 
   function handleSend(e: React.FormEvent) {
     e.preventDefault()
@@ -105,7 +106,7 @@ export default function AgentChat() {
                 </div>
               </div>
             ))}
-            {chatLoading && (
+            {chatLoading && !messages.some((m) => m.role === 'agent' && m.content === '') && (
               <div className="flex gap-2.5">
                 <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 bg-accent/10 text-accent">
                   <Bot className="w-3 h-3" />

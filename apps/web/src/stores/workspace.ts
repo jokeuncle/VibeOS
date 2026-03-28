@@ -7,44 +7,57 @@ import {
   workspaceApi, workflowApi, agentApi, mapNLPResultToMessage, mapAgentChatToMessage,
   streamSSE,
 } from '../lib/api'
-import type { WorkflowEvent } from '../types'
+import type { WorkflowEvent, RichBlock } from '../types'
+import en from '../i18n/en'
+import zh from '../i18n/zh'
+import { useI18nStore } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
+
+function tRaw(key: TranslationKey, vars?: Record<string, string>): string {
+  const locale = useI18nStore.getState().locale
+  let msg = (locale === 'zh' ? zh : en)[key] ?? key
+  if (vars) Object.entries(vars).forEach(([k, v]) => { msg = msg.replace(`{${k}}`, v) })
+  return msg
+}
 
 function friendlyError(raw: string): string {
   if (/rate.?limit|too.?many|SetLimitExceeded|inference limit/i.test(raw)) {
-    return 'AI 模型已达到使用限制，请稍后重试或切换到其他模型。'
+    return tRaw('error.llmRateLimit')
   }
   if (/502|bad gateway|all models failed/i.test(raw)) {
-    return 'AI 服务暂时不可用，请稍后重试。'
+    return tRaw('error.llmUnavailable')
   }
   if (/timeout|timed out/i.test(raw)) {
-    return '请求超时，请稍后重试。'
+    return tRaw('error.timeout')
   }
   if (/network|fetch|ECONNREFUSED/i.test(raw)) {
-    return '网络连接异常，请检查服务是否正常运行。'
+    return tRaw('error.networkError')
   }
   if (/nodename nor servname|Name or service not known|agent.*unavailable/i.test(raw)) {
     const agentMatch = raw.match(/Agent (\w+) unavailable/i)
     const agentName = agentMatch?.[1] || ''
     return agentName
-      ? `${agentName} Agent 服务未启动，请先启动对应的 Agent 服务。`
-      : 'Agent 服务未启动或无法连接，请检查服务配置。'
+      ? tRaw('error.agentUnavailable', { name: agentName })
+      : tRaw('error.agentUnavailableGeneric')
   }
   return raw
 }
 
 function workflowEventToMessage(event: WorkflowEvent): Message | null {
-  const eventLabels: Record<string, string> = {
-    'workflow:phase_start': `🚀 阶段开始: ${event.phase ?? ''}`,
-    'workflow:phase_complete': `✅ 阶段完成: ${event.phase ?? ''} (${event.tasks_executed ?? 0} 个任务)`,
-    'workflow:phase_skip': `⏭️ 阶段跳过: ${event.phase ?? ''} — ${event.reason ?? ''}`,
-    'workflow:task_start': `▶ 执行任务: ${event.task_title ?? ''}`,
-    'workflow:task_complete': `✅ 任务完成: ${event.task_title ?? ''}`,
-    'workflow:task_error': `❌ 任务失败: ${event.task_title ?? ''} — ${event.error ?? ''}`,
-    'workflow:project_start': '🎯 开始执行全项目流程',
-    'workflow:project_complete': event.success ? '🎉 项目执行完成' : '⚠️ 项目执行结束（有错误）',
-    'workflow:project_error': `❌ 项目执行出错: ${event.error ?? ''}`,
+  const t = tRaw
+  type TK = TranslationKey
+  const contentMap: Record<string, string | undefined> = {
+    'workflow:phase_start': `${t('workflow.phaseStart' as TK)}: ${event.phase ?? ''}`,
+    'workflow:phase_complete': `${t('workflow.phaseComplete' as TK)}: ${event.phase ?? ''} (${event.tasks_executed ?? 0})`,
+    'workflow:phase_skip': `${t('workflow.phaseSkip' as TK)}: ${event.phase ?? ''} — ${event.reason ?? ''}`,
+    'workflow:task_start': `${t('workflow.taskStart' as TK)}: ${event.task_title ?? ''}`,
+    'workflow:task_complete': `${t('workflow.taskComplete' as TK)}: ${event.task_title ?? ''}`,
+    'workflow:task_error': `${t('workflow.taskError' as TK)}: ${event.task_title ?? ''} — ${event.error ?? ''}`,
+    'workflow:project_start': t('workflow.projectStart' as TK),
+    'workflow:project_complete': t('workflow.projectComplete' as TK),
+    'workflow:project_error': `${t('error.requestFailed' as TK)}: ${event.error ?? ''}`,
   }
-  const content = eventLabels[event.type]
+  const content = contentMap[event.type]
   if (!content) return null
   return {
     id: crypto.randomUUID(),
@@ -251,7 +264,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveWorkspace: (id) => {
     const gen = ++wsLoadGeneration
-    set({ activeWorkspaceId: id, activePhaseId: null, messages: [] })
+    set({ activeWorkspaceId: id, activePhaseId: null, messages: [], workflowEvents: [] })
     if (id && !id.startsWith('ws-temp-')) {
       Promise.all([
         workspaceApi.get(id),
@@ -682,6 +695,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     ;(async () => {
       let content = ''
       let agentType: AgentType = 'pm'
+      const richBlocks: RichBlock[] = []
       try {
         set((s) => ({
           messages: [...s.messages, {
@@ -692,7 +706,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
         const nlpCtx = buildNlpPhaseContext(get)
         for await (const evt of agentApi.nlpStream(wsId, input, nlpCtx)) {
-          const data = JSON.parse(evt.data)
+          let data: any
+          try { data = JSON.parse(evt.data) } catch { continue }
 
           if (evt.event === 'intent' && data.target_agent) {
             agentType = data.target_agent as AgentType
@@ -706,9 +721,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             content = friendlyError(data.error)
           }
 
+          if (data.payload?.artifacts) {
+            for (const art of data.payload.artifacts) {
+              richBlocks.push({
+                type: 'code', title: art.title,
+                language: art.type === 'diagram' ? 'text' : art.type === 'adr' ? 'markdown' : art.type,
+                code: art.content,
+              })
+            }
+          }
+          if (data.payload?.created_tasks) {
+            for (const t of data.payload.created_tasks) {
+              richBlocks.push({ type: 'task_card', taskTitle: t.title || t.data?.title, taskStatus: 'pending' })
+            }
+          }
+          if (data.rich_blocks) {
+            for (const rb of data.rich_blocks) {
+              if (rb.type === 'code') richBlocks.push({ type: 'code', title: rb.title, language: rb.language, code: rb.content || rb.code })
+              else if (rb.type === 'task_card') richBlocks.push({ type: 'task_card', taskTitle: rb.content || rb.taskTitle, taskStatus: 'pending' })
+            }
+          }
+
           set((s) => ({
             messages: s.messages.map((m) =>
-              m.id === msgId ? { ...m, content, agentType } : m
+              m.id === msgId ? { ...m, content, agentType, richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined } : m
             ),
           }))
         }
@@ -726,6 +762,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         if (persist && content) {
           workspaceApi.saveMessage(wsId, {
             role: 'agent', content, agentType,
+            richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined,
           }).catch(() => {})
         }
         get().refreshActiveWorkspace()
@@ -760,12 +797,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     ;(async () => {
       let content = ''
+      const richBlocks: RichBlock[] = []
       try {
         for await (const evt of streamSSE(`/api/agents/${agentType}/chat/stream`, {
           workspace_id: wsId,
           message: input,
         })) {
-          const data = JSON.parse(evt.data)
+          let data: any
+          try { data = JSON.parse(evt.data) } catch { continue }
           if (data.delta) {
             content += data.delta
           } else if (data.summary) {
@@ -775,12 +814,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           } else if (data.error) {
             content = friendlyError(data.error)
           }
+          if (data.rich_blocks) {
+            for (const rb of data.rich_blocks) {
+              if (rb.type === 'code') richBlocks.push({ type: 'code', title: rb.title, language: rb.language, code: rb.content || rb.code })
+              else if (rb.type === 'task_card') richBlocks.push({ type: 'task_card', taskTitle: rb.content || rb.taskTitle, taskStatus: 'pending' })
+            }
+          }
           if (content) {
             set((s) => ({
               agentChatMessages: {
                 ...s.agentChatMessages,
                 [key]: (s.agentChatMessages[key] || []).map((m) =>
-                  m.id === replyId ? { ...m, content } : m
+                  m.id === replyId ? { ...m, content, richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined } : m
                 ),
               },
             }))
@@ -893,6 +938,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 get().patchTaskStatus(wsId, data.task_id, 'in_progress')
               } else if (data.type === 'workflow:task_complete') {
                 get().patchTaskStatus(wsId, data.task_id, 'completed')
+              } else if (data.type === 'workflow:task_error') {
+                get().patchTaskStatus(wsId, data.task_id, 'pending')
               }
             }
             const sysMsg = workflowEventToMessage(data)
@@ -925,6 +972,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 get().patchTaskStatus(wsId, data.task_id, 'in_progress')
               } else if (data.type === 'workflow:task_complete') {
                 get().patchTaskStatus(wsId, data.task_id, 'completed')
+              } else if (data.type === 'workflow:task_error') {
+                get().patchTaskStatus(wsId, data.task_id, 'pending')
               }
             }
             const sysMsg = workflowEventToMessage(data)
@@ -957,6 +1006,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 get().patchTaskStatus(wsId, data.task_id, 'in_progress')
               } else if (data.type === 'workflow:task_complete') {
                 get().patchTaskStatus(wsId, data.task_id, 'completed')
+              } else if (data.type === 'workflow:task_error') {
+                get().patchTaskStatus(wsId, data.task_id, 'pending')
               }
             }
             const sysMsg = workflowEventToMessage(data)

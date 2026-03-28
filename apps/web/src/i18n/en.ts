@@ -223,6 +223,8 @@ const en = {
   'agent.taskLog': 'Task Execution Log',
   'agent.noLogs': 'No execution logs yet. Logs will appear here when agents are working.',
   'agent.timeline': 'State Timeline',
+  'agent.timelineNow': 'Now',
+  'agent.timelineEvents': 'events',
 
   'markdown.edit': 'Edit',
   'markdown.preview': 'Preview',
@@ -291,6 +293,7 @@ const en = {
   'session.collapsed': 'messages',
 
   'layout.split': 'Split View',
+  'layout.dock': 'Dock',
 
   'gantt.title': 'Gantt Timeline',
 
@@ -405,6 +408,10 @@ const en = {
   'error.llmRateLimit': 'The AI model has reached its usage limit. Please try again later or switch to another model.',
   'error.llmUnavailable': 'The AI service is temporarily unavailable. Please try again shortly.',
   'error.requestFailed': 'Request failed',
+  'error.timeout': 'Request timed out. Please try again later.',
+  'error.networkError': 'Network error — check that services are running.',
+  'error.agentUnavailable': '{name} Agent is not running. Please start the Agent service first.',
+  'error.agentUnavailableGeneric': 'Agent service is not running or unreachable. Check your service configuration.',
 
   'statusbar.version': 'VibeOS v0.1.0',
   'conversation.loading': 'Loading…',

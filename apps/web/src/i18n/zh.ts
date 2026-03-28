@@ -225,6 +225,8 @@ const zh: Record<TranslationKey, string> = {
   'agent.taskLog': '任务执行日志',
   'agent.noLogs': '暂无执行日志。Agent 工作时日志会显示在这里。',
   'agent.timeline': '状态时间线',
+  'agent.timelineNow': '当前',
+  'agent.timelineEvents': '个事件',
 
   'markdown.edit': '编辑',
   'markdown.preview': '预览',
@@ -293,6 +295,7 @@ const zh: Record<TranslationKey, string> = {
   'session.collapsed': '条消息',
 
   'layout.split': '分屏视图',
+  'layout.dock': '工具栏',
 
   'gantt.title': '甘特图时间线',
 
@@ -407,6 +410,10 @@ const zh: Record<TranslationKey, string> = {
   'error.llmRateLimit': 'AI 模型已达到使用限制，请稍后重试或切换到其他模型。',
   'error.llmUnavailable': 'AI 服务暂时不可用，请稍后重试。',
   'error.requestFailed': '请求失败',
+  'error.timeout': '请求超时，请稍后重试。',
+  'error.networkError': '网络连接异常，请检查服务是否正常运行。',
+  'error.agentUnavailable': '{name} Agent 服务未启动，请先启动对应的 Agent 服务。',
+  'error.agentUnavailableGeneric': 'Agent 服务未启动或无法连接，请检查服务配置。',
 
   'statusbar.version': 'VibeOS v0.1.0',
   'conversation.loading': '加载中…',

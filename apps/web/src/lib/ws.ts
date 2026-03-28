@@ -114,6 +114,8 @@ function handleWSEvent(event: Record<string, any>) {
       store.patchTaskStatus(event.workspaceId, event.task_id, 'in_progress')
     } else if (event.type === 'workflow:task_complete' && event.task_id) {
       store.patchTaskStatus(event.workspaceId, event.task_id, 'completed')
+    } else if (event.type === 'workflow:task_error' && event.task_id) {
+      store.patchTaskStatus(event.workspaceId, event.task_id, 'pending')
     }
   }
 
