@@ -34,7 +34,18 @@ function eventLabel(event: WorkflowEvent): string {
     case 'workflow:project_start': return 'Starting project lifecycle'
     case 'workflow:project_complete': return 'Project lifecycle complete!'
     case 'workflow:phase_start': return `Phase: ${event.phase}`
-    case 'workflow:phase_complete': return `${event.phase} complete (${event.tasks_executed} tasks)`
+    case 'workflow:phase_complete': {
+      const ok = event.tasks_executed ?? 0
+      const total = event.tasks_total
+      const failed = event.tasks_failed ?? 0
+      if (total != null && failed > 0) {
+        return `${event.phase} finished (${ok}/${total} ok, ${failed} failed)`
+      }
+      if (total != null && total !== ok) {
+        return `${event.phase} complete (${ok}/${total} tasks ok)`
+      }
+      return `${event.phase} complete (${ok} tasks)`
+    }
     case 'workflow:phase_skip': return `${event.phase} skipped: ${event.reason}`
     case 'workflow:task_start': return `[${(event.index ?? 0) + 1}/${event.total ?? '?'}] ${event.task_title ?? ''}`
     case 'workflow:task_complete': return `Done: ${event.task_title ?? event.task_id ?? ''}`
@@ -44,10 +55,14 @@ function eventLabel(event: WorkflowEvent): string {
 }
 
 export default function WorkflowControls({ phases }: { phases: Phase[] }) {
-  const { workflowRunning, workflowEvents, runPhase, runProject } = useWorkspaceStore()
+  const { workflowRunning, workflowEvents, runPhase, runProject, activePhaseId } = useWorkspaceStore()
   const t = useT()
 
-  const currentPhase = phases.find((p) => p.status !== 'completed') || phases[0]
+  const runPhaseType =
+    phases.find((p) => p.id === activePhaseId)?.type
+    ?? phases.find((p) => p.status !== 'completed')?.type
+    ?? phases[0]?.type
+
   const hasEvents = workflowEvents.length > 0
 
   return (
@@ -55,7 +70,7 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
       <div className="px-4 py-3 flex items-center gap-3">
         <div className="flex items-center gap-2 flex-1">
           <button
-            onClick={() => currentPhase && runPhase(currentPhase.type)}
+            onClick={() => runPhaseType && runPhase(runPhaseType)}
             disabled={workflowRunning}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               workflowRunning
@@ -69,9 +84,9 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
               <Play className="w-3.5 h-3.5" />
             )}
             {workflowRunning ? t('workflow.running' as TranslationKey) : t('workflow.runPhase' as TranslationKey)}
-            {!workflowRunning && currentPhase && (
+            {!workflowRunning && runPhaseType && (
               <span className="text-[10px] text-text-tertiary font-mono ml-1">
-                ({currentPhase.type})
+                ({runPhaseType})
               </span>
             )}
           </button>

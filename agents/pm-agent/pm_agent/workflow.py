@@ -22,6 +22,7 @@ from vibeos_agent import (
     AgentStatus,
     AgentTask,
     AgentType,
+    PhaseStatus,
     WSGatewayClient,
     WorkspaceClient,
 )
@@ -85,6 +86,37 @@ class WorkflowEngine:
         except Exception:
             pass
 
+    async def _recover_after_project_error(
+        self,
+        workspace_id: str,
+        phase_type: str,
+        failed_task_id: str | None,
+    ) -> None:
+        """Avoid leaving phase/task stuck in in_progress when run_project aborts mid-phase."""
+        phase_id = await self.ws_client.find_phase_by_type(workspace_id, phase_type)
+        if not phase_id:
+            return
+        try:
+            await self.ws_client.update_phase(
+                workspace_id, phase_id,
+                status=PhaseStatus.PENDING,
+            )
+        except Exception:
+            pass
+        if failed_task_id:
+            try:
+                await self.ws_client.update_task(
+                    workspace_id, failed_task_id, {"status": "pending"},
+                )
+            except Exception:
+                pass
+        await self.ws_gw.publish_log(
+            workspace_id, "pm",
+            f"Project run stopped in {phase_type}; phase reset to pending "
+            f"and failed task unlocked for retry.",
+            level="warn",
+        )
+
     async def run_phase(
         self,
         workspace_id: str,
@@ -126,11 +158,13 @@ class WorkflowEngine:
         try:
             await self.ws_client.update_phase(
                 workspace_id, phase_id,
-                status=__import__("vibeos_agent").PhaseStatus.IN_PROGRESS,
+                status=PhaseStatus.IN_PROGRESS,
             )
         except Exception:
             pass
 
+        tasks_succeeded = 0
+        tasks_failed = 0
         for i, task in enumerate(pending):
             task_title = task.get("title", "Untitled")
             task_start_evt = {
@@ -173,6 +207,7 @@ class WorkflowEngine:
                 result = await self.dispatcher.dispatch(agent_type, agent_task)
 
                 if isinstance(result, dict) and result.get("error"):
+                    tasks_failed += 1
                     err_evt = {
                         "type": "workflow:task_error",
                         "phase": phase_type,
@@ -183,6 +218,7 @@ class WorkflowEngine:
                     yield err_evt
                     await self._broadcast(workspace_id, err_evt)
                 else:
+                    tasks_succeeded += 1
                     task_done_evt = {
                         "type": "workflow:task_complete",
                         "phase": phase_type,
@@ -199,6 +235,7 @@ class WorkflowEngine:
                         pass
 
             except Exception as exc:
+                tasks_failed += 1
                 err_evt = {
                     "type": "workflow:task_error",
                     "phase": phase_type,
@@ -212,16 +249,25 @@ class WorkflowEngine:
         phase_done_evt = {
             "type": "workflow:phase_complete",
             "phase": phase_type,
-            "tasks_executed": len(pending),
+            "tasks_executed": tasks_succeeded,
+            "tasks_total": len(pending),
+            "tasks_failed": tasks_failed,
         }
         yield phase_done_evt
         await self._broadcast(workspace_id, phase_done_evt)
 
-        await self.ws_gw.publish_log(
-            workspace_id, "pm",
-            f"Phase {phase_type} complete: {len(pending)} tasks executed",
-            level="success",
-        )
+        if tasks_failed:
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"Phase {phase_type} finished: {tasks_succeeded} succeeded, {tasks_failed} failed",
+                level="error" if tasks_succeeded == 0 else "warn",
+            )
+        else:
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"Phase {phase_type} complete: {tasks_succeeded} tasks executed",
+                level="success",
+            )
 
     async def run_project(
         self,
@@ -250,20 +296,26 @@ class WorkflowEngine:
 
         has_error = False
         for phase_type in PHASE_ORDER[start_idx:]:
+            failed_task_id: str | None = None
             async for event in self.run_phase(workspace_id, phase_type, user_message):
                 yield event
 
                 if event.get("type") == "workflow:task_error":
+                    failed_task_id = event.get("task_id")
                     proj_err_evt = {
                         "type": "workflow:project_error",
                         "phase": phase_type,
                         "error": event.get("error", "unknown"),
+                        "task_id": failed_task_id,
                     }
                     yield proj_err_evt
                     await self._broadcast(workspace_id, proj_err_evt)
                     has_error = True
                     break
             if has_error:
+                await self._recover_after_project_error(
+                    workspace_id, phase_type, failed_task_id,
+                )
                 break
 
         proj_done_evt = {

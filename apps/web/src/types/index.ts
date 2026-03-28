@@ -118,7 +118,12 @@ export interface WorkflowEvent {
   reason?: string
   error?: string
   result_summary?: string
+  /** Successfully completed tasks in this phase (phase_complete). */
   tasks_executed?: number
+  /** Total tasks attempted in this phase; optional for older payloads. */
+  tasks_total?: number
+  /** Failed tasks in this phase when phase ended with errors. */
+  tasks_failed?: number
   phases?: string[]
 }
 

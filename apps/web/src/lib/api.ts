@@ -119,7 +119,7 @@ export const workflowApi = {
 }
 
 export const agentApi = {
-  nlp: (workspaceId: string, message: string) =>
+  nlp: (workspaceId: string, message: string, context?: Record<string, unknown>) =>
     request<{
       intent: string
       summary: string
@@ -127,7 +127,11 @@ export const agentApi = {
       result: any
     }>('/api/nlp', {
       method: 'POST',
-      body: JSON.stringify({ workspace_id: workspaceId, message }),
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        message,
+        ...(context && Object.keys(context).length > 0 ? { context } : {}),
+      }),
     }),
 
   chat: (agentType: string, workspaceId: string, message: string) =>
@@ -139,8 +143,12 @@ export const agentApi = {
       },
     ),
 
-  nlpStream: (workspaceId: string, message: string) =>
-    streamSSE('/api/nlp/stream', { workspace_id: workspaceId, message }),
+  nlpStream: (workspaceId: string, message: string, context?: Record<string, unknown>) =>
+    streamSSE('/api/nlp/stream', {
+      workspace_id: workspaceId,
+      message,
+      ...(context && Object.keys(context).length > 0 ? { context } : {}),
+    }),
 
   chatStream: (agentType: string, workspaceId: string, message: string) =>
     streamSSE(`/api/agents/${agentType}/chat/stream`, {

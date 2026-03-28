@@ -74,6 +74,17 @@ function patchWorkspace(
 
 let wsLoadGeneration = 0
 
+/** Aligns NLP "execute this phase" with the phase tab the user is viewing. */
+function buildNlpPhaseContext(get: () => WorkspaceState): Record<string, string> | undefined {
+  const id = get().activeWorkspaceId
+  if (!id) return undefined
+  const ws = get().workspaces.find((w) => w.id === id)
+  const phaseId = get().activePhaseId
+  const phase = ws?.phases.find((p) => p.id === phaseId)
+  if (phase?.type) return { phase_type: phase.type }
+  return undefined
+}
+
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   workspaces: [],
   activeWorkspaceId: null,
@@ -171,8 +182,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ],
     }))
 
+    const nlpCtx = buildNlpPhaseContext(get)
     agentApi
-      .nlp(wsId, input)
+      .nlp(wsId, input, nlpCtx)
       .then((resp) => {
         const agentMsg = mapNLPResultToMessage(resp, sessionId)
         set((s) => ({
@@ -512,7 +524,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           }],
         }))
 
-        for await (const evt of streamSSE('/api/nlp/stream', { workspace_id: wsId, message: input })) {
+        const nlpCtx = buildNlpPhaseContext(get)
+        for await (const evt of agentApi.nlpStream(wsId, input, nlpCtx)) {
           const data = JSON.parse(evt.data)
 
           if (evt.event === 'intent' && data.target_agent) {

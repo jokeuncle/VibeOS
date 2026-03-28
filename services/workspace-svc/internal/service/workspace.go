@@ -142,9 +142,18 @@ func (s *Service) DeleteWorkspace(ctx context.Context, id string) error {
 // Phase operations
 // ---------------------------------------------------------------------------
 
-var validTransitions = map[models.PhaseStatus]models.PhaseStatus{
-	models.StatusPending:    models.StatusInProgress,
-	models.StatusInProgress: models.StatusCompleted,
+func phaseStatusTransitionAllowed(from, to models.PhaseStatus) bool {
+	switch {
+	case from == models.StatusPending && to == models.StatusInProgress:
+		return true
+	case from == models.StatusInProgress && to == models.StatusCompleted:
+		return true
+	case from == models.StatusInProgress && to == models.StatusPending:
+		// e.g. orchestrator aborted mid-phase — unlock phase for retry
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) UpdatePhaseStatus(ctx context.Context, wsID, phaseID, status string) (*models.Phase, error) {
@@ -157,8 +166,7 @@ func (s *Service) UpdatePhaseStatus(ctx context.Context, wsID, phaseID, status s
 	}
 
 	newStatus := models.PhaseStatus(status)
-	allowed, ok := validTransitions[phase.Status]
-	if !ok || allowed != newStatus {
+	if !phaseStatusTransitionAllowed(phase.Status, newStatus) {
 		return nil, fmt.Errorf("%w: cannot transition from %s to %s", ErrInvalidTransition, phase.Status, newStatus)
 	}
 
