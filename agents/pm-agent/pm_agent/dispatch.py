@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import uuid
+import os
 from typing import Any
 
 import httpx
@@ -16,13 +16,20 @@ from vibeos_agent import (
     config,
 )
 
-AGENT_ENDPOINTS: dict[AgentType, str] = {
-    AgentType.ARCHITECTURE: "http://architecture-agent:8041",
-    AgentType.FRONTEND: "http://frontend-agent:8042",
-    AgentType.BACKEND: "http://backend-agent:8043",
-    AgentType.QA: "http://qa-agent:8044",
-    AgentType.DEVOPS: "http://devops-agent:8045",
-}
+
+def _build_agent_endpoints() -> dict[str, str]:
+    """Build agent endpoint registry from env vars with sensible defaults."""
+    defaults = {
+        "architecture": ("ARCHITECTURE_AGENT_URL", "http://architecture-agent:8041"),
+        "frontend": ("FRONTEND_AGENT_URL", "http://frontend-agent:8042"),
+        "backend": ("BACKEND_AGENT_URL", "http://backend-agent:8043"),
+        "qa": ("QA_AGENT_URL", "http://qa-agent:8044"),
+        "devops": ("DEVOPS_AGENT_URL", "http://devops-agent:8045"),
+    }
+    return {k: os.getenv(env, default) for k, (env, default) in defaults.items()}
+
+
+AGENT_ENDPOINTS: dict[str, str] = _build_agent_endpoints()
 
 
 class Dispatcher:
@@ -37,7 +44,7 @@ class Dispatcher:
         agent_type: AgentType,
         task: AgentTask,
     ) -> dict[str, Any]:
-        base = AGENT_ENDPOINTS.get(agent_type)
+        base = AGENT_ENDPOINTS.get(agent_type.value)
         if base is None:
             return {"error": f"No endpoint registered for {agent_type}"}
 
@@ -55,14 +62,14 @@ class Dispatcher:
             )
             resp.raise_for_status()
             result = resp.json()
-        except httpx.HTTPStatusError as exc:
+        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
             await self.ws.publish_agent_status(
                 task.workspace_id,
                 agent_type,
                 AgentStatus.ERROR,
                 detail=str(exc),
             )
-            return {"error": str(exc)}
+            return {"error": f"Agent {agent_type} unavailable: {exc}"}
 
         await self.ws.publish_agent_status(
             task.workspace_id,
@@ -100,16 +107,19 @@ class Dispatcher:
         workspace_id: str,
         message: str,
     ) -> dict[str, Any]:
-        base = AGENT_ENDPOINTS.get(agent_type)
+        base = AGENT_ENDPOINTS.get(agent_type.value)
         if base is None:
             return {"error": f"No endpoint registered for {agent_type}"}
 
-        resp = await self._http.post(
-            f"{base}/api/chat",
-            json={"workspace_id": workspace_id, "message": message},
-        )
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = await self._http.post(
+                f"{base}/api/chat",
+                json={"workspace_id": workspace_id, "message": message},
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+            return {"error": f"Agent {agent_type} unavailable: {exc}"}
 
     async def close(self) -> None:
         await self._http.aclose()

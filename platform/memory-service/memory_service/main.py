@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .config import settings
@@ -15,6 +17,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VibeOS Memory Service", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 memory_client: VibeOSMemory | None = None
 feedback_processor: FeedbackProcessor | None = None
@@ -73,7 +81,7 @@ async def add_memory(req: AddMemoryRequest) -> dict[str, Any]:
     layer = metadata.get("layer", "project")
     metadata.setdefault("layer", layer)
 
-    result = memory_client.add(content=req.content, user_id=user_id, metadata=metadata)
+    result = await asyncio.to_thread(memory_client.add, content=req.content, user_id=user_id, metadata=metadata)
     return {"status": "ok", "result": result}
 
 
@@ -90,7 +98,7 @@ async def search_memory(
     if not uid:
         raise HTTPException(status_code=400, detail="workspace_id or user_id required")
 
-    results = memory_client.search(query=query, user_id=uid, limit=limit)
+    results = await asyncio.to_thread(memory_client.search, query=query, user_id=uid, limit=limit)
 
     if agent_type:
         results = [
@@ -111,7 +119,7 @@ async def list_memories(
     if not uid:
         raise HTTPException(status_code=400, detail="workspace_id or user_id required")
 
-    results = memory_client.get_all(user_id=uid)
+    results = await asyncio.to_thread(memory_client.get_all, user_id=uid)
 
     if agent_type:
         results = [
@@ -125,7 +133,7 @@ async def list_memories(
 async def delete_memory(memory_id: str) -> dict[str, str]:
     assert memory_client is not None
     try:
-        memory_client.delete(memory_id)
+        await asyncio.to_thread(memory_client.delete, memory_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "deleted"}
@@ -145,14 +153,14 @@ async def record_feedback(req: FeedbackRequest) -> dict[str, Any]:
         original_output=req.original_output,
         modified_output=req.modified_output,
     )
-    result = feedback_processor.process(signal)
+    result = await asyncio.to_thread(feedback_processor.process, signal)
     return result
 
 
 @app.get("/api/preferences/{workspace_id}")
 async def get_preferences(workspace_id: str) -> dict[str, Any]:
     assert feedback_processor is not None
-    prefs = feedback_processor.get_aggregated_preferences(workspace_id)
+    prefs = await asyncio.to_thread(feedback_processor.get_aggregated_preferences, workspace_id)
     return {"workspace_id": workspace_id, "preferences": prefs}
 
 
@@ -166,23 +174,26 @@ async def assemble_context(req: ContextAssembleRequest) -> dict[str, Any]:
     sections: list[str] = []
 
     if req.include_project_memory and req.user_message:
-        project_hits = memory_client.search_project_memory(
-            query=req.user_message, workspace_id=req.workspace_id, limit=10
+        project_hits = await asyncio.to_thread(
+            memory_client.search_project_memory,
+            query=req.user_message, workspace_id=req.workspace_id, limit=10,
         )
         if project_hits:
             lines = [f"- {m.get('memory', m.get('text', ''))}" for m in project_hits]
             sections.append("## Project Memory\n" + "\n".join(lines))
 
     if req.include_org_memory and req.user_message:
-        org_hits = memory_client.search_org_memory(
-            query=req.user_message, org_id=req.workspace_id, limit=5
+        org_hits = await asyncio.to_thread(
+            memory_client.search_org_memory,
+            query=req.user_message, org_id=req.workspace_id, limit=5,
         )
         if org_hits:
             lines = [f"- {m.get('memory', m.get('text', ''))}" for m in org_hits]
             sections.append("## Organization Memory\n" + "\n".join(lines))
 
     if req.include_preferences:
-        pref_hits = memory_client.search_preferences(
+        pref_hits = await asyncio.to_thread(
+            memory_client.search_preferences,
             query=req.user_message or "preferences",
             workspace_id=req.workspace_id,
             limit=10,

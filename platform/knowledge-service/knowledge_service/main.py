@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import config
@@ -19,6 +20,7 @@ graph_store = GraphStore(config.DATABASE_URL)
 distiller = Distiller(
     graph_store=graph_store,
     llm_gateway_url=config.LLM_GATEWAY_URL,
+    workspace_svc_url=config.WORKSPACE_SVC_URL,
 )
 
 
@@ -30,6 +32,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VibeOS Knowledge Service", version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # Request / response models

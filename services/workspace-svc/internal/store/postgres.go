@@ -30,8 +30,8 @@ type Store interface {
 
 	CreateTask(ctx context.Context, task *models.Task) error
 	GetTask(ctx context.Context, id string) (*models.Task, error)
-	UpdateTask(ctx context.Context, id string, req models.UpdateTaskReq) (*models.Task, error)
-	DeleteTask(ctx context.Context, id string) error
+	UpdateTask(ctx context.Context, id string, workspaceID string, req models.UpdateTaskReq) (*models.Task, error)
+	DeleteTask(ctx context.Context, id string, workspaceID string) error
 	ReorderTasks(ctx context.Context, phaseID string, taskIDs []string) error
 	CountTasksByPhase(ctx context.Context, phaseID string) (total int, completed int, err error)
 
@@ -441,7 +441,7 @@ func (s *PostgresStore) GetTask(ctx context.Context, id string) (*models.Task, e
 	return t, nil
 }
 
-func (s *PostgresStore) UpdateTask(ctx context.Context, id string, req models.UpdateTaskReq) (*models.Task, error) {
+func (s *PostgresStore) UpdateTask(ctx context.Context, id string, workspaceID string, req models.UpdateTaskReq) (*models.Task, error) {
 	sets := make([]string, 0, 8)
 	args := make([]any, 0, 8)
 	idx := 1
@@ -500,8 +500,12 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, id string, req models.Up
 
 	sets = append(sets, "updated_at = NOW()")
 	args = append(args, id)
-	query := fmt.Sprintf("UPDATE tasks SET %s WHERE id = $%d RETURNING %s",
-		strings.Join(sets, ", "), idx, taskCols)
+	idIdx := idx
+	idx++
+	args = append(args, workspaceID)
+	wsIdx := idx
+	query := fmt.Sprintf("UPDATE tasks SET %s WHERE id = $%d AND workspace_id = $%d RETURNING %s",
+		strings.Join(sets, ", "), idIdx, wsIdx, taskCols)
 
 	t, err := scanTask(s.pool.QueryRow(ctx, query, args...))
 	if err != nil {
@@ -513,8 +517,8 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, id string, req models.Up
 	return t, nil
 }
 
-func (s *PostgresStore) DeleteTask(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM tasks WHERE id = $1`, id)
+func (s *PostgresStore) DeleteTask(ctx context.Context, id string, workspaceID string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM tasks WHERE id = $1 AND workspace_id = $2`, id, workspaceID)
 	if err != nil {
 		return fmt.Errorf("delete task: %w", err)
 	}

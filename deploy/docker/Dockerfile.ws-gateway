@@ -2,7 +2,6 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /build
 COPY services/shared/ ./shared/
 COPY services/ws-gateway/ ./ws-gateway/
-COPY services/go.work ./
 WORKDIR /build/ws-gateway
 RUN go build -o /ws-gateway ./cmd/main.go
 

@@ -53,6 +53,12 @@ func (h *Hub) Unregister(c *Client) {
 	h.mu.Unlock()
 }
 
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
 func (h *Hub) Broadcast(workspaceID string, data []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -195,7 +201,7 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  status,
-			"clients": len(hub.clients),
+			"clients": hub.ClientCount(),
 		})
 	})
 

@@ -222,7 +222,7 @@ func (s *Service) CreateTask(ctx context.Context, wsID, phaseID string, req mode
 }
 
 func (s *Service) UpdateTask(ctx context.Context, wsID, taskID string, req models.UpdateTaskReq) (*models.Task, error) {
-	task, err := s.store.UpdateTask(ctx, taskID, req)
+	task, err := s.store.UpdateTask(ctx, taskID, wsID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +248,7 @@ func (s *Service) DeleteTask(ctx context.Context, wsID, taskID string) error {
 		return err
 	}
 
-	if err := s.store.DeleteTask(ctx, taskID); err != nil {
+	if err := s.store.DeleteTask(ctx, taskID, wsID); err != nil {
 		return err
 	}
 

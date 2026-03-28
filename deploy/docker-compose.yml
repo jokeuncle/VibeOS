@@ -37,7 +37,7 @@ services:
     volumes:
       - qdrantdata:/qdrant/storage
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/6333"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -122,7 +122,7 @@ services:
       MEMORY_SVC_URL: http://memory-service:8050
       RAG_SVC_URL: http://rag-pipeline:8060
       KNOWLEDGE_SVC_URL: http://knowledge-service:8070
-      REDIS_URL: redis://redis:6379/2
+      REDIS_URL: redis://redis:6379/6
     depends_on:
       - llm-gateway
       - workspace-svc
@@ -177,9 +177,12 @@ services:
       PORT: "8070"
       DATABASE_URL: postgres://vibeos:vibeos_dev@postgres:5432/vibeos?sslmode=disable
       LLM_GATEWAY_URL: http://llm-gateway:8030
+      WORKSPACE_SVC_URL: http://workspace-svc:8010
       REDIS_URL: redis://redis:6379/5
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:

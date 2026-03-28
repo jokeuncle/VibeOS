@@ -2,7 +2,6 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /build
 COPY services/shared/ ./shared/
 COPY services/workspace-svc/ ./workspace-svc/
-COPY services/go.work ./
 WORKDIR /build/workspace-svc
 RUN go build -o /workspace-svc ./cmd/main.go
 

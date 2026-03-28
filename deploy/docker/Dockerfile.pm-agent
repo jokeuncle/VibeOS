@@ -2,8 +2,7 @@ FROM python:3.14-slim
 WORKDIR /app
 COPY agents/shared/ /deps/shared/
 RUN pip install --no-cache-dir /deps/shared/
-COPY agents/pm-agent/pyproject.toml .
-RUN pip install --no-cache-dir .
 COPY agents/pm-agent/ .
+RUN pip install --no-cache-dir .
 EXPOSE 8040
 CMD ["uvicorn", "pm_agent.main:app", "--host", "0.0.0.0", "--port", "8040"]

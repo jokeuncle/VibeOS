@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .code_indexer import build_code_documents
@@ -34,6 +35,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VibeOS RAG Pipeline", version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _get_indexer() -> WorkspaceIndexer:

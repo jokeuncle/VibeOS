@@ -1,7 +1,6 @@
 FROM python:3.14-slim
 WORKDIR /app
-COPY platform/llm-gateway/pyproject.toml .
-RUN pip install --no-cache-dir .
 COPY platform/llm-gateway/ .
+RUN pip install --no-cache-dir .
 EXPOSE 8030
 CMD ["uvicorn", "llm_gateway.main:app", "--host", "0.0.0.0", "--port", "8030"]

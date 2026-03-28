@@ -57,7 +57,6 @@ app = FastAPI(title="VibeOS LLM Gateway", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -82,6 +81,7 @@ class ChatRequest(BaseModel):
     stream: bool = False
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, ge=1, le=200_000)
+    tools: list[dict[str, Any]] | None = None
 
 
 class TokenUsage(BaseModel):
@@ -126,6 +126,7 @@ async def _call_with_circuit_breaker(
     temperature: float,
     max_tokens: int,
     stream: bool = False,
+    tools: list[dict[str, Any]] | None = None,
 ) -> Any:
     assert cb_registry is not None
     last_err: Exception | None = None
@@ -136,13 +137,18 @@ async def _call_with_circuit_breaker(
             continue
 
         try:
-            response = await litellm.acompletion(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=stream,
-            )
+            profile = MODEL_REGISTRY.get(model)
+            litellm_model = (profile.litellm_model or model) if profile else model
+            kwargs: dict[str, Any] = {
+                "model": litellm_model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": stream,
+            }
+            if tools:
+                kwargs["tools"] = tools
+            response = await litellm.acompletion(**kwargs)
             await cb.record_success()
             return response
         except Exception as exc:
@@ -234,6 +240,7 @@ async def chat_completions(req: ChatRequest) -> ChatResponse:
         messages,
         temperature=req.temperature,
         max_tokens=req.max_tokens,
+        tools=req.tools,
     )
 
     usage_dict = dict(response.usage) if response.usage else {}
@@ -282,6 +289,7 @@ async def _stream_response(
         temperature=req.temperature,
         max_tokens=req.max_tokens,
         stream=True,
+        tools=req.tools,
     )
 
     async def event_generator() -> AsyncGenerator[str, None]:

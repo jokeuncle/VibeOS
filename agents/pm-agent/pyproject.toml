@@ -1,6 +1,6 @@
 [build-system]
 requires = ["hatchling"]
-build-backend = "hatchling.backends"
+build-backend = "hatchling.build"
 
 [project]
 name = "pm-agent"
@@ -12,3 +12,6 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pm_agent"]

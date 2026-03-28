@@ -145,18 +145,33 @@ class ArchitectureAgent(BaseAgent):
             "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
         )
 
+        arch_phase_id = await self.workspace_svc.find_phase_by_type(
+            task.workspace_id, "architecture"
+        )
+
         created_tasks: list[dict[str, Any]] = []
         for t in structured.get("tasks", []):
             new_task = Task(title=t["title"], description=t.get("description", ""))
-            result = await self.workspace_svc.create_task(task.workspace_id, new_task)
-            created_tasks.append(result)
-            rich_blocks.append(
-                RichBlock(
-                    type="task_card",
-                    content=t["title"],
-                    metadata={"task": result},
+            try:
+                result = await self.workspace_svc.create_task(
+                    task.workspace_id, new_task, phase_id=arch_phase_id
                 )
-            )
+                created_tasks.append(result)
+                rich_blocks.append(
+                    RichBlock(
+                        type="task_card",
+                        content=t["title"],
+                        metadata={"task": result},
+                    )
+                )
+            except Exception:
+                rich_blocks.append(
+                    RichBlock(
+                        type="task_card",
+                        content=t["title"],
+                        metadata={"description": t.get("description", "")},
+                    )
+                )
 
         msg = self._make_message(
             task.workspace_id,

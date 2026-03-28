@@ -34,6 +34,7 @@ class ModelProfile:
     tool_calling: bool = False
     multimodal: bool = False
     chinese: bool = False
+    litellm_model: str = ""  # provider-prefixed name for litellm; if empty, uses name
 
     def score(self, contract: CapabilityContract) -> int:
         """Higher score = better match. Negative means hard-fail."""
@@ -100,6 +101,16 @@ MODEL_REGISTRY: dict[str, ModelProfile] = {
         tool_calling=True,
         chinese=True,
     ),
+    "doubao-seed-2-0-pro-260215": ModelProfile(
+        name="doubao-seed-2-0-pro-260215",
+        provider="volcengine",
+        reasoning=ReasoningLevel.ADVANCED,
+        context_window=256_000,
+        code_generation=True,
+        tool_calling=True,
+        chinese=True,
+        litellm_model="volcengine/doubao-seed-2-0-pro-260215",
+    ),
 }
 
 AGENT_TYPE_DEFAULTS: dict[str, str] = {
@@ -107,7 +118,7 @@ AGENT_TYPE_DEFAULTS: dict[str, str] = {
     "planner": "gpt-4o",
     "reviewer": "deepseek-chat",
     "translator": "qwen-plus",
-    "default": "claude-sonnet-4-20250514",
+    "default": "doubao-seed-2-0-pro-260215",
 }
 
 

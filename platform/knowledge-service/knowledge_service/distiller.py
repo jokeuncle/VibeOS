@@ -100,7 +100,7 @@ class Distiller:
         self,
         graph_store: GraphStore,
         llm_gateway_url: str,
-        workspace_svc_url: str = "http://localhost:8020",
+        workspace_svc_url: str = "http://localhost:8010",
     ) -> None:
         self.graph = graph_store
         self.llm_gateway_url = llm_gateway_url
@@ -146,18 +146,18 @@ class Distiller:
 
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
-                f"{self.llm_gateway_url}/api/chat",
+                f"{self.llm_gateway_url}/api/chat/completions",
                 json={
                     "messages": [{"role": "user", "content": prompt}],
-                    "response_format": "json",
+                    "model": "auto",
+                    "temperature": 0.3,
+                    "max_tokens": 8192,
                 },
             )
             resp.raise_for_status()
             body = resp.json()
 
-        content = body.get("content", "") or body.get("message", {}).get(
-            "content", ""
-        )
+        content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
         content = content.strip()
         if content.startswith("```"):
             content = re.sub(r"^```[a-z]*\n?", "", content)

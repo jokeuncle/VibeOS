@@ -32,9 +32,34 @@ class WorkspaceClient:
         self._base = base_url or config.workspace_svc_url
         self._http = httpx.AsyncClient(base_url=self._base, timeout=30)
 
-    async def create_task(self, workspace_id: str, task: Task) -> dict[str, Any]:
+    async def get_phases(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Extract phases from the workspace GET response."""
+        ws = await self.get_workspace(workspace_id)
+        if isinstance(ws, dict) and "data" in ws:
+            ws = ws["data"]
+        return ws.get("phases", []) if isinstance(ws, dict) else []
+
+    async def find_phase_by_type(
+        self, workspace_id: str, phase_type: str
+    ) -> str | None:
+        """Return the phase ID for a given phase type, or None."""
+        phases = await self.get_phases(workspace_id)
+        for p in phases:
+            if p.get("type") == phase_type:
+                return p["id"]
+        return None
+
+    async def create_task(
+        self, workspace_id: str, task: Task, *, phase_id: str | None = None
+    ) -> dict[str, Any]:
+        if not phase_id:
+            phase_id = await self.find_phase_by_type(workspace_id, "architecture")
+        if not phase_id:
+            phases = await self.get_phases(workspace_id)
+            if phases:
+                phase_id = phases[0]["id"]
         resp = await self._http.post(
-            f"/api/workspaces/{workspace_id}/tasks",
+            f"/api/workspaces/{workspace_id}/phases/{phase_id}/tasks",
             json=task.model_dump(mode="json", exclude_none=True),
         )
         resp.raise_for_status()
@@ -192,7 +217,7 @@ class MemoryClient:
             params={"query": query, "workspace_id": workspace_id, "agent_type": agent_type, "limit": limit},
         )
         resp.raise_for_status()
-        return resp.json().get("results", [])
+        return resp.json().get("memories", [])
 
     async def assemble_context(
         self,
@@ -308,7 +333,7 @@ class KnowledgeClient:
             },
         )
         resp.raise_for_status()
-        return resp.json().get("nodes", [])
+        return resp.json().get("results", [])
 
     async def get_patterns(
         self,
