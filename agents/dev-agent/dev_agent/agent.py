@@ -212,15 +212,26 @@ class DevelopmentAgent(BaseAgent):
             await _log(task.workspace_id, agent_name, f"Starting task: {task.intent}", task_id=task.task_id)
 
             user_msg = task.user_message or task.description
+
+            # Make the task context available for tool credential injection
+            self._current_task_context = task.context
+
+            # Extract gitlab repo context for prompt enrichment
+            repo_context = {k: v for k, v in (task.context or {}).items() if k.startswith("gitlab_")}
+
             prompt = (
                 f"Task: {task.intent}\n"
                 f"Description: {task.description}\n"
                 f"User request: {user_msg}\n"
-                f"Context: {json.dumps(task.context)}"
+                f"Context: {json.dumps({k: v for k, v in (task.context or {}).items() if not k.startswith('gitlab_token')})}"
             )
 
             await _log(task.workspace_id, agent_name, "Calling LLM for development planning (tool-use mode)…", task_id=task.task_id)
-            raw_reply = await self._call_llm_with_tools(prompt, workspace_id=task.workspace_id)
+            raw_reply = await self._call_llm_with_tools(
+                prompt,
+                workspace_id=task.workspace_id,
+                repo_context=repo_context or None,
+            )
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:

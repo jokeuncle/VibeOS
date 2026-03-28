@@ -1,0 +1,63 @@
+---
+description: React component, Zustand store, and Tailwind CSS patterns for the web frontend
+globs: apps/web/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend React Patterns
+
+## Component Structure
+
+- **Function components** with **default exports**, one per file
+- Feature components live flat in `components/`; reusable UI primitives in `components/ui/`
+- **Keep files under ~350 lines**. If a component grows beyond that, extract sub-views or form sections into sibling files
+- Animation: `framer-motion` (`motion.div` with `initial`/`animate`/`transition`)
+- Icons: `lucide-react`
+- DnD: `@dnd-kit`
+
+## Tailwind CSS Design Tokens
+
+Tokens are defined in `index.css` via `@theme { ... }`. Always use token classes, never raw hex:
+
+```
+bg-surface-0  bg-surface-1  bg-surface-2  bg-surface-3  bg-surface-4
+text-text-primary  text-text-secondary  text-text-tertiary
+border-border-subtle  border-border-default  border-border-strong
+text-accent  bg-accent  text-success  text-warning  text-danger
+```
+
+Common patterns: `rounded-xl`, fractional opacity `bg-accent/[0.03]`, conditional classes via template literals. Supports `[data-theme="light"]` via same CSS variable names.
+
+## Dropdowns / Selects
+
+Never use native `<select>`. Use the custom dropdown pattern (`FormSelect` in `ui/FormSelect.tsx` for forms, or the `Dropdown` pattern in `FilterToolbar.tsx` for toolbars): trigger button with `ChevronDown`, `AnimatePresence` + `motion.div` popover, click-outside dismiss.
+
+## Form Input Styling
+
+Standard input class string (consistent across all forms):
+
+```
+w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-quaternary focus:outline-none focus:ring-1 focus:ring-accent/50
+```
+
+## Modal Pattern
+
+Modals follow this structure: fixed backdrop (`bg-black/50`), `motion.div` container with `rounded-2xl bg-surface-1 border border-border-default shadow-2xl`, header with icon + title + X close button, optional error banner, scrollable body, footer with actions.
+
+## Zustand Stores
+
+- One `create<StateInterface>()` call per store with state + actions in a single object
+- Naming: `useWorkspaceStore`, `useUIStore`, `useI18nStore`
+- Action naming conventions:
+  - `fetch*` / `refresh*` — server sync
+  - `set*` — simple state setters
+  - `add*` / `remove*` / `update*` — CRUD operations
+  - `send*` / `send*Stream` — API calls with optional SSE
+  - `run*` — workflow execution
+  - `toggle*` / `open*` / `close*` — UI state
+  - `patch*` — partial server-shaped updates
+- Access specific slices with selectors: `useWorkspaceStore((s) => s.activeWorkspaceId)`
+
+## Types
+
+All TypeScript types live in `types/index.ts` as a single barrel. String union types mirror backend domain vocabulary. Use `as const` arrays with derived union types for constrained pick-lists.

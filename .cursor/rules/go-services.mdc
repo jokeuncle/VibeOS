@@ -1,0 +1,63 @@
+---
+description: Go microservice conventions — Chi router, handler/service/store layering, response format
+globs: services/**/*.go
+alwaysApply: false
+---
+
+# Go Service Conventions
+
+## Layered Architecture
+
+```
+cmd/main.go          → wires dependencies, registers routes
+internal/handler/    → HTTP handlers (decode, validate, respond)
+internal/service/    → business logic, orchestration
+internal/store/      → data access (PostgreSQL)
+```
+
+`main.go` constructs: `store.NewPostgresStore()` → `service.New(store, redis, logger)` → `handler.NewXxxHandler(svc, logger)`.
+
+## Chi Router
+
+- Use `chi.NewRouter()` with middleware stack: custom CORS, `RequestID`, `RealIP`, `Logger`, `Recoverer`
+- Nested route groups: `r.Route("/api/workspaces", func(r chi.Router) { ... })`
+- Health endpoint: `GET /health` → `{"status":"ok"}`
+
+## Response Helpers
+
+All handlers use shared helpers — never write raw responses:
+
+```go
+func writeJSON(w http.ResponseWriter, status int, v any) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+    writeJSON(w, status, models.APIResponse[any]{Error: msg})
+}
+```
+
+## Error Handling
+
+- Map `store.ErrNotFound` → 404 with a descriptive message
+- Log internal errors with `slog` before returning 500
+- Never leak internal details in 500 responses — use generic `"internal error"`
+
+## Environment Variables
+
+Use `envOr(key, fallback)` helper in `cmd/main.go`:
+
+```go
+func envOr(key, fallback string) string {
+    if v := os.Getenv(key); v != "" { return v }
+    return fallback
+}
+```
+
+Standard vars: `DATABASE_URL`, `REDIS_URL`, `PORT`.
+
+## Shared Models
+
+DTOs and response types live in `services/shared/models/`. Always use `models.APIResponse[T]` for responses, `models.CreateXxxReq` / `models.UpdateXxxReq` for request bodies.

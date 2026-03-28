@@ -94,10 +94,17 @@ function handleWSEvent(event: Record<string, any>) {
     }
   }
 
+  // Only mirror workflow events from WS when the SSE stream is NOT active,
+  // otherwise the SSE handler in runPhase/runProject already appends them.
   if (event.type?.startsWith('workflow:') && event.workspaceId === activeWsId) {
     if (!store.workflowRunning) {
       const prev = useWorkspaceStore.getState().workflowEvents
-      useWorkspaceStore.setState({ workflowEvents: [...prev, event as any] })
+      const isDupe = prev.length > 0 && prev[prev.length - 1].type === event.type
+        && prev[prev.length - 1].task_id === event.task_id
+        && prev[prev.length - 1].phase === event.phase
+      if (!isDupe) {
+        useWorkspaceStore.setState({ workflowEvents: [...prev, event as any] })
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useId } from 'react'
-import { motion } from 'framer-motion'
-import { List, LayoutGrid, BarChart3, Bot, Check, X, Plus, MessageCircle, Sparkles, Columns2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { List, LayoutGrid, BarChart3, Bot, Check, X, Plus, MessageCircle, Sparkles, Columns2, GitBranch } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -17,6 +17,7 @@ import AgentTimeline from './AgentTimeline'
 import WorkflowControls from './WorkflowControls'
 import ArtifactPanel from './ArtifactPanel'
 import FilterToolbar, { type FilterState } from './FilterToolbar'
+import GitLabReposPanel from './GitLabReposPanel'
 import type { TranslationKey } from '../i18n/en'
 import type { Phase, TaskPriority, Agent } from '../types'
 
@@ -132,6 +133,7 @@ export default function WorkspaceView() {
   const [draftTitle, setDraftTitle] = useState(workspace?.name || '')
   const [draftDesc, setDraftDesc] = useState(workspace?.description || '')
   const [filter, setFilter] = useState<FilterState>({ status: 'all', priority: 'all', sortBy: 'title', sortDir: 'asc' })
+  const [reposPanelOpen, setReposPanelOpen] = useState(false)
 
   useEffect(() => {
     if (workspace) {
@@ -245,6 +247,20 @@ export default function WorkspaceView() {
                 <span className="text-[11px] font-mono text-text-tertiary">
                   {totalTasks} {t('progress.tasks')}
                 </span>
+                <button
+                  onClick={() => setReposPanelOpen(true)}
+                  className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md transition-colors cursor-pointer ${
+                    workspace.repos?.length
+                      ? 'text-accent bg-accent/10 hover:bg-accent/20'
+                      : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-2'
+                  }`}
+                  title="Manage linked repositories"
+                >
+                  <GitBranch className="w-3 h-3" />
+                  {workspace.repos?.length
+                    ? `${workspace.repos.length} repo${workspace.repos.length > 1 ? 's' : ''}`
+                    : 'Link repo'}
+                </button>
               </div>
             </div>
           </motion.div>
@@ -390,6 +406,16 @@ export default function WorkspaceView() {
           <div className="h-20" />
         </div>
       </motion.main>
+
+      {/* GitLab repos panel */}
+      <AnimatePresence>
+        {reposPanelOpen && (
+          <GitLabReposPanel
+            workspaceId={workspace.id}
+            onClose={() => setReposPanelOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

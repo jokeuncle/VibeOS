@@ -13,6 +13,7 @@ Each phase:
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -38,6 +39,19 @@ PHASE_ORDER = [
     "deployment",
     "monitoring",
 ]
+
+
+def resolve_branch_name(task_title: str, strategy: str, default_branch: str) -> str:
+    """Compute a deterministic branch name from the task title and strategy.
+
+    This eliminates LLM free-form branch naming which leads to inconsistency.
+    """
+    slug = re.sub(r"[^\w]+", "-", task_title.lower())[:40].strip("-")
+    if strategy == "feature":
+        return f"feat/{slug}"
+    if strategy == "gitflow":
+        return f"feature/{slug}"
+    return default_branch  # "direct" – commit straight to default
 
 
 @dataclass
@@ -191,6 +205,30 @@ class WorkflowEngine:
             except Exception:
                 pass
 
+            # --- Resolve GitLab repo context for this task ---
+            repos = await self.ws_client.get_repos_for_phase(workspace_id, phase_type)
+            primary = next((r for r in repos if r.get("isPrimary")), repos[0] if repos else None)
+
+            gitlab_ctx: dict[str, Any] = {}
+            if primary:
+                strategy = primary.get("branchStrategy", "feature")
+                default_branch = primary.get("branchDefault", "main")
+                computed_branch = resolve_branch_name(task_title, strategy, default_branch)
+                gitlab_ctx = {
+                    "gitlab_repos": repos,
+                    "gitlab_primary_project": primary.get("projectId"),
+                    "gitlab_primary_url": primary.get("gitlabUrl"),
+                    "gitlab_branch_strategy": strategy,
+                    "gitlab_branch_default": default_branch,
+                    "gitlab_branch": computed_branch,
+                    "gitlab_credential_id": primary.get("credentialId"),
+                }
+                await self.ws_gw.publish_log(
+                    workspace_id, "pm",
+                    f"Repo context: {primary.get('projectId')} branch={computed_branch}",
+                    task_id=task["id"],
+                )
+
             agent_task = AgentTask(
                 task_id=task["id"],
                 workspace_id=workspace_id,
@@ -201,6 +239,7 @@ class WorkflowEngine:
                     "task_title": task_title,
                     "task_description": task.get("description", ""),
                     "phase_type": phase_type,
+                    **gitlab_ctx,
                 },
             )
 

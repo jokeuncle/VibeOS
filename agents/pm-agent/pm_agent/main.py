@@ -25,7 +25,7 @@ from vibeos_agent import (
 
 from .dispatch import Dispatcher
 from .intent import parse_intent, ParsedIntent
-from .workflow import PHASE_ORDER, WorkflowEngine
+from .workflow import PHASE_ORDER, WorkflowEngine, resolve_branch_name
 
 _TASK_EXTRACT_PROMPT = (
     "You are a project management assistant. Given the user's request and workspace phases, "
@@ -241,16 +241,35 @@ async def _handle_execute_task(
 
     await ws_client.update_task(workspace_id, target_task["id"], {"status": "in_progress"})
 
+    # Resolve GitLab repo context (same logic as workflow.py run_phase)
+    task_title = target_task.get("title", "")
+    repos = await ws_client.get_repos_for_phase(workspace_id, phase_type)
+    primary = next((r for r in repos if r.get("isPrimary")), repos[0] if repos else None)
+    gitlab_ctx: dict[str, Any] = {}
+    if primary:
+        strategy = primary.get("branchStrategy", "feature")
+        default_branch = primary.get("branchDefault", "main")
+        gitlab_ctx = {
+            "gitlab_repos": repos,
+            "gitlab_primary_project": primary.get("projectId"),
+            "gitlab_primary_url": primary.get("gitlabUrl"),
+            "gitlab_branch_strategy": strategy,
+            "gitlab_branch_default": default_branch,
+            "gitlab_branch": resolve_branch_name(task_title, strategy, default_branch),
+            "gitlab_credential_id": primary.get("credentialId"),
+        }
+
     task = AgentTask(
         task_id=target_task["id"],
         workspace_id=workspace_id,
         intent=f"execute_{phase_type}",
-        description=target_task.get("title", ""),
+        description=task_title,
         user_message=user_message,
         context={
-            "task_title": target_task.get("title", ""),
+            "task_title": task_title,
             "task_description": target_task.get("description", ""),
             "phase_type": phase_type,
+            **gitlab_ctx,
         },
     )
 

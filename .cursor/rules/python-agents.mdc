@@ -1,0 +1,68 @@
+---
+description: Python agent SDK conventions — BaseAgent, BaseTool, FastAPI app structure
+globs: agents/**/*.py, platform/**/*.py
+alwaysApply: false
+---
+
+# Python Agent Conventions
+
+## Agent Structure
+
+Every domain agent subclasses `BaseAgent` from `vibeos_agent.protocol`:
+
+```python
+class MyAgent(BaseAgent):
+    agent_type = AgentType.MY_DOMAIN
+    system_prompt = SYSTEM_PROMPT       # module-level constant
+    tools = TOOLS                       # OpenAI function-calling schema list
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.tool_registry.register_many(create_my_tools())
+```
+
+- `system_prompt` and `tools` are class-level attributes
+- Tool schemas in `tools` list must match names in `tool_registry` exactly
+- `BaseAgent.__init__` provides shared clients: `self.workspace_svc`, `self.llm`, `self.ws`, `self.session`, `self.memory`, `self.rag`, `self.knowledge`
+
+## Tool Pattern
+
+Subclass `BaseTool` from `vibeos_agent.tools.base`:
+
+```python
+class MyTool(BaseTool):
+    name = "my_tool_name"
+    description = "What this tool does"
+    parameters = {
+        "type": "object",
+        "properties": { ... },
+        "required": [...]
+    }
+
+    async def execute(self, **kwargs: Any) -> str:
+        result = await do_work(kwargs["param"])
+        return self._json_result(result)
+```
+
+- `execute` returns a **string** (use `_json_result()` for dicts/lists)
+- Group related tools via factory: `create_xxx_tools()` returns `list[BaseTool]`
+
+## FastAPI App Pattern
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    agent = MyAgent()
+    app.state.agent = agent
+    yield
+    await agent.close()
+
+app = FastAPI(title="My Agent", version="0.1.0", lifespan=lifespan)
+```
+
+Standard routes: `/health`, `/api/execute`, `/api/execute/stream`, `/api/chat`, `/api/chat/stream`.
+CORS middleware with permissive dev defaults.
+
+## Configuration
+
+Use `vibeos_agent.config.Config` (env-backed with defaults). Service URLs default to Docker hostnames; override with env vars for local dev (e.g., `WORKSPACE_SVC_URL=http://localhost:8010`).

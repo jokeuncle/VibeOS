@@ -48,6 +48,44 @@ type ReorderTasksReq struct {
 	TaskIDs []string `json:"taskIds"`
 }
 
+// GitLab credential DTOs
+type CreateGitLabCredentialReq struct {
+	GitLabURL string `json:"gitlabUrl"`
+	Token     string `json:"token"`     // plaintext PAT; encrypted before storage
+	Label     string `json:"label"`
+	CreatedBy string `json:"createdBy"`
+}
+
+// WorkspaceRepo DTOs
+type CreateWorkspaceRepoReq struct {
+	CredentialID   string   `json:"credentialId"`
+	ProjectID      string   `json:"projectId"`
+	ProjectName    string   `json:"projectName"`
+	ProjectURL     string   `json:"projectUrl"`
+	Role           string   `json:"role"`           // primary | secondary | infra | docs
+	IsPrimary      bool     `json:"isPrimary"`
+	BranchDefault  string   `json:"branchDefault"`
+	BranchStrategy string   `json:"branchStrategy"` // feature | direct | gitflow
+	PhaseTypes     []string `json:"phaseTypes"`     // nil = all phases
+}
+
+type UpdateWorkspaceRepoReq struct {
+	ProjectName    *string  `json:"projectName,omitempty"`
+	ProjectURL     *string  `json:"projectUrl,omitempty"`
+	Role           *string  `json:"role,omitempty"`
+	IsPrimary      *bool    `json:"isPrimary,omitempty"`
+	BranchDefault  *string  `json:"branchDefault,omitempty"`
+	BranchStrategy *string  `json:"branchStrategy,omitempty"`
+	PhaseTypes     []string `json:"phaseTypes,omitempty"`
+}
+
+// TestRepoConnectionResp is returned by the /test endpoint.
+type TestRepoConnectionResp struct {
+	OK          bool   `json:"ok"`
+	ProjectName string `json:"projectName,omitempty"`
+	Message     string `json:"message,omitempty"`
+}
+
 type APIResponse[T any] struct {
 	Data  T      `json:"data"`
 	Error string `json:"error,omitempty"`

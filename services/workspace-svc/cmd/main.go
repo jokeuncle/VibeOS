@@ -64,6 +64,8 @@ func main() {
 	taskHandler := handler.NewTaskHandler(svc, logger)
 	phaseHandler := handler.NewPhaseHandler(svc, logger)
 	artifactHandler := handler.NewArtifactHandler(svc, logger)
+	credHandler := handler.NewGitLabCredentialHandler(svc, logger)
+	repoHandler := handler.NewWorkspaceRepoHandler(svc, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -101,7 +103,23 @@ func main() {
 			r.Post("/artifacts", artifactHandler.Create)
 			r.Get("/artifacts/{artifactId}", artifactHandler.Get)
 			r.Get("/phases/{phaseId}/artifacts", artifactHandler.ListByPhase)
+
+			// GitLab repo bindings
+			r.Get("/repos", repoHandler.List)
+			r.Post("/repos", repoHandler.Create)
+			r.Patch("/repos/{repoId}", repoHandler.Update)
+			r.Delete("/repos/{repoId}", repoHandler.Delete)
+			r.Post("/repos/{repoId}/test", repoHandler.TestConnection)
 		})
+	})
+
+	// GitLab credentials (admin-level, not per-workspace)
+	r.Route("/api/gitlab/credentials", func(r chi.Router) {
+		r.Get("/", credHandler.List)
+		r.Post("/", credHandler.Create)
+		r.Delete("/{credId}", credHandler.Delete)
+		// Internal decrypt endpoint – network-restrict in production
+		r.Get("/{credId}/decrypt", credHandler.Decrypt)
 	})
 
 	// ---- Start -----------------------------------------------------------

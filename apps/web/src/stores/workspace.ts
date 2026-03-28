@@ -1,13 +1,29 @@
 import { create } from 'zustand'
 import type {
   Workspace, Message, PhaseStatus, WorkspaceColor,
-  ActivityItem, AgentType, Task, TaskPriority, LabelColor,
+  ActivityItem, AgentType, Task, TaskPriority, LabelColor, WorkspaceRepo,
 } from '../types'
 import {
   workspaceApi, workflowApi, agentApi, mapNLPResultToMessage, mapAgentChatToMessage,
   streamSSE,
 } from '../lib/api'
 import type { WorkflowEvent } from '../types'
+
+function friendlyError(raw: string): string {
+  if (/rate.?limit|too.?many|SetLimitExceeded|inference limit/i.test(raw)) {
+    return 'AI 模型已达到使用限制，请稍后重试或切换到其他模型。'
+  }
+  if (/502|bad gateway|all models failed/i.test(raw)) {
+    return 'AI 服务暂时不可用，请稍后重试。'
+  }
+  if (/timeout|timed out/i.test(raw)) {
+    return '请求超时，请稍后重试。'
+  }
+  if (/network|fetch|ECONNREFUSED/i.test(raw)) {
+    return '网络连接异常，请检查服务是否正常运行。'
+  }
+  return raw
+}
 
 export interface LogEntry {
   id: string
@@ -64,6 +80,11 @@ interface WorkspaceState {
   workflowEvents: WorkflowEvent[]
   runPhase: (phaseType: string) => void
   runProject: () => void
+
+  // GitLab repo management
+  addRepo: (wsId: string, repo: WorkspaceRepo) => void
+  removeRepo: (wsId: string, repoId: string) => void
+  updateRepoInStore: (wsId: string, repo: WorkspaceRepo) => void
 }
 
 function patchWorkspace(
@@ -76,15 +97,41 @@ function patchWorkspace(
 
 let wsLoadGeneration = 0
 
-/** Aligns NLP "execute this phase" with the phase tab the user is viewing. */
-function buildNlpPhaseContext(get: () => WorkspaceState): Record<string, string> | undefined {
+/** Aligns NLP "execute this phase" with the phase tab the user is viewing.
+ *  Also injects GitLab repo context so PM agent knows which repo to target.
+ */
+function buildNlpPhaseContext(get: () => WorkspaceState): Record<string, unknown> | undefined {
   const id = get().activeWorkspaceId
   if (!id) return undefined
   const ws = get().workspaces.find((w) => w.id === id)
   const phaseId = get().activePhaseId
   const phase = ws?.phases.find((p) => p.id === phaseId)
-  if (phase?.type) return { phase_type: phase.type }
-  return undefined
+
+  const repos = ws?.repos ?? []
+  const phaseRepos = repos.filter((r) =>
+    !r.phaseTypes?.length || (phase?.type && r.phaseTypes.includes(phase.type))
+  )
+  const primary = phaseRepos.find((r) => r.isPrimary) ?? phaseRepos[0]
+
+  const ctx: Record<string, unknown> = {}
+  if (phase?.type) ctx.phase_type = phase.type
+  if (phaseRepos.length) {
+    ctx.gitlab_repos = phaseRepos.map((r) => ({
+      projectId: r.projectId,
+      projectName: r.projectName,
+      gitlabUrl: r.gitlabUrl,
+      role: r.role,
+      isPrimary: r.isPrimary,
+      branchDefault: r.branchDefault,
+      branchStrategy: r.branchStrategy,
+      credentialId: r.credentialId,
+    }))
+    if (primary) {
+      ctx.gitlab_primary_project = primary.projectId
+      ctx.gitlab_primary_url = primary.gitlabUrl
+    }
+  }
+  return Object.keys(ctx).length ? ctx : undefined
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -242,6 +289,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       phases: [],
       agents: [],
       activities: [],
+      repos: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -406,6 +454,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       phases: [],
       agents: [],
       activities: [],
+      repos: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -485,7 +534,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         const errMsg: Message = {
           id: crypto.randomUUID(),
           role: 'agent',
-          content: `Error: ${err.message}`,
+          content: friendlyError(err.message),
           agentType: agentType as AgentType,
           timestamp: new Date().toISOString(),
         }
@@ -539,7 +588,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           } else if (data.summary || data.payload?.summary) {
             content = data.summary || data.payload?.summary || content
           } else if (data.error) {
-            content = `Error: ${data.error}`
+            content = friendlyError(data.error)
           }
 
           set((s) => ({
@@ -552,7 +601,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         if (!content) {
           set((s) => ({
             messages: s.messages.map((m) =>
-              m.id === msgId ? { ...m, content: `Request failed: ${err.message}` } : m
+              m.id === msgId ? { ...m, content: friendlyError(err.message) } : m
             ),
           }))
         }
@@ -603,7 +652,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           } else if (data.content) {
             content = data.content
           } else if (data.error) {
-            content = `Error: ${data.error}`
+            content = friendlyError(data.error)
           }
           if (content) {
             set((s) => ({
@@ -622,7 +671,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             agentChatMessages: {
               ...s.agentChatMessages,
               [key]: (s.agentChatMessages[key] || []).map((m) =>
-                m.id === replyId ? { ...m, content: `Error: ${err.message}` } : m
+                m.id === replyId ? { ...m, content: friendlyError(err.message) } : m
               ),
             },
           }))
@@ -668,6 +717,31 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       })),
     }))
   },
+
+  // GitLab repo management (optimistic local state updates)
+  addRepo: (wsId, repo) =>
+    set((s) => ({
+      workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({
+        ...w,
+        repos: [...(w.repos ?? []), repo],
+      })),
+    })),
+
+  removeRepo: (wsId, repoId) =>
+    set((s) => ({
+      workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({
+        ...w,
+        repos: (w.repos ?? []).filter((r) => r.id !== repoId),
+      })),
+    })),
+
+  updateRepoInStore: (wsId, repo) =>
+    set((s) => ({
+      workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({
+        ...w,
+        repos: (w.repos ?? []).map((r) => (r.id === repo.id ? repo : r)),
+      })),
+    })),
 
   workflowRunning: false,
   workflowEvents: [],

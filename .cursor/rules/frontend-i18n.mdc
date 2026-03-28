@@ -1,0 +1,55 @@
+---
+description: Internationalization (i18n) dictionary conventions for the web frontend
+globs: apps/web/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# i18n Conventions
+
+All user-visible text must go through the i18n dictionary system. Never hardcode display strings in components.
+
+## Dictionary Files
+
+- **`apps/web/src/i18n/en.ts`** — Source of truth. Flat object ending with `as const`. Exports `TranslationKey` type.
+- **`apps/web/src/i18n/zh.ts`** — Imports `TranslationKey` from `./en`, typed as `Record<TranslationKey, string>`. Every key in `en.ts` must have a corresponding entry.
+
+## Adding New Strings
+
+1. Add the key to `en.ts` first (English text)
+2. Add the same key to `zh.ts` (Chinese translation)
+3. TypeScript will error if keys are mismatched — use this to verify completeness
+
+## Key Naming Convention
+
+Use dot-separated namespaces matching feature area:
+
+```
+'workspace.new'          // workspace feature
+'phase.requirement'      // phase-related
+'gitlab.linkedRepos'     // GitLab integration
+'error.llmRateLimit'     // error messages
+'task.statusTodo'        // task management
+```
+
+## Usage in Components
+
+```tsx
+import { useT } from '../i18n'
+
+function MyComponent() {
+  const t = useT()
+  return <h1>{t('workspace.new')}</h1>
+}
+```
+
+For dynamic keys (e.g. phase types), cast with `as TranslationKey`:
+
+```tsx
+import type { TranslationKey } from '../i18n/en'
+const label = t(`phase.${phase.type}` as TranslationKey)
+```
+
+## Important
+
+- The `friendlyError()` helper in `stores/workspace.ts` currently returns hardcoded Chinese strings — these should ideally migrate to i18n keys in the future.
+- Error message keys use the `error.*` namespace.

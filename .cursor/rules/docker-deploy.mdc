@@ -1,0 +1,40 @@
+---
+description: Docker Compose, migration, and deployment conventions
+globs: deploy/**
+alwaysApply: false
+---
+
+# Docker & Deploy Conventions
+
+## Compose Service Naming
+
+Use **kebab-case** matching the directory name: `workspace-svc`, `ws-gateway`, `pm-agent`, `dev-agent`, `llm-gateway`.
+
+## Build Context
+
+```yaml
+build:
+  context: ../              # repo root
+  dockerfile: deploy/docker/Dockerfile.<service>
+```
+
+## Environment Variables
+
+- `DATABASE_URL`: Full Postgres connection string with `?sslmode=disable`
+- `REDIS_URL`: Include DB index path (`/0`, `/1`, `/2`…) to isolate per-service
+- `PORT`: String, matches the exposed port
+- Secrets use `${VAR:-}` default syntax
+
+## Data Stores
+
+- **Postgres**: `postgres:16-alpine`, user/db `vibeos`, init SQL via `./init.sql` mounted to `/docker-entrypoint-initdb.d/`
+- **Redis**: `redis:7-alpine`, named volume `redisdata`
+- **Qdrant**: Named volume `qdrantdata`
+
+## Health Checks
+
+Use `depends_on` with `condition: service_healthy` where healthchecks are defined. Go services expose `GET /health` → `{"status":"ok"}`.
+
+## Migrations
+
+SQL migration files live in `deploy/migrations/` with numbered prefixes (e.g., `001_initial.sql`). The init schema is in `deploy/init.sql`.

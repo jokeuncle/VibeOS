@@ -67,6 +67,40 @@ export interface Agent {
   avatar: string
 }
 
+// ---------------------------------------------------------------------------
+// GitLab integration types
+// ---------------------------------------------------------------------------
+
+export type RepoBranchStrategy = 'feature' | 'direct' | 'gitflow'
+export type RepoRole = 'primary' | 'secondary' | 'infra' | 'docs'
+
+export interface GitLabCredential {
+  id: string
+  gitlabUrl: string
+  tokenHint: string   // last 4 chars only – never the full token
+  label: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WorkspaceRepo {
+  id: string
+  workspaceId: string
+  credentialId: string
+  projectId: string      // numeric "590" or path "fe/vibe-os-first-project"
+  projectName: string
+  projectUrl: string
+  gitlabUrl: string      // denormalized from credential
+  role: RepoRole
+  isPrimary: boolean
+  branchDefault: string
+  branchStrategy: RepoBranchStrategy
+  phaseTypes: string[]   // empty = all phases
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Workspace {
   id: string
   name: string
@@ -77,6 +111,7 @@ export interface Workspace {
   phases: Phase[]
   agents: Agent[]
   activities: ActivityItem[]
+  repos: WorkspaceRepo[]
   createdAt: string
   updatedAt: string
 }

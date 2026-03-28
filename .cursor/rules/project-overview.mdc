@@ -1,0 +1,79 @@
+---
+description: VibeOS monorepo architecture, service ports, event types, and inter-service communication
+alwaysApply: true
+---
+
+# Project Architecture
+
+VibeOS is an AI-native SDLC platform organized as a monorepo.
+
+## Directory Layout
+
+| Path | Role | Language |
+|------|------|----------|
+| `apps/web` | React/Vite SPA | TypeScript |
+| `agents/*-agent` | Per-domain AI agents | Python |
+| `agents/shared/vibeos_agent` | Shared agent SDK (protocol, tools, config) | Python |
+| `services/workspace-svc` | Workspace/task/GitLab REST API | Go |
+| `services/ws-gateway` | WebSocket real-time relay (Redis Pub/Sub) | Go |
+| `services/shared/models` | Shared Go DTOs & response types | Go |
+| `platform/llm-gateway` | Multi-provider LLM routing proxy | Python |
+| `deploy` | SQL init, migrations, docker-compose | SQL/YAML |
+
+## Service Ports (local dev)
+
+| Service | Port |
+|---------|------|
+| Web (Vite) | 3000 |
+| workspace-svc | 8010 |
+| ws-gateway | 8020 |
+| llm-gateway | 8030 |
+| pm-agent | 8040 |
+| dev-agent | 8044 |
+
+## Vite Proxy Rules
+
+- `/api/nlp`, `/api/workflow`, `/api/agents` → port 8040 (pm-agent)
+- All other `/api/*` → port 8010 (workspace-svc)
+- `/ws` → ws://localhost:8020
+
+## API Response Envelope
+
+All Go services wrap responses in `models.APIResponse[T]`:
+
+```go
+type APIResponse[T any] struct {
+    Data  T      `json:"data"`
+    Error string `json:"error,omitempty"`
+}
+```
+
+Frontend `unwrap()` in `lib/api.ts` expects this shape.
+
+## WebSocket Event Types
+
+Go constants in `services/shared/models/api.go`:
+
+```
+agent:status    agent:message    agent:log
+activity        chat_message     task_update
+phase_update    notification
+```
+
+Python workflow events (prefixed `workflow:`):
+
+```
+workflow:project_start    workflow:phase_start
+workflow:phase_complete   workflow:phase_skip
+workflow:task_start       workflow:task_complete
+workflow:task_error       workflow:project_complete
+workflow:project_error
+```
+
+## Go Module References
+
+Services use `module github.com/vibeos/<service>` with `replace github.com/vibeos/shared => ../shared` for local dev. Import shared types as `github.com/vibeos/shared/models`.
+
+## Python Package Structure
+
+All Python packages use **hatchling** build system, **Python >= 3.12**. Domain agents depend on the `vibeos-agent` distribution from `agents/shared/`. Use `vibeos_agent.*` imports for shared code.

@@ -54,18 +54,19 @@ const (
 )
 
 type Workspace struct {
-	ID             string      `json:"id" db:"id"`
-	Name           string      `json:"name" db:"name"`
-	Description    string      `json:"description" db:"description"`
-	Progress       float64     `json:"progress" db:"progress"`
-	CurrentPhaseID *string     `json:"currentPhaseId" db:"current_phase_id"`
-	Color          string      `json:"color" db:"color"`
-	Status         string      `json:"status" db:"status"`
-	Phases         []Phase     `json:"phases"`
-	Agents         []Agent     `json:"agents"`
-	Activities     []Activity  `json:"activities"`
-	CreatedAt      time.Time   `json:"createdAt" db:"created_at"`
-	UpdatedAt      time.Time   `json:"updatedAt" db:"updated_at"`
+	ID             string          `json:"id" db:"id"`
+	Name           string          `json:"name" db:"name"`
+	Description    string          `json:"description" db:"description"`
+	Progress       float64         `json:"progress" db:"progress"`
+	CurrentPhaseID *string         `json:"currentPhaseId" db:"current_phase_id"`
+	Color          string          `json:"color" db:"color"`
+	Status         string          `json:"status" db:"status"`
+	Phases         []Phase         `json:"phases"`
+	Agents         []Agent         `json:"agents"`
+	Activities     []Activity      `json:"activities"`
+	Repos          []WorkspaceRepo `json:"repos"`
+	CreatedAt      time.Time       `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time       `json:"updatedAt" db:"updated_at"`
 }
 
 type Phase struct {
@@ -132,4 +133,40 @@ type Activity struct {
 	Description string     `json:"description" db:"description"`
 	AgentType   *AgentType `json:"agentType,omitempty" db:"agent_type"`
 	CreatedAt   time.Time  `json:"timestamp" db:"created_at"`
+}
+
+// ---------------------------------------------------------------------------
+// GitLab integration models
+// ---------------------------------------------------------------------------
+
+// GitLabCredential stores an encrypted PAT for a GitLab instance.
+// One row per GitLab instance; shared across all workspaces.
+type GitLabCredential struct {
+	ID        string    `json:"id" db:"id"`
+	GitLabURL string    `json:"gitlabUrl" db:"gitlab_url"`
+	TokenHint string    `json:"tokenHint" db:"token_hint"` // last 4 chars, safe to expose
+	Label     string    `json:"label" db:"label"`
+	CreatedBy string    `json:"createdBy" db:"created_by"`
+	CreatedAt time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
+	// TokenEnc is NOT exported to JSON – only the service layer reads it.
+	TokenEnc string `json:"-" db:"token_enc"`
+}
+
+// WorkspaceRepo binds one GitLab project to a workspace with role/strategy metadata.
+type WorkspaceRepo struct {
+	ID             string     `json:"id" db:"id"`
+	WorkspaceID    string     `json:"workspaceId" db:"workspace_id"`
+	CredentialID   string     `json:"credentialId" db:"credential_id"`
+	ProjectID      string     `json:"projectId" db:"project_id"`
+	ProjectName    string     `json:"projectName" db:"project_name"`
+	ProjectURL     string     `json:"projectUrl" db:"project_url"`
+	GitLabURL      string     `json:"gitlabUrl" db:"gitlab_url"`    // denormalized from credential for agent convenience
+	Role           string     `json:"role" db:"role"`               // primary | secondary | infra | docs
+	IsPrimary      bool       `json:"isPrimary" db:"is_primary"`
+	BranchDefault  string     `json:"branchDefault" db:"branch_default"`
+	BranchStrategy string     `json:"branchStrategy" db:"branch_strategy"` // feature | direct | gitflow
+	PhaseTypes     []string   `json:"phaseTypes" db:"phase_types"`          // nil = all phases
+	CreatedAt      time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updatedAt" db:"updated_at"`
 }

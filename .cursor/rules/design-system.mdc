@@ -1,0 +1,53 @@
+---
+description: Design token system and CSS conventions — colors, fonts, utility classes
+globs: apps/web/src/**/*.{css,tsx}
+alwaysApply: false
+---
+
+# Design System
+
+## Token Source
+
+All tokens are defined in `apps/web/src/index.css` inside `@theme { ... }` (Tailwind v4). Light theme overrides use `[data-theme="light"]`.
+
+## Color Palette
+
+| Token | Dark | Purpose |
+|-------|------|---------|
+| `surface-0` | `#050506` | Page background |
+| `surface-1` | `#0a0a0c` | Modal/panel background |
+| `surface-2` | `#111114` | Card/input background |
+| `surface-3` | `#19191e` | Hover states |
+| `surface-4` | `#222228` | Scrollbar, deeper hover |
+| `border-subtle` | `#1e1e24` | Dividers, light borders |
+| `border-default` | `#2a2a32` | Input/card borders |
+| `border-strong` | `#3a3a44` | Emphasized borders |
+| `text-primary` | `#ededf0` | Main text |
+| `text-secondary` | `#8b8b96` | Labels, descriptions |
+| `text-tertiary` | `#5a5a66` | Muted/hint text |
+| `accent` | `#6366f1` | Brand color (indigo) |
+| `success` | `#22c55e` | Success states |
+| `warning` | `#eab308` | Warning states |
+| `danger` | `#ef4444` | Error/danger states |
+
+## Fonts
+
+- Sans: `Inter` (body, UI)
+- Mono: `JetBrains Mono` (code)
+
+## Global Utility Classes
+
+| Class | Purpose |
+|-------|---------|
+| `.glass` | Frosted glass effect (`backdrop-filter: blur(20px)`) |
+| `.glow-accent` | Accent glow `box-shadow` |
+| `.animate-shimmer` | Loading skeleton animation |
+| `.animate-pulse-glow` | Pulsing opacity animation |
+| `.markdown-body` | Rendered markdown content |
+| `.vibe-datepicker` | Date picker theming |
+
+## Rules
+
+- Never use raw hex colors; always reference token classes (`text-text-primary`, `bg-surface-2`)
+- New colors must be added to `@theme` first
+- Keep dark/light parity: add any new token to both the default and `[data-theme="light"]` blocks

@@ -1,4 +1,4 @@
-import type { Workspace, Message, RichBlock, AgentType, ActivityItem } from '../types'
+import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo } from '../types'
 
 async function request<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -26,10 +26,11 @@ function normalizeWorkspace(ws: Workspace): Workspace {
   return {
     ...ws,
     progress: scaleProgress(ws.progress),
-    phases: ws.phases.map((p) => ({
+    phases: (ws.phases ?? []).map((p) => ({
       ...p,
       progress: scaleProgress(p.progress),
     })),
+    repos: ws.repos ?? [],
   }
 }
 
@@ -100,6 +101,63 @@ export const workspaceApi = {
 
   listArtifactsByPhase: (wsId: string, phaseId: string) =>
     request<{ data: any[] }>(`/api/workspaces/${wsId}/phases/${phaseId}/artifacts`).then(unwrap),
+
+  // GitLab repo bindings
+  listRepos: (wsId: string) =>
+    request<{ data: WorkspaceRepo[] }>(`/api/workspaces/${wsId}/repos`).then(unwrap),
+
+  createRepo: (wsId: string, body: {
+    credentialId: string
+    projectId: string
+    projectName: string
+    projectUrl?: string
+    role?: string
+    isPrimary?: boolean
+    branchDefault?: string
+    branchStrategy?: string
+    phaseTypes?: string[]
+  }) =>
+    request<{ data: WorkspaceRepo }>(`/api/workspaces/${wsId}/repos`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  updateRepo: (wsId: string, repoId: string, body: Partial<{
+    projectName: string
+    projectUrl: string
+    role: string
+    isPrimary: boolean
+    branchDefault: string
+    branchStrategy: string
+    phaseTypes: string[]
+  }>) =>
+    request<{ data: WorkspaceRepo }>(`/api/workspaces/${wsId}/repos/${repoId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  deleteRepo: (wsId: string, repoId: string) =>
+    request<void>(`/api/workspaces/${wsId}/repos/${repoId}`, { method: 'DELETE' }),
+
+  testRepoConnection: (wsId: string, repoId: string) =>
+    request<{ ok: boolean; projectName?: string; message?: string }>(
+      `/api/workspaces/${wsId}/repos/${repoId}/test`,
+      { method: 'POST' }
+    ),
+}
+
+export const gitlabCredentialApi = {
+  list: () =>
+    request<{ data: GitLabCredential[] }>('/api/gitlab/credentials').then(unwrap),
+
+  create: (body: { gitlabUrl: string; token: string; label?: string; createdBy?: string }) =>
+    request<{ data: GitLabCredential }>('/api/gitlab/credentials', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  delete: (id: string) =>
+    request<void>(`/api/gitlab/credentials/${id}`, { method: 'DELETE' }),
 }
 
 export const workflowApi = {

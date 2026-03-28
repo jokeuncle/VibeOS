@@ -136,6 +136,44 @@ CREATE INDEX idx_artifacts_phase ON artifacts(phase_id);
 CREATE INDEX idx_artifacts_task ON artifacts(task_id);
 
 -- ===================================================================
+-- GitLab Integration
+-- ===================================================================
+
+-- Per-instance GitLab credentials (shared across workspaces in the same org)
+CREATE TABLE gitlab_credentials (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    gitlab_url  VARCHAR(512) NOT NULL UNIQUE,  -- e.g. https://gitlab.example.com
+    token_enc   TEXT NOT NULL,                 -- AES-256-GCM encrypted PAT, base64(nonce||ciphertext)
+    token_hint  VARCHAR(8),                    -- last 4 chars for UI display only
+    label       VARCHAR(128),                  -- friendly name, e.g. "Company GitLab"
+    created_by  VARCHAR(128),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Workspace ↔ GitLab project bindings (many-to-many)
+CREATE TABLE workspace_repos (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workspace_id    UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    credential_id   UUID NOT NULL REFERENCES gitlab_credentials(id),
+    project_id      VARCHAR(255) NOT NULL,   -- numeric "590" or path "fe/vibe-os-first-project"
+    project_name    VARCHAR(255) NOT NULL,   -- display name
+    project_url     VARCHAR(512),            -- web URL for UI links
+    role            VARCHAR(32)  NOT NULL DEFAULT 'primary',
+                                             -- primary | secondary | infra | docs
+    is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+    branch_default  VARCHAR(128) NOT NULL DEFAULT 'main',
+    branch_strategy VARCHAR(32)  NOT NULL DEFAULT 'feature',
+                                             -- feature | direct | gitflow
+    phase_types     TEXT[],                  -- NULL = all phases; ['development'] = only that phase
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (workspace_id, project_id)
+);
+
+CREATE INDEX idx_workspace_repos_workspace ON workspace_repos(workspace_id);
+
+-- ===================================================================
 -- Phase 2: Trust Score tracking
 -- ===================================================================
 

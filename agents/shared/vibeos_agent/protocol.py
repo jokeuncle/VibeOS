@@ -173,6 +173,29 @@ class WorkspaceClient:
         data = resp.json()
         return data.get("data", data) if isinstance(data, dict) else data
 
+    async def get_repos_for_phase(
+        self, workspace_id: str, phase_type: str
+    ) -> list[dict[str, Any]]:
+        """Fetch workspace repos applicable for a given phase type."""
+        import logging as _log
+        try:
+            resp = await self._http.get(f"/api/workspaces/{workspace_id}/repos")
+            resp.raise_for_status()
+            repos: list[dict[str, Any]] = resp.json().get("data", [])
+            # Filter by phase_types (empty list = applicable to all phases)
+            result = []
+            for r in repos:
+                pt = r.get("phaseTypes") or []
+                if not pt or phase_type in pt:
+                    result.append(r)
+            return result
+        except Exception as exc:
+            _log.getLogger(__name__).warning(
+                "get_repos_for_phase failed for workspace=%s phase=%s: %s",
+                workspace_id, phase_type, exc,
+            )
+            return []
+
     async def close(self) -> None:
         await self._http.aclose()
 
@@ -539,6 +562,8 @@ class BaseAgent(ABC):
         self.rag = RAGClient()
         self.knowledge = KnowledgeClient()
         self.tool_registry = ToolRegistry()
+        # Set by execute() before tool calls so tools can resolve credentials from task context.
+        self._current_task_context: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -567,12 +592,13 @@ class BaseAgent(ABC):
         workspace_id: str,
         extra_messages: list[dict[str, str]] | None = None,
         enrich_context: bool = True,
+        repo_context: dict[str, Any] | None = None,
     ) -> str:
         enriched_system = self.system_prompt
 
         if enrich_context:
             enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message
+                workspace_id, user_message, repo_context=repo_context
             )
 
         history = await self.session.get_history(workspace_id, self.agent_type)
@@ -609,12 +635,13 @@ class BaseAgent(ABC):
         extra_messages: list[dict[str, str]] | None = None,
         enrich_context: bool = True,
         system_prompt_override: str | None = None,
+        repo_context: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Stream LLM response token-by-token. Yields content deltas."""
         enriched_system = system_prompt_override or self.system_prompt
         if enrich_context and not system_prompt_override:
             enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message
+                workspace_id, user_message, repo_context=repo_context
             )
 
         history = await self.session.get_history(workspace_id, self.agent_type)
@@ -668,6 +695,7 @@ class BaseAgent(ABC):
         extra_messages: list[dict[str, Any]] | None = None,
         enrich_context: bool = True,
         max_iterations: int = 5,
+        repo_context: dict[str, Any] | None = None,
     ) -> str:
         """Call LLM with tool-use loop: if the model returns tool_calls, execute
         them and feed results back until a final text response is produced.
@@ -681,12 +709,13 @@ class BaseAgent(ABC):
                 workspace_id=workspace_id,
                 extra_messages=extra_messages,
                 enrich_context=enrich_context,
+                repo_context=repo_context,
             )
 
         enriched_system = self.system_prompt
         if enrich_context:
             enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message
+                workspace_id, user_message, repo_context=repo_context
             )
 
         history = await self.session.get_history(workspace_id, self.agent_type)
@@ -737,6 +766,9 @@ class BaseAgent(ABC):
                     parsed_args = arguments
 
                 parsed_args["_workspace_id"] = workspace_id
+                # Inject task context so tools can resolve credentials, branch, etc.
+                if hasattr(self, "_current_task_context") and self._current_task_context:
+                    parsed_args.setdefault("_context", self._current_task_context)
 
                 logger.info(
                     "Tool call [%s] %s(%s)", _enum_val(self.agent_type), tool_name, list(parsed_args.keys())
@@ -759,14 +791,60 @@ class BaseAgent(ABC):
                     "content": tool_result,
                 })
 
-        final = messages[-1]
-        return final.get("content", "") if isinstance(final, dict) else str(final)
+        # max_iterations exhausted with tool calls still pending – return last available content.
+        for msg in reversed(messages):
+            if isinstance(msg, dict) and msg.get("role") in ("assistant", "system"):
+                content = msg.get("content") or ""
+                if content:
+                    return content
+        return ""
 
     async def _build_enriched_prompt(
-        self, workspace_id: str, user_message: str
+        self,
+        workspace_id: str,
+        user_message: str,
+        *,
+        repo_context: dict[str, Any] | None = None,
     ) -> str:
         """Compose a context-aware system prompt from Memory + RAG + Knowledge + Upstream Artifacts."""
         sections = [self.system_prompt]
+
+        # Inject GitLab repository context so LLM knows exactly which repo / branch to use.
+        if repo_context and repo_context.get("gitlab_primary_project"):
+            primary_project = repo_context["gitlab_primary_project"]
+            gitlab_url = repo_context.get("gitlab_primary_url", "")
+            branch_strategy = repo_context.get("gitlab_branch_strategy", "feature")
+            branch_default = repo_context.get("gitlab_branch_default", "main")
+            computed_branch = repo_context.get("gitlab_branch", branch_default)
+
+            strategy_desc = {
+                "feature": "create a feature branch per task (feat/<slug>) and open a Merge Request to main",
+                "direct": f"commit directly to the default branch ({branch_default})",
+                "gitflow": "use feature/<slug> branch, merge via MR to develop",
+            }.get(branch_strategy, branch_strategy)
+
+            all_repos = repo_context.get("gitlab_repos", [])
+            extra_repos = [r for r in all_repos if r.get("projectId") != primary_project]
+
+            repo_section = f"""## Project Repository
+
+Primary: {primary_project}  ({gitlab_url})
+Branch strategy: {strategy_desc}
+Current branch: {computed_branch}
+Default branch: {branch_default}
+
+All source code changes MUST be committed to this repository using the `gitlab_push_file` tool.
+Use `project_id = "{primary_project}"` and `branch = "{computed_branch}"` for every file commit.
+After committing all files, call `gitlab_create_mr` to open a Merge Request to `{branch_default}`.
+"""
+            if extra_repos:
+                repo_lines = "\n".join(
+                    f"- {r.get('projectName', r.get('projectId'))} ({r.get('role', 'secondary')}): {r.get('projectId')}"
+                    for r in extra_repos
+                )
+                repo_section += f"\nAdditional repos (secondary):\n{repo_lines}\n"
+
+            sections.append(repo_section)
 
         try:
             upstream = await self._fetch_upstream_artifacts(workspace_id)
