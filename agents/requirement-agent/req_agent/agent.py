@@ -1,4 +1,4 @@
-"""Architecture Agent implementation."""
+"""Requirement Agent implementation."""
 
 from __future__ import annotations
 
@@ -12,116 +12,113 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
-    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
-    PhaseStatus,
     RichBlock,
     Task,
 )
 
 SYSTEM_PROMPT = """\
-You are an expert software architect. You help teams design robust, scalable systems.
+You are an expert requirements analyst. You help teams capture, refine, and \
+structure project requirements with precision and clarity.
 
 Your responsibilities:
-- Design system architectures (microservices, monoliths, event-driven, etc.)
-- Design database schemas (relational, document, graph)
-- Design REST / GraphQL / gRPC APIs
-- Evaluate and recommend technology stacks
-- Produce architecture decision records (ADRs)
+- Analyze raw requirements and extract actionable user stories
+- Define clear acceptance criteria for each requirement
+- Identify constraints (technical, business, regulatory)
+- Detect gaps and ambiguities in requirements
 
 When responding, structure your output as JSON with the following shape:
 {
   "summary": "brief summary",
-  "artifacts": [
-    {"type": "schema" | "api" | "diagram" | "adr", "title": "...", "content": "..."}
+  "user_stories": [
+    {"role": "...", "action": "...", "benefit": "...", "priority": "high|medium|low"}
+  ],
+  "acceptance_criteria": [
+    {"story_ref": "...", "given": "...", "when": "...", "then": "..."}
+  ],
+  "constraints": [
+    {"type": "technical|business|regulatory", "description": "..."}
   ],
   "tasks": [
     {"title": "...", "description": "..."}
   ]
 }
-Always be specific and opinionated. Justify trade-offs.\
+Always be thorough, precise, and flag any ambiguities.\
 """
 
 CHAT_PROMPT = """\
-You are an expert software architect having a conversation. Respond in clear, \
+You are an expert requirements analyst having a conversation. Respond in clear, \
 well-structured natural language (use markdown formatting when helpful). \
-Be specific, opinionated, and justify trade-offs. \
-Do NOT respond with raw JSON—use prose, bullet points, code blocks, and headings.\
+Help the user refine requirements, write user stories, and define acceptance criteria. \
+Do NOT respond with raw JSON—use prose, bullet points, and tables.\
 """
 
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "generate_schema",
-            "description": "Generate a database schema definition (SQL DDL or document model)",
+            "name": "analyze_requirements",
+            "description": "Analyze raw requirements text and extract structured user stories and constraints",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "db_type": {
-                        "type": "string",
-                        "enum": ["postgresql", "mongodb", "mysql", "sqlite"],
-                    },
+                    "requirements_text": {"type": "string"},
+                    "domain": {"type": "string"},
                 },
-                "required": ["description"],
+                "required": ["requirements_text"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "design_api",
-            "description": "Design a REST or GraphQL API surface from requirements",
+            "name": "generate_user_stories",
+            "description": "Generate user stories from a feature description",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "style": {
-                        "type": "string",
-                        "enum": ["rest", "graphql", "grpc"],
-                    },
+                    "feature_description": {"type": "string"},
+                    "target_users": {"type": "string"},
                 },
-                "required": ["description"],
+                "required": ["feature_description"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "evaluate_tech_stack",
-            "description": "Evaluate technology options and recommend a stack",
+            "name": "create_acceptance_criteria",
+            "description": "Create acceptance criteria for a given user story",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "requirements": {"type": "string"},
-                    "constraints": {"type": "string"},
+                    "user_story": {"type": "string"},
+                    "context": {"type": "string"},
                 },
-                "required": ["requirements"],
+                "required": ["user_story"],
             },
         },
     },
 ]
 
 
-class ArchitectureAgent(BaseAgent):
-    agent_type = AgentType.ARCHITECTURE
+class RequirementAgent(BaseAgent):
+    agent_type = "requirement"
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
     capabilities = [
         CapabilityContract(
-            name="architecture",
+            name="requirements",
             required_context_window=16_000,
-            supports_tool_use=True,
         ),
     ]
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
         _log = self.ws.publish_log
-        agent_name = self.agent_type.value
+        agent_name = self.agent_type
 
         try:
             await self.ws.publish_agent_status(
@@ -135,28 +132,25 @@ class ArchitectureAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
-            await _log(task.workspace_id, agent_name, "Calling LLM for architecture analysis…", task_id=task.task_id)
+            await _log(task.workspace_id, agent_name, "Calling LLM for requirements analysis…", task_id=task.task_id)
             raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
+                structured = {"summary": raw_reply, "user_stories": [], "acceptance_criteria": [], "constraints": [], "tasks": []}
 
             rich_blocks: list[RichBlock] = []
-            for artifact in structured.get("artifacts", []):
-                await _log(
-                    task.workspace_id, agent_name,
-                    f"Generated artifact: {artifact.get('title', 'untitled')} ({artifact.get('type', 'unknown')})",
-                    task_id=task.task_id,
-                )
+            for story in structured.get("user_stories", []):
+                role = story.get("role", "user")
+                action = story.get("action", "")
                 rich_blocks.append(
                     RichBlock(
                         type="code",
-                        language=_lang_for(artifact.get("type", "")),
-                        content=artifact.get("content", ""),
-                        metadata={"title": artifact.get("title", "")},
+                        language="markdown",
+                        content=f"As a {role}, I want to {action}",
+                        metadata={"title": f"User Story – {role}", "priority": story.get("priority", "medium")},
                     )
                 )
 
@@ -164,8 +158,8 @@ class ArchitectureAgent(BaseAgent):
                 "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
             )
 
-            arch_phase_id = await self.workspace_svc.find_phase_by_type(
-                task.workspace_id, "architecture"
+            phase_id = await self.workspace_svc.find_phase_by_type(
+                task.workspace_id, "requirement"
             )
 
             created_tasks: list[dict[str, Any]] = []
@@ -178,7 +172,7 @@ class ArchitectureAgent(BaseAgent):
                 new_task = Task(title=title, description=t.get("description", ""))
                 try:
                     result = await self.workspace_svc.create_task(
-                        task.workspace_id, new_task, phase_id=arch_phase_id
+                        task.workspace_id, new_task, phase_id=phase_id
                     )
                     created_tasks.append(result)
                     await _log(task.workspace_id, agent_name, f"Task created: {title}", level="success", task_id=task.task_id)
@@ -214,7 +208,9 @@ class ArchitectureAgent(BaseAgent):
                 task.workspace_id,
                 {
                     "summary": structured.get("summary", ""),
-                    "artifacts": structured.get("artifacts", []),
+                    "user_stories": structured.get("user_stories", []),
+                    "acceptance_criteria": structured.get("acceptance_criteria", []),
+                    "constraints": structured.get("constraints", []),
                     "created_tasks": created_tasks,
                 },
             )
@@ -270,7 +266,6 @@ class ArchitectureAgent(BaseAgent):
             except Exception:
                 pass
 
-
     async def chat_stream(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
     ) -> AsyncIterator[str]:
@@ -313,12 +308,3 @@ class ArchitectureAgent(BaseAgent):
                 )
             except Exception:
                 pass
-
-
-def _lang_for(artifact_type: str) -> str:
-    return {
-        "schema": "sql",
-        "api": "yaml",
-        "diagram": "mermaid",
-        "adr": "markdown",
-    }.get(artifact_type, "text")

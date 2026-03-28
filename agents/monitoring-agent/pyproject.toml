@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "monitoring-agent"
+version = "0.1.0"
+description = "VibeOS Monitoring Agent – designs observability, alerts, dashboards, and runbooks"
+requires-python = ">=3.12"
+dependencies = [
+    "vibeos-agent",
+    "fastapi",
+    "uvicorn[standard]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["mon_agent"]

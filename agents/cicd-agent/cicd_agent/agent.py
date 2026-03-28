@@ -1,4 +1,4 @@
-"""Architecture Agent implementation."""
+"""CI/CD Agent implementation."""
 
 from __future__ import annotations
 
@@ -12,92 +12,108 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
-    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
-    PhaseStatus,
     RichBlock,
     Task,
 )
 
 SYSTEM_PROMPT = """\
-You are an expert software architect. You help teams design robust, scalable systems.
+You are an expert DevOps and CI/CD engineer. You help teams build reliable, \
+automated build-test-deploy pipelines and production infrastructure.
 
 Your responsibilities:
-- Design system architectures (microservices, monoliths, event-driven, etc.)
-- Design database schemas (relational, document, graph)
-- Design REST / GraphQL / gRPC APIs
-- Evaluate and recommend technology stacks
-- Produce architecture decision records (ADRs)
+- Design CI/CD pipelines (GitHub Actions, GitLab CI, Jenkins, etc.)
+- Define deployment strategies (blue-green, canary, rolling)
+- Design infrastructure (containers, Kubernetes, cloud services)
+- Configure monitoring, logging, and alerting for deployments
 
 When responding, structure your output as JSON with the following shape:
 {
   "summary": "brief summary",
-  "artifacts": [
-    {"type": "schema" | "api" | "diagram" | "adr", "title": "...", "content": "..."}
+  "pipeline_config": {
+    "platform": "...",
+    "stages": [{"name": "...", "steps": ["..."]}],
+    "triggers": ["..."]
+  },
+  "deployment_strategy": {
+    "type": "blue-green|canary|rolling",
+    "config": {}
+  },
+  "infrastructure": [
+    {"type": "container|k8s|cloud", "config": "..."}
   ],
   "tasks": [
     {"title": "...", "description": "..."}
   ]
 }
-Always be specific and opinionated. Justify trade-offs.\
+Prefer automation, reproducibility, and security best practices.\
 """
 
 CHAT_PROMPT = """\
-You are an expert software architect having a conversation. Respond in clear, \
+You are an expert DevOps/CI/CD engineer having a conversation. Respond in clear, \
 well-structured natural language (use markdown formatting when helpful). \
-Be specific, opinionated, and justify trade-offs. \
-Do NOT respond with raw JSON—use prose, bullet points, code blocks, and headings.\
+Discuss pipeline designs, deployment strategies, and infrastructure choices. \
+Do NOT respond with raw JSON—use prose, bullet points, YAML/config blocks, \
+and diagrams.\
 """
 
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "generate_schema",
-            "description": "Generate a database schema definition (SQL DDL or document model)",
+            "name": "design_pipeline",
+            "description": "Design a CI/CD pipeline with stages, steps, and triggers",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "db_type": {
+                    "project_description": {"type": "string"},
+                    "platform": {
                         "type": "string",
-                        "enum": ["postgresql", "mongodb", "mysql", "sqlite"],
+                        "enum": ["github-actions", "gitlab-ci", "jenkins", "circleci"],
                     },
+                    "languages": {"type": "string"},
                 },
-                "required": ["description"],
+                "required": ["project_description"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "design_api",
-            "description": "Design a REST or GraphQL API surface from requirements",
+            "name": "create_deployment_config",
+            "description": "Create deployment configuration for a service",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "style": {
+                    "service_name": {"type": "string"},
+                    "strategy": {
                         "type": "string",
-                        "enum": ["rest", "graphql", "grpc"],
+                        "enum": ["blue-green", "canary", "rolling", "recreate"],
+                    },
+                    "target": {
+                        "type": "string",
+                        "enum": ["kubernetes", "ecs", "docker-compose", "bare-metal"],
                     },
                 },
-                "required": ["description"],
+                "required": ["service_name"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "evaluate_tech_stack",
-            "description": "Evaluate technology options and recommend a stack",
+            "name": "design_infrastructure",
+            "description": "Design infrastructure for hosting and running services",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "requirements": {"type": "string"},
-                    "constraints": {"type": "string"},
+                    "cloud_provider": {
+                        "type": "string",
+                        "enum": ["aws", "gcp", "azure", "self-hosted"],
+                    },
                 },
                 "required": ["requirements"],
             },
@@ -106,22 +122,29 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-class ArchitectureAgent(BaseAgent):
-    agent_type = AgentType.ARCHITECTURE
+def _lang_for(infra_type: str) -> str:
+    return {
+        "container": "dockerfile",
+        "k8s": "yaml",
+        "cloud": "hcl",
+    }.get(infra_type, "yaml")
+
+
+class CicdAgent(BaseAgent):
+    agent_type = "cicd"
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
     capabilities = [
         CapabilityContract(
-            name="architecture",
+            name="cicd",
             required_context_window=16_000,
-            supports_tool_use=True,
         ),
     ]
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
         _log = self.ws.publish_log
-        agent_name = self.agent_type.value
+        agent_name = self.agent_type
 
         try:
             await self.ws.publish_agent_status(
@@ -135,28 +158,34 @@ class ArchitectureAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
-            await _log(task.workspace_id, agent_name, "Calling LLM for architecture analysis…", task_id=task.task_id)
+            await _log(task.workspace_id, agent_name, "Calling LLM for CI/CD pipeline design…", task_id=task.task_id)
             raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
+                structured = {"summary": raw_reply, "infrastructure": [], "tasks": []}
 
             rich_blocks: list[RichBlock] = []
-            for artifact in structured.get("artifacts", []):
-                await _log(
-                    task.workspace_id, agent_name,
-                    f"Generated artifact: {artifact.get('title', 'untitled')} ({artifact.get('type', 'unknown')})",
-                    task_id=task.task_id,
-                )
+
+            if structured.get("pipeline_config"):
                 rich_blocks.append(
                     RichBlock(
                         type="code",
-                        language=_lang_for(artifact.get("type", "")),
-                        content=artifact.get("content", ""),
-                        metadata={"title": artifact.get("title", "")},
+                        language="yaml",
+                        content=json.dumps(structured["pipeline_config"], indent=2),
+                        metadata={"title": "Pipeline Configuration"},
+                    )
+                )
+
+            for infra in structured.get("infrastructure", []):
+                rich_blocks.append(
+                    RichBlock(
+                        type="code",
+                        language=_lang_for(infra.get("type", "")),
+                        content=infra.get("config", ""),
+                        metadata={"title": f"Infrastructure – {infra.get('type', 'unknown')}"},
                     )
                 )
 
@@ -164,8 +193,8 @@ class ArchitectureAgent(BaseAgent):
                 "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
             )
 
-            arch_phase_id = await self.workspace_svc.find_phase_by_type(
-                task.workspace_id, "architecture"
+            phase_id = await self.workspace_svc.find_phase_by_type(
+                task.workspace_id, "cicd"
             )
 
             created_tasks: list[dict[str, Any]] = []
@@ -178,7 +207,7 @@ class ArchitectureAgent(BaseAgent):
                 new_task = Task(title=title, description=t.get("description", ""))
                 try:
                     result = await self.workspace_svc.create_task(
-                        task.workspace_id, new_task, phase_id=arch_phase_id
+                        task.workspace_id, new_task, phase_id=phase_id
                     )
                     created_tasks.append(result)
                     await _log(task.workspace_id, agent_name, f"Task created: {title}", level="success", task_id=task.task_id)
@@ -214,7 +243,9 @@ class ArchitectureAgent(BaseAgent):
                 task.workspace_id,
                 {
                     "summary": structured.get("summary", ""),
-                    "artifacts": structured.get("artifacts", []),
+                    "pipeline_config": structured.get("pipeline_config", {}),
+                    "deployment_strategy": structured.get("deployment_strategy", {}),
+                    "infrastructure": structured.get("infrastructure", []),
                     "created_tasks": created_tasks,
                 },
             )
@@ -270,7 +301,6 @@ class ArchitectureAgent(BaseAgent):
             except Exception:
                 pass
 
-
     async def chat_stream(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
     ) -> AsyncIterator[str]:
@@ -313,12 +343,3 @@ class ArchitectureAgent(BaseAgent):
                 )
             except Exception:
                 pass
-
-
-def _lang_for(artifact_type: str) -> str:
-    return {
-        "schema": "sql",
-        "api": "yaml",
-        "diagram": "mermaid",
-        "adr": "markdown",
-    }.get(artifact_type, "text")

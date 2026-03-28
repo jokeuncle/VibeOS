@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dev-agent"
+version = "0.1.0"
+description = "VibeOS Development Agent – generates code, reviews implementations, and plans development"
+requires-python = ">=3.12"
+dependencies = [
+    "vibeos-agent",
+    "fastapi",
+    "uvicorn[standard]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["dev_agent"]

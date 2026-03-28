@@ -93,10 +93,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const id = get().activeWorkspaceId
     if (!id) return
     try {
-      const ws = await workspaceApi.get(id)
+      const [ws, actResp] = await Promise.all([
+        workspaceApi.get(id),
+        workspaceApi.listActivities(id, 1, 50),
+      ])
       if (get().activeWorkspaceId !== id) return
+      const activities = (actResp.data || []).map((a: any) => ({
+        id: a.id,
+        type: a.type,
+        description: a.description,
+        timestamp: a.timestamp || a.createdAt,
+        agentType: a.agentType,
+      }))
       set((s) => ({
-        workspaces: patchWorkspace(s.workspaces, id, () => ws),
+        workspaces: patchWorkspace(s.workspaces, id, () => ({ ...ws, activities })),
       }))
     } catch (err) {
       console.error('Failed to refresh workspace:', err)
@@ -107,12 +117,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const gen = ++wsLoadGeneration
     set({ activeWorkspaceId: id, activePhaseId: null, messages: [] })
     if (id) {
-      workspaceApi.get(id).then((ws) => {
+      Promise.all([
+        workspaceApi.get(id),
+        workspaceApi.listActivities(id, 1, 50),
+      ]).then(([ws, actResp]) => {
         if (wsLoadGeneration !== gen) return
+        const activities = (actResp.data || []).map((a: any) => ({
+          id: a.id,
+          type: a.type,
+          description: a.description,
+          timestamp: a.timestamp || a.createdAt,
+          agentType: a.agentType,
+        }))
+        const merged = { ...ws, activities }
         set((s) => ({
           workspaces: s.workspaces.some((w) => w.id === id)
-            ? patchWorkspace(s.workspaces, id, () => ws)
-            : [...s.workspaces, ws],
+            ? patchWorkspace(s.workspaces, id, () => merged)
+            : [...s.workspaces, merged],
         }))
       }).catch((err) => console.error('Failed to load workspace:', err))
     }

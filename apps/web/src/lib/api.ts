@@ -1,4 +1,4 @@
-import type { Workspace, Message, RichBlock, AgentType } from '../types'
+import type { Workspace, Message, RichBlock, AgentType, ActivityItem } from '../types'
 
 async function request<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -89,6 +89,11 @@ export const workspaceApi = {
       method: 'PUT',
       body: JSON.stringify({ taskIds }),
     }),
+
+  listActivities: (wsId: string, page = 1, pageSize = 50) =>
+    request<{ data: ActivityItem[]; total: number; page: number; pageSize: number }>(
+      `/api/workspaces/${wsId}/activities?page=${page}&pageSize=${pageSize}`,
+    ),
 }
 
 export const agentApi = {

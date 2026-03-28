@@ -27,10 +27,10 @@ _AGENT_MAP: dict[str, AgentType] = {
     "query_progress": AgentType.PM,
     "design_system": AgentType.ARCHITECTURE,
     "architecture_design": AgentType.ARCHITECTURE,
-    "generate_code": AgentType.BACKEND,
-    "run_tests": AgentType.QA,
-    "deploy": AgentType.DEVOPS,
-    "analyze_requirements": AgentType.PM,
+    "generate_code": AgentType.DEVELOPMENT,
+    "run_tests": AgentType.TESTING,
+    "deploy": AgentType.CICD,
+    "analyze_requirements": AgentType.REQUIREMENT,
     "general_chat": AgentType.PM,
 }
 

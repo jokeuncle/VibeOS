@@ -29,9 +29,12 @@ export default function App() {
 
   useEffect(() => {
     fetchWorkspaces()
-    connectWebSocket()
     return () => disconnectWebSocket()
   }, [fetchWorkspaces])
+
+  useEffect(() => {
+    connectWebSocket(activeWorkspaceId)
+  }, [activeWorkspaceId])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)

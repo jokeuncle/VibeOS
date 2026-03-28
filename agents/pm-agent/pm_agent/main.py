@@ -33,7 +33,7 @@ _TASK_EXTRACT_PROMPT = (
     '"phase_type": "<best matching phase type from the list>", '
     '"priority": "<p0|p1|p2|p3>"}\n'
     "Priority mapping: p0 = critical, p1 = high, p2 = medium, p3 = low.\n"
-    "Available phase types: requirements, design, architecture, development, testing, deployment, operations"
+    "Available phase types: requirement, design, architecture, development, testing, deployment, monitoring"
 )
 
 _PRIORITY_NORMALIZE: dict[str, str] = {
@@ -67,7 +67,7 @@ async def _handle_create_task(
 
     title = task_data.get("title", summary[:80])
     description = task_data.get("description", summary)
-    phase_type = task_data.get("phase_type", "requirements")
+    phase_type = task_data.get("phase_type", "requirement")
     raw_priority = task_data.get("priority", "medium").lower()
     priority = _PRIORITY_NORMALIZE.get(raw_priority, "p2")
 
@@ -210,7 +210,7 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
         await ws.publish_agent_status(
             req.workspace_id,
             AgentType.PM,
-            AgentStatus.THINKING,
+            AgentStatus.RUNNING,
             detail=f"Parsed intent: {parsed.intent}",
         )
 
@@ -272,7 +272,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             yield f"event: intent\ndata: {json.dumps({'intent': parsed.intent, 'summary': parsed.summary, 'target_agent': parsed.target_agent.value})}\n\n"
 
             await ws.publish_agent_status(
-                req.workspace_id, AgentType.PM, AgentStatus.THINKING,
+                req.workspace_id, AgentType.PM, AgentStatus.RUNNING,
                 detail=f"Parsed intent: {parsed.intent}",
             )
 

@@ -1,4 +1,4 @@
-"""Architecture Agent implementation."""
+"""Design Agent implementation."""
 
 from __future__ import annotations
 
@@ -12,116 +12,124 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
-    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
-    PhaseStatus,
     RichBlock,
     Task,
 )
 
 SYSTEM_PROMPT = """\
-You are an expert software architect. You help teams design robust, scalable systems.
+You are an expert UI/UX designer. You help teams create beautiful, usable, and \
+accessible interfaces with strong design systems.
 
 Your responsibilities:
-- Design system architectures (microservices, monoliths, event-driven, etc.)
-- Design database schemas (relational, document, graph)
-- Design REST / GraphQL / gRPC APIs
-- Evaluate and recommend technology stacks
-- Produce architecture decision records (ADRs)
+- Make design decisions (layout, navigation, interaction patterns)
+- Create wireframes (text-based descriptions of screen layouts)
+- Define component hierarchies and reusable UI patterns
+- Produce style guides (colors, typography, spacing, iconography)
 
 When responding, structure your output as JSON with the following shape:
 {
   "summary": "brief summary",
-  "artifacts": [
-    {"type": "schema" | "api" | "diagram" | "adr", "title": "...", "content": "..."}
+  "design_decisions": [
+    {"area": "...", "decision": "...", "rationale": "..."}
   ],
+  "wireframes": [
+    {"screen": "...", "layout_description": "...", "components": ["..."]}
+  ],
+  "component_hierarchy": {
+    "root": "...",
+    "children": [{"name": "...", "children": []}]
+  },
+  "style_guide": {
+    "colors": {"primary": "...", "secondary": "..."},
+    "typography": {"heading": "...", "body": "..."},
+    "spacing": "..."
+  },
   "tasks": [
     {"title": "...", "description": "..."}
   ]
 }
-Always be specific and opinionated. Justify trade-offs.\
+Always prioritize usability, accessibility, and visual consistency.\
 """
 
 CHAT_PROMPT = """\
-You are an expert software architect having a conversation. Respond in clear, \
+You are an expert UI/UX designer having a conversation. Respond in clear, \
 well-structured natural language (use markdown formatting when helpful). \
-Be specific, opinionated, and justify trade-offs. \
-Do NOT respond with raw JSON—use prose, bullet points, code blocks, and headings.\
+Discuss design decisions, suggest patterns, describe layouts, and provide \
+design guidance. Do NOT respond with raw JSON—use prose, bullet points, \
+and diagrams described in text.\
 """
 
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "generate_schema",
-            "description": "Generate a database schema definition (SQL DDL or document model)",
+            "name": "design_component",
+            "description": "Design a UI component with layout, states, and interactions",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "db_type": {
-                        "type": "string",
-                        "enum": ["postgresql", "mongodb", "mysql", "sqlite"],
-                    },
-                },
-                "required": ["description"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "design_api",
-            "description": "Design a REST or GraphQL API surface from requirements",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "description": {"type": "string"},
-                    "style": {
-                        "type": "string",
-                        "enum": ["rest", "graphql", "grpc"],
-                    },
-                },
-                "required": ["description"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "evaluate_tech_stack",
-            "description": "Evaluate technology options and recommend a stack",
-            "parameters": {
-                "type": "object",
-                "properties": {
+                    "component_name": {"type": "string"},
                     "requirements": {"type": "string"},
-                    "constraints": {"type": "string"},
+                    "platform": {
+                        "type": "string",
+                        "enum": ["web", "mobile", "desktop"],
+                    },
                 },
-                "required": ["requirements"],
+                "required": ["component_name", "requirements"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_wireframe",
+            "description": "Create a text-based wireframe description for a screen or page",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "screen_name": {"type": "string"},
+                    "user_flow": {"type": "string"},
+                },
+                "required": ["screen_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "define_style_guide",
+            "description": "Define a style guide covering colors, typography, spacing, and branding",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "brand_description": {"type": "string"},
+                    "target_audience": {"type": "string"},
+                },
+                "required": ["brand_description"],
             },
         },
     },
 ]
 
 
-class ArchitectureAgent(BaseAgent):
-    agent_type = AgentType.ARCHITECTURE
+class DesignAgent(BaseAgent):
+    agent_type = "design"
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
     capabilities = [
         CapabilityContract(
-            name="architecture",
+            name="design",
             required_context_window=16_000,
-            supports_tool_use=True,
         ),
     ]
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
         _log = self.ws.publish_log
-        agent_name = self.agent_type.value
+        agent_name = self.agent_type
 
         try:
             await self.ws.publish_agent_status(
@@ -135,28 +143,33 @@ class ArchitectureAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
-            await _log(task.workspace_id, agent_name, "Calling LLM for architecture analysis…", task_id=task.task_id)
+            await _log(task.workspace_id, agent_name, "Calling LLM for design analysis…", task_id=task.task_id)
             raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
+                structured = {"summary": raw_reply, "design_decisions": [], "wireframes": [], "tasks": []}
 
             rich_blocks: list[RichBlock] = []
-            for artifact in structured.get("artifacts", []):
-                await _log(
-                    task.workspace_id, agent_name,
-                    f"Generated artifact: {artifact.get('title', 'untitled')} ({artifact.get('type', 'unknown')})",
-                    task_id=task.task_id,
-                )
+            for wf in structured.get("wireframes", []):
                 rich_blocks.append(
                     RichBlock(
                         type="code",
-                        language=_lang_for(artifact.get("type", "")),
-                        content=artifact.get("content", ""),
-                        metadata={"title": artifact.get("title", "")},
+                        language="markdown",
+                        content=wf.get("layout_description", ""),
+                        metadata={"title": f"Wireframe – {wf.get('screen', 'untitled')}"},
+                    )
+                )
+
+            if structured.get("style_guide"):
+                rich_blocks.append(
+                    RichBlock(
+                        type="code",
+                        language="json",
+                        content=json.dumps(structured["style_guide"], indent=2),
+                        metadata={"title": "Style Guide"},
                     )
                 )
 
@@ -164,8 +177,8 @@ class ArchitectureAgent(BaseAgent):
                 "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
             )
 
-            arch_phase_id = await self.workspace_svc.find_phase_by_type(
-                task.workspace_id, "architecture"
+            phase_id = await self.workspace_svc.find_phase_by_type(
+                task.workspace_id, "design"
             )
 
             created_tasks: list[dict[str, Any]] = []
@@ -178,7 +191,7 @@ class ArchitectureAgent(BaseAgent):
                 new_task = Task(title=title, description=t.get("description", ""))
                 try:
                     result = await self.workspace_svc.create_task(
-                        task.workspace_id, new_task, phase_id=arch_phase_id
+                        task.workspace_id, new_task, phase_id=phase_id
                     )
                     created_tasks.append(result)
                     await _log(task.workspace_id, agent_name, f"Task created: {title}", level="success", task_id=task.task_id)
@@ -214,7 +227,8 @@ class ArchitectureAgent(BaseAgent):
                 task.workspace_id,
                 {
                     "summary": structured.get("summary", ""),
-                    "artifacts": structured.get("artifacts", []),
+                    "design_decisions": structured.get("design_decisions", []),
+                    "wireframes": structured.get("wireframes", []),
                     "created_tasks": created_tasks,
                 },
             )
@@ -270,7 +284,6 @@ class ArchitectureAgent(BaseAgent):
             except Exception:
                 pass
 
-
     async def chat_stream(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
     ) -> AsyncIterator[str]:
@@ -313,12 +326,3 @@ class ArchitectureAgent(BaseAgent):
                 )
             except Exception:
                 pass
-
-
-def _lang_for(artifact_type: str) -> str:
-    return {
-        "schema": "sql",
-        "api": "yaml",
-        "diagram": "mermaid",
-        "adr": "markdown",
-    }.get(artifact_type, "text")

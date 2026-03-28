@@ -14,37 +14,36 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class PhaseType(StrEnum):
-    REQUIREMENTS = "requirements"
+    REQUIREMENT = "requirement"
     DESIGN = "design"
     ARCHITECTURE = "architecture"
-    IMPLEMENTATION = "implementation"
+    DEVELOPMENT = "development"
     TESTING = "testing"
     DEPLOYMENT = "deployment"
+    MONITORING = "monitoring"
 
 
 class PhaseStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
-    FAILED = "failed"
-    BLOCKED = "blocked"
 
 
 class AgentType(StrEnum):
-    PM = "pm"
+    REQUIREMENT = "requirement"
+    DESIGN = "design"
     ARCHITECTURE = "architecture"
-    FRONTEND = "frontend"
-    BACKEND = "backend"
-    QA = "qa"
-    DEVOPS = "devops"
+    DEVELOPMENT = "development"
+    TESTING = "testing"
+    CICD = "cicd"
+    MONITORING = "monitoring"
+    PM = "pm"
 
 
 class AgentStatus(StrEnum):
     IDLE = "idle"
-    THINKING = "thinking"
-    WORKING = "working"
-    REVIEWING = "reviewing"
-    BLOCKED = "blocked"
+    RUNNING = "running"
+    WAITING = "waiting"
     ERROR = "error"
 
 
@@ -96,7 +95,7 @@ class Workspace(BaseModel):
     id: str = ""
     name: str
     description: str = ""
-    current_phase: PhaseType = PhaseType.REQUIREMENTS
+    current_phase: PhaseType = PhaseType.REQUIREMENT
     phases: list[Phase] = Field(default_factory=list)
     agents: list[Agent] = Field(default_factory=list)
     created_at: datetime | None = None

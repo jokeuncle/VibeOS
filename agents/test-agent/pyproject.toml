@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "test-agent"
+version = "0.1.0"
+description = "VibeOS Testing Agent – generates test plans, test cases, and coverage analysis"
+requires-python = ">=3.12"
+dependencies = [
+    "vibeos-agent",
+    "fastapi",
+    "uvicorn[standard]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["test_agent"]

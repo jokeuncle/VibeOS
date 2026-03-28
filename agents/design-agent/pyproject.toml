@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "design-agent"
+version = "0.1.0"
+description = "VibeOS Design Agent – creates UI/UX designs, wireframes, and style guides"
+requires-python = ">=3.12"
+dependencies = [
+    "vibeos-agent",
+    "fastapi",
+    "uvicorn[standard]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["design_agent"]

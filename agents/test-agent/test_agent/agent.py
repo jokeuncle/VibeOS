@@ -1,4 +1,4 @@
-"""Architecture Agent implementation."""
+"""Testing Agent implementation."""
 
 from __future__ import annotations
 
@@ -12,116 +12,125 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
-    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
-    PhaseStatus,
     RichBlock,
     Task,
 )
 
 SYSTEM_PROMPT = """\
-You are an expert software architect. You help teams design robust, scalable systems.
+You are an expert QA engineer. You help teams build comprehensive testing \
+strategies and produce high-quality test suites.
 
 Your responsibilities:
-- Design system architectures (microservices, monoliths, event-driven, etc.)
-- Design database schemas (relational, document, graph)
-- Design REST / GraphQL / gRPC APIs
-- Evaluate and recommend technology stacks
-- Produce architecture decision records (ADRs)
+- Create test plans covering unit, integration, e2e, and performance testing
+- Generate detailed test cases with steps and expected outcomes
+- Analyze test coverage and identify gaps
+- Recommend testing tools and frameworks
 
 When responding, structure your output as JSON with the following shape:
 {
   "summary": "brief summary",
-  "artifacts": [
-    {"type": "schema" | "api" | "diagram" | "adr", "title": "...", "content": "..."}
+  "test_plan": {
+    "strategy": "...",
+    "scope": "...",
+    "tools": ["..."]
+  },
+  "test_cases": [
+    {
+      "name": "...",
+      "type": "unit|integration|e2e|performance",
+      "steps": ["..."],
+      "expected": "..."
+    }
   ],
+  "coverage_analysis": {
+    "covered": ["..."],
+    "gaps": ["..."],
+    "recommendations": ["..."]
+  },
   "tasks": [
     {"title": "...", "description": "..."}
   ]
 }
-Always be specific and opinionated. Justify trade-offs.\
+Be thorough—edge cases and negative tests are as important as happy paths.\
 """
 
 CHAT_PROMPT = """\
-You are an expert software architect having a conversation. Respond in clear, \
+You are an expert QA engineer having a conversation. Respond in clear, \
 well-structured natural language (use markdown formatting when helpful). \
-Be specific, opinionated, and justify trade-offs. \
-Do NOT respond with raw JSON—use prose, bullet points, code blocks, and headings.\
+Discuss testing strategies, suggest test cases, and explain coverage. \
+Do NOT respond with raw JSON—use prose, bullet points, tables, and code blocks.\
 """
 
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "generate_schema",
-            "description": "Generate a database schema definition (SQL DDL or document model)",
+            "name": "generate_test_plan",
+            "description": "Generate a comprehensive test plan for a feature or system",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "db_type": {
+                    "feature_description": {"type": "string"},
+                    "test_types": {
                         "type": "string",
-                        "enum": ["postgresql", "mongodb", "mysql", "sqlite"],
+                        "enum": ["unit", "integration", "e2e", "performance", "all"],
                     },
                 },
-                "required": ["description"],
+                "required": ["feature_description"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "design_api",
-            "description": "Design a REST or GraphQL API surface from requirements",
+            "name": "create_test_cases",
+            "description": "Create detailed test cases with steps and expected outcomes",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "style": {
-                        "type": "string",
-                        "enum": ["rest", "graphql", "grpc"],
-                    },
+                    "feature": {"type": "string"},
+                    "acceptance_criteria": {"type": "string"},
                 },
-                "required": ["description"],
+                "required": ["feature"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "evaluate_tech_stack",
-            "description": "Evaluate technology options and recommend a stack",
+            "name": "analyze_coverage",
+            "description": "Analyze test coverage and identify gaps",
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "existing_tests": {"type": "string"},
                     "requirements": {"type": "string"},
-                    "constraints": {"type": "string"},
                 },
-                "required": ["requirements"],
+                "required": ["existing_tests"],
             },
         },
     },
 ]
 
 
-class ArchitectureAgent(BaseAgent):
-    agent_type = AgentType.ARCHITECTURE
+class TestingAgent(BaseAgent):
+    agent_type = "testing"
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
     capabilities = [
         CapabilityContract(
-            name="architecture",
+            name="testing",
             required_context_window=16_000,
-            supports_tool_use=True,
         ),
     ]
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
         _log = self.ws.publish_log
-        agent_name = self.agent_type.value
+        agent_name = self.agent_type
 
         try:
             await self.ws.publish_agent_status(
@@ -135,28 +144,35 @@ class ArchitectureAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
-            await _log(task.workspace_id, agent_name, "Calling LLM for architecture analysis…", task_id=task.task_id)
+            await _log(task.workspace_id, agent_name, "Calling LLM for test planning…", task_id=task.task_id)
             raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
+                structured = {"summary": raw_reply, "test_cases": [], "tasks": []}
 
             rich_blocks: list[RichBlock] = []
-            for artifact in structured.get("artifacts", []):
-                await _log(
-                    task.workspace_id, agent_name,
-                    f"Generated artifact: {artifact.get('title', 'untitled')} ({artifact.get('type', 'unknown')})",
-                    task_id=task.task_id,
-                )
+            for tc in structured.get("test_cases", []):
                 rich_blocks.append(
                     RichBlock(
                         type="code",
-                        language=_lang_for(artifact.get("type", "")),
-                        content=artifact.get("content", ""),
-                        metadata={"title": artifact.get("title", "")},
+                        language="markdown",
+                        content=f"**{tc.get('name', 'Untitled')}** ({tc.get('type', 'unknown')})\n\nSteps:\n"
+                        + "\n".join(f"  {i+1}. {s}" for i, s in enumerate(tc.get("steps", [])))
+                        + f"\n\nExpected: {tc.get('expected', '')}",
+                        metadata={"title": tc.get("name", "Test Case")},
+                    )
+                )
+
+            if structured.get("coverage_analysis"):
+                rich_blocks.append(
+                    RichBlock(
+                        type="code",
+                        language="json",
+                        content=json.dumps(structured["coverage_analysis"], indent=2),
+                        metadata={"title": "Coverage Analysis"},
                     )
                 )
 
@@ -164,8 +180,8 @@ class ArchitectureAgent(BaseAgent):
                 "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
             )
 
-            arch_phase_id = await self.workspace_svc.find_phase_by_type(
-                task.workspace_id, "architecture"
+            phase_id = await self.workspace_svc.find_phase_by_type(
+                task.workspace_id, "testing"
             )
 
             created_tasks: list[dict[str, Any]] = []
@@ -178,7 +194,7 @@ class ArchitectureAgent(BaseAgent):
                 new_task = Task(title=title, description=t.get("description", ""))
                 try:
                     result = await self.workspace_svc.create_task(
-                        task.workspace_id, new_task, phase_id=arch_phase_id
+                        task.workspace_id, new_task, phase_id=phase_id
                     )
                     created_tasks.append(result)
                     await _log(task.workspace_id, agent_name, f"Task created: {title}", level="success", task_id=task.task_id)
@@ -214,7 +230,9 @@ class ArchitectureAgent(BaseAgent):
                 task.workspace_id,
                 {
                     "summary": structured.get("summary", ""),
-                    "artifacts": structured.get("artifacts", []),
+                    "test_plan": structured.get("test_plan", {}),
+                    "test_cases": structured.get("test_cases", []),
+                    "coverage_analysis": structured.get("coverage_analysis", {}),
                     "created_tasks": created_tasks,
                 },
             )
@@ -270,7 +288,6 @@ class ArchitectureAgent(BaseAgent):
             except Exception:
                 pass
 
-
     async def chat_stream(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
     ) -> AsyncIterator[str]:
@@ -313,12 +330,3 @@ class ArchitectureAgent(BaseAgent):
                 )
             except Exception:
                 pass
-
-
-def _lang_for(artifact_type: str) -> str:
-    return {
-        "schema": "sql",
-        "api": "yaml",
-        "diagram": "mermaid",
-        "adr": "markdown",
-    }.get(artifact_type, "text")

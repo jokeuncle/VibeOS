@@ -1,4 +1,4 @@
-"""Architecture Agent implementation."""
+"""Development Agent implementation."""
 
 from __future__ import annotations
 
@@ -12,108 +12,135 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
-    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
-    PhaseStatus,
     RichBlock,
     Task,
 )
 
 SYSTEM_PROMPT = """\
-You are an expert software architect. You help teams design robust, scalable systems.
+You are an expert full-stack software developer. You help teams implement \
+high-quality, maintainable code across the entire stack.
 
 Your responsibilities:
-- Design system architectures (microservices, monoliths, event-driven, etc.)
-- Design database schemas (relational, document, graph)
-- Design REST / GraphQL / gRPC APIs
-- Evaluate and recommend technology stacks
-- Produce architecture decision records (ADRs)
+- Create implementation plans breaking features into concrete coding tasks
+- Generate production-ready code artifacts (files with proper structure)
+- Review code for bugs, performance issues, and best-practice violations
+- Identify and specify dependencies
 
 When responding, structure your output as JSON with the following shape:
 {
   "summary": "brief summary",
-  "artifacts": [
-    {"type": "schema" | "api" | "diagram" | "adr", "title": "...", "content": "..."}
+  "implementation_plan": [
+    {"step": 1, "description": "...", "files_affected": ["..."]}
+  ],
+  "code_artifacts": [
+    {"filename": "...", "language": "...", "content": "..."}
+  ],
+  "dependencies": [
+    {"name": "...", "version": "...", "reason": "..."}
   ],
   "tasks": [
     {"title": "...", "description": "..."}
   ]
 }
-Always be specific and opinionated. Justify trade-offs.\
+Write clean, well-structured code. Follow language idioms and best practices.\
 """
 
 CHAT_PROMPT = """\
-You are an expert software architect having a conversation. Respond in clear, \
+You are an expert full-stack developer having a conversation. Respond in clear, \
 well-structured natural language (use markdown formatting when helpful). \
-Be specific, opinionated, and justify trade-offs. \
-Do NOT respond with raw JSON—use prose, bullet points, code blocks, and headings.\
+Provide code examples in fenced code blocks, explain architectural choices, \
+and discuss trade-offs. Do NOT respond with raw JSON—use prose, bullet points, \
+code blocks, and headings.\
 """
 
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "generate_schema",
-            "description": "Generate a database schema definition (SQL DDL or document model)",
+            "name": "generate_code",
+            "description": "Generate source code for a given specification",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "db_type": {
+                    "specification": {"type": "string"},
+                    "language": {
                         "type": "string",
-                        "enum": ["postgresql", "mongodb", "mysql", "sqlite"],
+                        "enum": ["python", "typescript", "go", "rust", "java"],
                     },
+                    "framework": {"type": "string"},
                 },
-                "required": ["description"],
+                "required": ["specification", "language"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "design_api",
-            "description": "Design a REST or GraphQL API surface from requirements",
+            "name": "review_code",
+            "description": "Review code for bugs, performance issues, and best practices",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string"},
-                    "style": {
+                    "code": {"type": "string"},
+                    "language": {"type": "string"},
+                    "focus": {
                         "type": "string",
-                        "enum": ["rest", "graphql", "grpc"],
+                        "enum": ["bugs", "performance", "security", "style", "all"],
                     },
                 },
-                "required": ["description"],
+                "required": ["code"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "evaluate_tech_stack",
-            "description": "Evaluate technology options and recommend a stack",
+            "name": "plan_implementation",
+            "description": "Create a step-by-step implementation plan for a feature",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "requirements": {"type": "string"},
+                    "feature_description": {"type": "string"},
+                    "tech_stack": {"type": "string"},
                     "constraints": {"type": "string"},
                 },
-                "required": ["requirements"],
+                "required": ["feature_description"],
             },
         },
     },
 ]
 
 
-class ArchitectureAgent(BaseAgent):
-    agent_type = AgentType.ARCHITECTURE
+def _lang_for(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+    return {
+        "py": "python",
+        "ts": "typescript",
+        "tsx": "typescript",
+        "js": "javascript",
+        "jsx": "javascript",
+        "go": "go",
+        "rs": "rust",
+        "java": "java",
+        "sql": "sql",
+        "yaml": "yaml",
+        "yml": "yaml",
+        "json": "json",
+        "md": "markdown",
+    }.get(ext, "text")
+
+
+class DevelopmentAgent(BaseAgent):
+    agent_type = "development"
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
     capabilities = [
         CapabilityContract(
-            name="architecture",
-            required_context_window=16_000,
+            name="development",
+            required_context_window=32_000,
             supports_tool_use=True,
         ),
     ]
@@ -121,7 +148,7 @@ class ArchitectureAgent(BaseAgent):
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
         _log = self.ws.publish_log
-        agent_name = self.agent_type.value
+        agent_name = self.agent_type
 
         try:
             await self.ws.publish_agent_status(
@@ -135,28 +162,29 @@ class ArchitectureAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
-            await _log(task.workspace_id, agent_name, "Calling LLM for architecture analysis…", task_id=task.task_id)
+            await _log(task.workspace_id, agent_name, "Calling LLM for development planning…", task_id=task.task_id)
             raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
+                structured = {"summary": raw_reply, "code_artifacts": [], "dependencies": [], "tasks": []}
 
             rich_blocks: list[RichBlock] = []
-            for artifact in structured.get("artifacts", []):
+            for artifact in structured.get("code_artifacts", []):
+                filename = artifact.get("filename", "untitled")
                 await _log(
                     task.workspace_id, agent_name,
-                    f"Generated artifact: {artifact.get('title', 'untitled')} ({artifact.get('type', 'unknown')})",
+                    f"Generated code artifact: {filename}",
                     task_id=task.task_id,
                 )
                 rich_blocks.append(
                     RichBlock(
                         type="code",
-                        language=_lang_for(artifact.get("type", "")),
+                        language=artifact.get("language", _lang_for(filename)),
                         content=artifact.get("content", ""),
-                        metadata={"title": artifact.get("title", "")},
+                        metadata={"title": filename},
                     )
                 )
 
@@ -164,8 +192,8 @@ class ArchitectureAgent(BaseAgent):
                 "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
             )
 
-            arch_phase_id = await self.workspace_svc.find_phase_by_type(
-                task.workspace_id, "architecture"
+            phase_id = await self.workspace_svc.find_phase_by_type(
+                task.workspace_id, "development"
             )
 
             created_tasks: list[dict[str, Any]] = []
@@ -178,7 +206,7 @@ class ArchitectureAgent(BaseAgent):
                 new_task = Task(title=title, description=t.get("description", ""))
                 try:
                     result = await self.workspace_svc.create_task(
-                        task.workspace_id, new_task, phase_id=arch_phase_id
+                        task.workspace_id, new_task, phase_id=phase_id
                     )
                     created_tasks.append(result)
                     await _log(task.workspace_id, agent_name, f"Task created: {title}", level="success", task_id=task.task_id)
@@ -214,7 +242,8 @@ class ArchitectureAgent(BaseAgent):
                 task.workspace_id,
                 {
                     "summary": structured.get("summary", ""),
-                    "artifacts": structured.get("artifacts", []),
+                    "code_artifacts": structured.get("code_artifacts", []),
+                    "dependencies": structured.get("dependencies", []),
                     "created_tasks": created_tasks,
                 },
             )
@@ -270,7 +299,6 @@ class ArchitectureAgent(BaseAgent):
             except Exception:
                 pass
 
-
     async def chat_stream(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
     ) -> AsyncIterator[str]:
@@ -313,12 +341,3 @@ class ArchitectureAgent(BaseAgent):
                 )
             except Exception:
                 pass
-
-
-def _lang_for(artifact_type: str) -> str:
-    return {
-        "schema": "sql",
-        "api": "yaml",
-        "diagram": "mermaid",
-        "adr": "markdown",
-    }.get(artifact_type, "text")

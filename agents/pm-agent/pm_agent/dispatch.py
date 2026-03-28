@@ -23,10 +23,12 @@ def _build_agent_endpoints() -> dict[str, str]:
     """Build agent endpoint registry from env vars with sensible defaults."""
     defaults = {
         "architecture": ("ARCHITECTURE_AGENT_URL", "http://architecture-agent:8041"),
-        "frontend": ("FRONTEND_AGENT_URL", "http://frontend-agent:8042"),
-        "backend": ("BACKEND_AGENT_URL", "http://backend-agent:8043"),
-        "qa": ("QA_AGENT_URL", "http://qa-agent:8044"),
-        "devops": ("DEVOPS_AGENT_URL", "http://devops-agent:8045"),
+        "requirement": ("REQUIREMENT_AGENT_URL", "http://requirement-agent:8042"),
+        "design": ("DESIGN_AGENT_URL", "http://design-agent:8043"),
+        "development": ("DEVELOPMENT_AGENT_URL", "http://dev-agent:8044"),
+        "testing": ("TESTING_AGENT_URL", "http://test-agent:8045"),
+        "cicd": ("CICD_AGENT_URL", "http://cicd-agent:8046"),
+        "monitoring": ("MONITORING_AGENT_URL", "http://monitoring-agent:8047"),
     }
     return {k: os.getenv(env, default) for k, (env, default) in defaults.items()}
 
@@ -53,7 +55,7 @@ class Dispatcher:
         await self.ws.publish_agent_status(
             task.workspace_id,
             agent_type,
-            AgentStatus.WORKING,
+            AgentStatus.RUNNING,
             detail=f"Executing: {task.intent}",
         )
 
@@ -92,7 +94,7 @@ class Dispatcher:
             return
 
         await self.ws.publish_agent_status(
-            task.workspace_id, agent_type, AgentStatus.WORKING,
+            task.workspace_id, agent_type, AgentStatus.RUNNING,
             detail=f"Executing: {task.intent}",
         )
 

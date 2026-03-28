@@ -3,18 +3,24 @@ import { useWorkspaceStore } from '../stores/workspace'
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let intentionalClose = false
+let currentWorkspaceId: string | null = null
 
-export function connectWebSocket() {
-  if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+export function connectWebSocket(workspaceId: string | null) {
+  if (workspaceId === currentWorkspaceId && socket?.readyState === WebSocket.OPEN) return
+
+  disconnectWebSocket()
+  if (!workspaceId) return
+
   intentionalClose = false
+  currentWorkspaceId = workspaceId
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const url = `${protocol}://${window.location.host}/ws`
+  const url = `${protocol}://${window.location.host}/ws?workspace_id=${encodeURIComponent(workspaceId)}`
 
   socket = new WebSocket(url)
 
   socket.onopen = () => {
-    console.log('[WS] connected')
+    console.log('[WS] connected', workspaceId)
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -34,7 +40,7 @@ export function connectWebSocket() {
     socket = null
     if (intentionalClose) return
     console.log('[WS] disconnected, reconnecting in 3s')
-    reconnectTimer = setTimeout(connectWebSocket, 3000)
+    reconnectTimer = setTimeout(() => connectWebSocket(currentWorkspaceId), 3000)
   }
 
   socket.onerror = () => {
@@ -50,6 +56,7 @@ export function disconnectWebSocket() {
   }
   socket?.close()
   socket = null
+  currentWorkspaceId = null
 }
 
 function handleWSEvent(event: Record<string, any>) {
