@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Command } from 'lucide-react'
-import { useEffect } from 'react'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
@@ -36,14 +35,6 @@ const SECTIONS: ShortcutSection[] = [
 export default function ShortcutsOverlay() {
   const t = useT()
   const { shortcutsOpen, setShortcutsOpen } = useUIStore()
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && shortcutsOpen) setShortcutsOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [shortcutsOpen, setShortcutsOpen])
 
   return (
     <AnimatePresence>

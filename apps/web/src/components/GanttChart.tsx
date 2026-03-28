@@ -21,9 +21,12 @@ const PHASE_OFFSET: Record<string, { start: number; duration: number }> = {
 
 const WEEKS = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8']
 
-export default function GanttChart({ phases }: { phases: Phase[] }) {
+export default function GanttChart({ phases, startDate }: { phases: Phase[]; startDate?: string }) {
   const t = useT()
   const totalDays = 56
+  const daysSinceStart = startDate
+    ? Math.max(0, Math.min(totalDays, Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000)))
+    : 28
 
   return (
     <div className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden">
@@ -111,7 +114,7 @@ export default function GanttChart({ phases }: { phases: Phase[] }) {
             {/* Today indicator */}
             <motion.div
               className="absolute top-0 bottom-0 w-px bg-accent/60 z-10"
-              style={{ left: `calc(${((28 / totalDays) * 100)}% + 80px)` }}
+              style={{ left: `calc(${((daysSinceStart / totalDays) * 100)}% + 80px)` }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.8 }}

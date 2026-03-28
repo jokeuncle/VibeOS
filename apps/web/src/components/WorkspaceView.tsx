@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useId } from 'react'
 import { motion } from 'framer-motion'
 import { List, LayoutGrid, BarChart3, Bot, Check, X, Plus, MessageCircle, Sparkles, Columns2 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -19,6 +19,7 @@ import type { TranslationKey } from '../i18n/en'
 import type { Phase, TaskPriority, Agent } from '../types'
 
 function ProgressRing({ progress }: { progress: number }) {
+  const gradientId = useId()
   const radius = 28
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (progress / 100) * circumference
@@ -28,14 +29,14 @@ function ProgressRing({ progress }: { progress: number }) {
       <circle cx="36" cy="36" r={radius} fill="none" stroke="var(--color-surface-3)" strokeWidth="3" />
       <motion.circle
         cx="36" cy="36" r={radius}
-        fill="none" stroke="url(#progressGradient)" strokeWidth="3"
+        fill="none" stroke={`url(#${gradientId})`} strokeWidth="3"
         strokeLinecap="round" strokeDasharray={circumference}
         initial={{ strokeDashoffset: circumference }}
         animate={{ strokeDashoffset: offset }}
         transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
       />
       <defs>
-        <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="var(--color-accent)" />
           <stop offset="100%" stopColor="#8b5cf6" />
         </linearGradient>
@@ -75,7 +76,7 @@ function applyFilter(phases: Phase[], filter: FilterState): Phase[] {
 
 function ViewContent({ mode, workspace, displayedPhases, filter, onFilterChange }: {
   mode: ViewMode
-  workspace: { phases: Phase[]; agents: Agent[] }
+  workspace: { phases: Phase[]; agents: Agent[]; createdAt: string }
   displayedPhases: Phase[]
   filter: FilterState
   onFilterChange: (f: FilterState) => void
@@ -94,7 +95,7 @@ function ViewContent({ mode, workspace, displayedPhases, filter, onFilterChange 
   if (mode === 'dashboard') {
     return (
       <div className="mb-8">
-        <Dashboard phases={workspace.phases} agents={workspace.agents} />
+        <Dashboard phases={workspace.phases} agents={workspace.agents} startDate={workspace.createdAt} />
       </div>
     )
   }
@@ -119,8 +120,8 @@ function ViewContent({ mode, workspace, displayedPhases, filter, onFilterChange 
 }
 
 export default function WorkspaceView() {
-  const { activeWorkspaceId, activePhaseId, workspaces, updateWorkspace } = useWorkspaceStore()
-  const { viewMode, setViewMode, addToast, splitMode, splitSecondaryView, setSplitSecondaryView, toggleSplitMode } = useUIStore()
+  const { activeWorkspaceId, activePhaseId, workspaces, updateWorkspace, addTask } = useWorkspaceStore()
+  const { viewMode, setViewMode, addToast, splitMode, splitSecondaryView, setSplitSecondaryView, toggleSplitMode, openAgentChat } = useUIStore()
   const t = useT()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
@@ -143,14 +144,14 @@ export default function WorkspaceView() {
 
   function saveTitle() {
     if (draftTitle.trim()) {
-      updateWorkspace(workspace.id, { name: draftTitle.trim() })
+      updateWorkspace(workspace!.id, { name: draftTitle.trim() })
       addToast({ type: 'success', message: t('workspace.updated') })
     }
     setEditingTitle(false)
   }
 
   function saveDesc() {
-    updateWorkspace(workspace.id, { description: draftDesc.trim() })
+    updateWorkspace(workspace!.id, { description: draftDesc.trim() })
     addToast({ type: 'success', message: t('workspace.updated') })
     setEditingDesc(false)
   }
@@ -296,8 +297,10 @@ export default function WorkspaceView() {
                 <button
                   onClick={() => {
                     const firstPhase = workspace.phases[0]
-                    if (firstPhase) {
+                    if (firstPhase && activeWorkspaceId) {
+                      addTask(activeWorkspaceId, firstPhase.id, t('emptyState.newTaskTitle'))
                       setViewMode('list')
+                      addToast({ type: 'success', message: t('task.created') })
                     }
                   }}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium cursor-pointer transition-colors"
@@ -306,6 +309,10 @@ export default function WorkspaceView() {
                   {t('emptyState.addTask')}
                 </button>
                 <button
+                  onClick={() => {
+                    const pmAgent = workspace.agents.find((a) => a.type === 'pm') || workspace.agents[0]
+                    if (pmAgent) openAgentChat(pmAgent.id)
+                  }}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-sm font-medium cursor-pointer transition-colors"
                 >
                   <MessageCircle className="w-4 h-4" />

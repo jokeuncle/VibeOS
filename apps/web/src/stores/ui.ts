@@ -12,6 +12,7 @@ export interface Notification {
   description: string
   time: string
   read: boolean
+  workspaceId?: string
 }
 
 export interface ConfirmDialogState {
@@ -22,9 +23,9 @@ export interface ConfirmDialogState {
 }
 
 const MOCK_NOTIFICATIONS: Notification[] = [
-  { id: 'n1', title: 'Arch Agent completed database schema design', description: 'User Points System', time: '2026-03-27T14:20:00Z', read: false },
-  { id: 'n2', title: 'Requirements phase completed', description: 'User Points System', time: '2026-03-27T12:00:00Z', read: false },
-  { id: 'n3', title: 'New workspace created', description: 'Payment Gateway', time: '2026-03-25T09:00:00Z', read: true },
+  { id: 'n1', title: 'Arch Agent completed database schema design', description: 'User Points System', time: '2026-03-27T14:20:00Z', read: false, workspaceId: 'ws-1' },
+  { id: 'n2', title: 'Requirements phase completed', description: 'User Points System', time: '2026-03-27T12:00:00Z', read: false, workspaceId: 'ws-1' },
+  { id: 'n3', title: 'New workspace created', description: 'Payment Gateway', time: '2026-03-25T09:00:00Z', read: true, workspaceId: 'ws-2' },
 ]
 
 interface UIState {
@@ -86,9 +87,11 @@ interface UIState {
 
   shortcutsOpen: boolean
   setShortcutsOpen: (open: boolean) => void
+
+  closeTopmostOverlay: () => boolean
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   toasts: [],
   addToast: (toast) => {
     const id = `toast-${Date.now()}`
@@ -177,4 +180,16 @@ export const useUIStore = create<UIState>((set) => ({
 
   shortcutsOpen: false,
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+
+  closeTopmostOverlay: () => {
+    const s = get()
+    if (s.shortcutsOpen) { set({ shortcutsOpen: false }); return true }
+    if (s.commandPaletteOpen) { set({ commandPaletteOpen: false }); return true }
+    if (s.settingsOpen) { set({ settingsOpen: false }); return true }
+    if (s.templatePickerOpen) { set({ templatePickerOpen: false }); return true }
+    if (s.taskDetailOpen) { set({ taskDetailOpen: false, taskDetailPhaseId: null, taskDetailTaskId: null }); return true }
+    if (s.agentChatOpen) { set({ agentChatOpen: false, agentChatAgentId: null }); return true }
+    if (s.notificationsOpen) { set({ notificationsOpen: false }); return true }
+    return false
+  },
 }))

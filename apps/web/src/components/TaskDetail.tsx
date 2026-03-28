@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { CheckCircle2, Circle, Loader2, Eye, Pencil, Paperclip, Upload, User, Send } from 'lucide-react'
 import { marked } from 'marked'
 import SlideOver from './ui/SlideOver'
+import DatePicker from './ui/DatePicker'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
@@ -55,9 +56,13 @@ export default function TaskDetail() {
   const [labels, setLabels] = useState<LabelColor[]>([])
   const [dueDate, setDueDate] = useState('')
   const [previewMode, setPreviewMode] = useState(false)
-  const [comments, setComments] = useState<TaskComment[]>([])
+  const [commentsMap, setCommentsMap] = useState<Record<string, TaskComment[]>>({})
   const [commentText, setCommentText] = useState('')
-  const [attachments, setAttachments] = useState<TaskAttachment[]>([])
+  const [attachmentsMap, setAttachmentsMap] = useState<Record<string, TaskAttachment[]>>({})
+
+  const taskKey = taskDetailTaskId || ''
+  const comments = commentsMap[taskKey] || []
+  const attachments = attachmentsMap[taskKey] || []
 
   useEffect(() => {
     if (task) {
@@ -78,12 +83,15 @@ export default function TaskDetail() {
 
   function addComment() {
     if (!commentText.trim()) return
-    setComments((prev) => [...prev, {
-      id: `c-${Date.now()}`,
-      author: t('comment.you'),
-      content: commentText.trim(),
-      timestamp: new Date().toISOString(),
-    }])
+    setCommentsMap((prev) => ({
+      ...prev,
+      [taskKey]: [...(prev[taskKey] || []), {
+        id: `c-${Date.now()}`,
+        author: t('comment.you'),
+        content: commentText.trim(),
+        timestamp: new Date().toISOString(),
+      }],
+    }))
     setCommentText('')
   }
 
@@ -194,11 +202,10 @@ export default function TaskDetail() {
           {/* Due date */}
           <div>
             <label className="text-xs font-medium text-text-tertiary mb-1.5 block">{t('dueDate.label')}</label>
-            <input
-              type="date"
+            <DatePicker
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-surface-2 border border-border-default text-xs text-text-primary outline-none focus:border-accent/40 transition-colors"
+              onChange={setDueDate}
+              placeholder={t('dueDate.none')}
             />
           </div>
 
@@ -273,11 +280,17 @@ export default function TaskDetail() {
             )}
             <button
               onClick={() => {
-                setAttachments((prev) => [...prev, {
-                  id: `att-${Date.now()}`,
-                  name: `document-${prev.length + 1}.pdf`,
-                  size: `${Math.floor(Math.random() * 900 + 100)} KB`,
-                }])
+                setAttachmentsMap((prev) => {
+                  const existing = prev[taskKey] || []
+                  return {
+                    ...prev,
+                    [taskKey]: [...existing, {
+                      id: `att-${Date.now()}`,
+                      name: `document-${existing.length + 1}.pdf`,
+                      size: `${Math.floor(Math.random() * 900 + 100)} KB`,
+                    }],
+                  }
+                })
               }}
               className="w-full py-3 border-2 border-dashed border-border-default rounded-lg text-xs text-text-tertiary hover:border-accent/30 hover:text-accent transition-colors cursor-pointer flex items-center justify-center gap-1.5"
             >

@@ -1,50 +1,40 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Bot, User, ArrowUp } from 'lucide-react'
 import SlideOver from './ui/SlideOver'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
-import type { Message } from '../types'
 
 export default function AgentChat() {
   const t = useT()
   const { agentChatOpen, agentChatAgentId, closeAgentChat } = useUIStore()
-  const { activeWorkspaceId, workspaces } = useWorkspaceStore()
+  const { activeWorkspaceId, workspaces, agentChatMessages, sendAgentChatMessage } = useWorkspaceStore()
+  const bottomRef = useRef<HTMLDivElement>(null)
 
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const agent = workspace?.agents.find((a) => a.id === agentChatAgentId || a.type === agentChatAgentId)
 
-  const [messages, setMessages] = useState<Message[]>([])
+  const chatKey = activeWorkspaceId && agent ? `${activeWorkspaceId}:${agent.type}` : ''
+  const messages = agentChatMessages[chatKey] || []
+
   const [input, setInput] = useState('')
 
   const nameKey = agent ? (`agent.name.${agent.type}` as TranslationKey) : 'agent.agents'
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages.length])
+
   function handleSend(e: React.FormEvent) {
     e.preventDefault()
-    if (!input.trim()) return
-
-    const userMsg: Message = {
-      id: `m-${Date.now()}`,
-      role: 'user',
-      content: input.trim(),
-      timestamp: new Date().toISOString(),
-    }
-    const agentMsg: Message = {
-      id: `m-${Date.now() + 1}`,
-      role: 'agent',
-      content: t('agent.mockReply'),
-      agentType: agent?.type,
-      timestamp: new Date().toISOString(),
-    }
-
-    setMessages((prev) => [...prev, userMsg, agentMsg])
+    if (!input.trim() || !agent) return
+    sendAgentChatMessage(agent.type, input.trim())
     setInput('')
   }
 
   function handleClose() {
     closeAgentChat()
-    setMessages([])
     setInput('')
   }
 
@@ -93,6 +83,7 @@ export default function AgentChat() {
                 </div>
               </div>
             ))}
+            <div ref={bottomRef} />
           </div>
 
           {/* Input */}

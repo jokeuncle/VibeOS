@@ -233,6 +233,16 @@ const en = {
   'emptyState.desc': 'Get started by adding your first task or talking to an agent.',
   'emptyState.addTask': 'Add a task',
   'emptyState.talkAgent': 'Talk to Agent',
+  'emptyState.newTaskTitle': 'New Task',
+
+  'rich.actionApproved': 'Deployment approved',
+  'rich.actionCancelled': 'Operation cancelled',
+  'rich.actionConfirmed': 'Task confirmed and added',
+  'rich.actionApplied': 'Changes applied successfully',
+  'rich.actionDismissed': 'Dismissed',
+  'rich.actionProceeding': 'Breaking down into tasks…',
+  'rich.actionDetail': 'Generating detailed analysis…',
+  'rich.taskMoved': 'Task status updated',
 
   'shortcuts.title': 'Keyboard Shortcuts',
   'shortcuts.general': 'General',

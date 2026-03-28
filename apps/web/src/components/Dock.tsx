@@ -57,7 +57,10 @@ export default function Dock() {
       id: 'dashboard',
       icon: <BarChart3 className="w-5 h-5" />,
       label: t('view.dashboard'),
-      action: () => { if (activeWorkspaceId) setViewMode('dashboard') },
+      action: () => {
+        if (activeWorkspaceId) setViewMode('dashboard')
+        else addToast({ type: 'info', message: t('workspace.selectFirst') })
+      },
     },
     {
       id: 'split',

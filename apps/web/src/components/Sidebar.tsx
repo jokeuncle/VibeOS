@@ -67,7 +67,7 @@ export default function Sidebar() {
         )}
       </button>
 
-      {!sidebarCollapsed && workspace.phases.map((phase, index) => {
+      {workspace.phases.map((phase, index) => {
         const isActive = activePhaseId === phase.id
         const icon = PHASE_ICONS[phase.type]
         const labelKey = `phase.short.${phase.type}` as TranslationKey
@@ -76,7 +76,7 @@ export default function Sidebar() {
 
         return (
           <div key={phase.id} className="flex flex-col items-center w-full">
-            {index > 0 && (
+            {!sidebarCollapsed && index > 0 && (
               <div className={`w-px h-3 mb-1 transition-colors ${
                 phase.status !== 'pending' ? 'bg-accent/40' : 'bg-border-subtle'
               }`} />
@@ -85,24 +85,29 @@ export default function Sidebar() {
               onClick={() => setActivePhase(isActive ? null : phase.id)}
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.95 }}
-              className={`relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer ${
+              title={sidebarCollapsed ? t(labelKey) : undefined}
+              className={`relative ${sidebarCollapsed ? 'w-7 h-7 rounded-lg' : 'w-11 h-11 rounded-xl'} flex items-center justify-center transition-all duration-200 cursor-pointer ${
                 isActive ? 'bg-accent/15 text-accent glow-accent'
                   : phase.status === 'completed' ? 'text-success/70 hover:bg-surface-3'
                     : phase.status === 'in_progress' ? 'text-accent/70 hover:bg-surface-3'
                       : 'text-text-tertiary hover:bg-surface-3 hover:text-text-secondary'
               }`}
             >
-              {icon}
-              <div className="absolute -top-0.5 -right-0.5">
+              <div className={sidebarCollapsed ? 'scale-[0.72]' : ''}>{icon}</div>
+              <div className={`absolute ${sidebarCollapsed ? '-top-0.5 -right-0.5' : '-top-0.5 -right-0.5'}`}>
                 <StatusDot status={phase.status} />
               </div>
             </motion.button>
-            <span className={`text-[9px] font-mono font-medium mt-0.5 tracking-wider ${
-              isActive ? 'text-accent' : 'text-text-tertiary'
-            }`}>
-              {t(labelKey)}
-            </span>
-            <MiniProgress completed={completed} total={total} />
+            {!sidebarCollapsed && (
+              <>
+                <span className={`text-[9px] font-mono font-medium mt-0.5 tracking-wider ${
+                  isActive ? 'text-accent' : 'text-text-tertiary'
+                }`}>
+                  {t(labelKey)}
+                </span>
+                <MiniProgress completed={completed} total={total} />
+              </>
+            )}
           </div>
         )
       })}

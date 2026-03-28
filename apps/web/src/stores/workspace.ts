@@ -161,6 +161,9 @@ interface WorkspaceState {
   createWorkspaceFromTemplate: (name: string, description: string, color: WorkspaceColor) => string
   addActivity: (workspaceId: string, activity: Omit<ActivityItem, 'id' | 'timestamp'>) => void
   reorderTasks: (workspaceId: string, phaseId: string, taskIds: string[]) => void
+
+  agentChatMessages: Record<string, Message[]>
+  sendAgentChatMessage: (agentType: string, input: string) => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -429,4 +432,40 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           : w,
       ),
     })),
+
+  agentChatMessages: {},
+
+  sendAgentChatMessage: (agentType, input) => {
+    const wsId = get().activeWorkspaceId
+    if (!wsId) return
+    const key = `${wsId}:${agentType}`
+    const ts = new Date().toISOString()
+    const userMsg: Message = {
+      id: `msg-${Date.now()}`,
+      role: 'user',
+      content: input,
+      timestamp: ts,
+    }
+    set((s) => ({
+      agentChatMessages: {
+        ...s.agentChatMessages,
+        [key]: [...(s.agentChatMessages[key] || []), userMsg],
+      },
+    }))
+    setTimeout(() => {
+      const agentMsg: Message = {
+        id: `msg-${Date.now()}`,
+        role: 'agent',
+        content: `I've analyzed your request regarding "${input}". Let me coordinate with the relevant systems and get back to you with actionable results.`,
+        agentType: agentType as AgentType,
+        timestamp: new Date().toISOString(),
+      }
+      set((s) => ({
+        agentChatMessages: {
+          ...s.agentChatMessages,
+          [key]: [...(s.agentChatMessages[key] || []), agentMsg],
+        },
+      }))
+    }, 600)
+  },
 }))

@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, Check } from 'lucide-react'
 import { useRef, useEffect } from 'react'
 import { useUIStore } from '../stores/ui'
+import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 
@@ -19,6 +20,7 @@ export default function NotificationPanel() {
   const t = useT()
   const ref = useRef<HTMLDivElement>(null)
   const { notificationsOpen, setNotificationsOpen, notifications, markNotificationRead, markAllRead } = useUIStore()
+  const { setActiveWorkspace } = useWorkspaceStore()
   const unreadCount = notifications.filter((n) => !n.read).length
 
   useEffect(() => {
@@ -80,7 +82,13 @@ export default function NotificationPanel() {
                 notifications.map((n) => (
                   <button
                     key={n.id}
-                    onClick={() => markNotificationRead(n.id)}
+                    onClick={() => {
+                      markNotificationRead(n.id)
+                      if (n.workspaceId) {
+                        setActiveWorkspace(n.workspaceId)
+                        setNotificationsOpen(false)
+                      }
+                    }}
                     className={`w-full text-left px-4 py-3 flex gap-3 cursor-pointer transition-colors hover:bg-surface-3 ${
                       n.read ? 'opacity-50' : ''
                     }`}

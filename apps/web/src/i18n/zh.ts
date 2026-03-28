@@ -235,6 +235,16 @@ const zh: Record<TranslationKey, string> = {
   'emptyState.desc': '添加第一个任务或与 Agent 对话开始吧。',
   'emptyState.addTask': '添加任务',
   'emptyState.talkAgent': '与 Agent 对话',
+  'emptyState.newTaskTitle': '新任务',
+
+  'rich.actionApproved': '部署已批准',
+  'rich.actionCancelled': '操作已取消',
+  'rich.actionConfirmed': '任务已确认并添加',
+  'rich.actionApplied': '变更已成功应用',
+  'rich.actionDismissed': '已忽略',
+  'rich.actionProceeding': '正在拆解为子任务…',
+  'rich.actionDetail': '正在生成详细分析…',
+  'rich.taskMoved': '任务状态已更新',
 
   'shortcuts.title': '快捷键',
   'shortcuts.general': '通用',

@@ -58,7 +58,7 @@ function PhaseBar({ name, progress, status }: { name: string; progress: number; 
   )
 }
 
-export default function Dashboard({ phases, agents }: { phases: Phase[]; agents: Agent[] }) {
+export default function Dashboard({ phases, agents, startDate }: { phases: Phase[]; agents: Agent[]; startDate?: string }) {
   const t = useT()
 
   const totalTasks = phases.reduce((a, p) => a + p.tasks.length, 0)
@@ -143,7 +143,7 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
       >
-        <GanttChart phases={phases} />
+        <GanttChart phases={phases} startDate={startDate} />
       </motion.div>
     </div>
   )

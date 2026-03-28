@@ -114,6 +114,18 @@ input, textarea {
   user-select: text;
 }
 
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+[data-theme="light"] input[type="date"],
+[data-theme="light"] input[type="time"],
+[data-theme="light"] input[type="datetime-local"] {
+  color-scheme: light;
+}
+
 /* Light theme overrides */
 [data-theme="light"] {
   --color-surface-0: #f8f9fb;
@@ -187,6 +199,74 @@ input, textarea {
   border: none;
   border-top: 1px solid var(--color-border-subtle);
   margin: 0.8em 0;
+}
+
+/* react-day-picker theme */
+.vibe-datepicker {
+  --rdp-accent-color: var(--color-accent);
+  --rdp-accent-background-color: var(--color-accent-dim);
+  --rdp-day-height: 36px;
+  --rdp-day-width: 36px;
+  --rdp-day_button-height: 34px;
+  --rdp-day_button-width: 34px;
+  --rdp-day_button-border-radius: 8px;
+  --rdp-today-color: var(--color-accent);
+  --rdp-outside-opacity: 0.3;
+  --rdp-selected-border: 2px solid var(--color-accent);
+  font-family: var(--font-sans);
+  padding: 12px;
+  color: var(--color-text-primary);
+  background: var(--color-surface-1);
+  font-size: 12px;
+}
+
+.vibe-datepicker .rdp-month_caption {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.vibe-datepicker .rdp-weekday {
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.vibe-datepicker .rdp-day_button {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.vibe-datepicker .rdp-day_button:hover {
+  background: var(--color-surface-3);
+  color: var(--color-text-primary);
+}
+
+.vibe-datepicker .rdp-today .rdp-day_button {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.vibe-datepicker .rdp-selected .rdp-day_button {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.vibe-datepicker .rdp-selected .rdp-day_button:hover {
+  background: var(--color-accent-hover);
+  color: #fff;
+}
+
+.vibe-datepicker .rdp-nav button {
+  color: var(--color-text-tertiary);
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.vibe-datepicker .rdp-nav button:hover {
+  background: var(--color-surface-3);
 }
 
 /* Drag overlay */

@@ -38,9 +38,20 @@ export default function App() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        useUIStore.getState().closeTopmostOverlay()
+        return
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
         e.preventDefault()
         toggleSidebar()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+        e.preventDefault()
+        setSettingsOpen(!settingsOpen)
+        return
       }
       if (e.key === '?' && !commandPaletteOpen && !settingsOpen) {
         const target = e.target as HTMLElement
@@ -51,7 +62,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleSidebar, setSettingsOpen, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, settingsOpen])
+  }, [toggleSidebar, setSettingsOpen, settingsOpen, shortcutsOpen, setShortcutsOpen, commandPaletteOpen])
 
   return (
     <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">

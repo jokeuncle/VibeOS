@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Command, Sun, Moon } from 'lucide-react'
-import { useEffect } from 'react'
 import { useUIStore } from '../stores/ui'
 import { useI18nStore, useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
@@ -16,18 +15,6 @@ export default function SettingsPanel() {
   const t = useT()
   const { settingsOpen, setSettingsOpen, theme, setTheme } = useUIStore()
   const { locale, setLocale } = useI18nStore()
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setSettingsOpen(false)
-      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
-        e.preventDefault()
-        setSettingsOpen(!settingsOpen)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [settingsOpen, setSettingsOpen])
 
   return (
     <AnimatePresence>

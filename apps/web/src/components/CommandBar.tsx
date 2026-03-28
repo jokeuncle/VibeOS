@@ -127,16 +127,11 @@ export default function CommandBar() {
   }
 
   const handleKeydown = useCallback((e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-      if (commandPaletteOpen) return
-      e.preventDefault()
-      inputRef.current?.focus()
-    }
     if (e.key === 'Escape') {
       inputRef.current?.blur()
       setFocused(false)
     }
-  }, [commandPaletteOpen])
+  }, [])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeydown)

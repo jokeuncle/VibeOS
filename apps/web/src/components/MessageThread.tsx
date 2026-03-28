@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bot, User, ChevronDown, CheckCircle2, Circle, Loader2, Play, Code2 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import type { Message, RichBlock, PhaseStatus, TaskPriority } from '../types'
+import type { Message, RichBlock, RichAction, PhaseStatus, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 function ProgressBar({ percent, label }: { percent: number; label?: string }) {
@@ -44,6 +45,46 @@ const PRIORITY_STYLE: Record<TaskPriority, string> = {
 }
 
 function RichBlockRenderer({ block }: { block: RichBlock }) {
+  const { addToast } = useUIStore()
+  const { addTask, activeWorkspaceId, workspaces } = useWorkspaceStore()
+  const t = useT()
+
+  function handleAction(action: RichAction) {
+    const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
+    switch (action.id) {
+      case 'approve':
+        addToast({ type: 'success', message: t('rich.actionApproved') })
+        break
+      case 'cancel':
+        addToast({ type: 'info', message: t('rich.actionCancelled') })
+        break
+      case 'confirm':
+        if (block.taskTitle && activeWorkspaceId && workspace) {
+          const firstPhase = workspace.phases[0]
+          if (firstPhase) addTask(activeWorkspaceId, firstPhase.id, block.taskTitle)
+        }
+        addToast({ type: 'success', message: t('rich.actionConfirmed') })
+        break
+      case 'apply':
+        addToast({ type: 'success', message: t('rich.actionApplied') })
+        break
+      case 'dismiss':
+        addToast({ type: 'info', message: t('rich.actionDismissed') })
+        break
+      case 'proceed':
+        addToast({ type: 'info', message: t('rich.actionProceeding') })
+        break
+      case 'detail':
+        addToast({ type: 'info', message: t('rich.actionDetail') })
+        break
+      case 'modify':
+        addToast({ type: 'info', message: t('rich.actionDetail') })
+        break
+      default:
+        addToast({ type: 'info', message: `${action.label}` })
+    }
+  }
+
   switch (block.type) {
     case 'action_card':
       return (
@@ -55,6 +96,7 @@ function RichBlockRenderer({ block }: { block: RichBlock }) {
               {block.actions.map((a) => (
                 <button
                   key={a.id}
+                  onClick={() => handleAction(a)}
                   className={`px-3 py-1.5 rounded-lg text-[11px] font-medium cursor-pointer transition-colors ${
                     a.variant === 'primary' ? 'bg-accent hover:bg-accent-hover text-white'
                     : a.variant === 'danger' ? 'bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20'
