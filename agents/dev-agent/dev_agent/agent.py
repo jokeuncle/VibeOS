@@ -156,9 +156,11 @@ class DevelopmentAgent(BaseAgent):
             )
             await _log(task.workspace_id, agent_name, f"Starting task: {task.intent}", task_id=task.task_id)
 
+            user_msg = task.user_message or task.description
             prompt = (
                 f"Task: {task.intent}\n"
                 f"Description: {task.description}\n"
+                f"User request: {user_msg}\n"
                 f"Context: {json.dumps(task.context)}"
             )
 
@@ -170,6 +172,21 @@ class DevelopmentAgent(BaseAgent):
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:
                 structured = {"summary": raw_reply, "code_artifacts": [], "dependencies": [], "tasks": []}
+
+            # Save code output as artifact
+            try:
+                dev_phase_id = await self.workspace_svc.find_phase_by_type(task.workspace_id, "development")
+                await self._save_artifact(
+                    task.workspace_id,
+                    artifact_type="code",
+                    title=f"Code: {task.description[:80]}",
+                    content=raw_reply,
+                    phase_id=dev_phase_id,
+                    task_id=task.task_id,
+                )
+                await _log(task.workspace_id, agent_name, "Code output saved as artifact", level="success", task_id=task.task_id)
+            except Exception as exc:
+                await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
 
             rich_blocks: list[RichBlock] = []
             for artifact in structured.get("code_artifacts", []):

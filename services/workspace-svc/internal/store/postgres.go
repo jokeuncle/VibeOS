@@ -39,6 +39,11 @@ type Store interface {
 
 	CreateActivity(ctx context.Context, activity *models.Activity) error
 	ListActivities(ctx context.Context, workspaceID string, page, pageSize int) ([]models.Activity, int64, error)
+
+	CreateArtifact(ctx context.Context, artifact *models.Artifact) error
+	ListArtifactsByWorkspace(ctx context.Context, workspaceID string) ([]models.Artifact, error)
+	ListArtifactsByPhase(ctx context.Context, workspaceID, phaseID string) ([]models.Artifact, error)
+	GetArtifact(ctx context.Context, id string) (*models.Artifact, error)
 }
 
 type PostgresStore struct {
@@ -689,4 +694,88 @@ func (s *PostgresStore) queryRecentActivities(ctx context.Context, wsIDs []strin
 		activities = []models.Activity{}
 	}
 	return activities, nil
+}
+
+// ---------------------------------------------------------------------------
+// Artifact operations
+// ---------------------------------------------------------------------------
+
+const artifactCols = `id, workspace_id, phase_id, task_id, agent_type, type, title, content, metadata, version, created_at, updated_at`
+
+func scanArtifact(s rowScanner) (*models.Artifact, error) {
+	var a models.Artifact
+	err := s.Scan(&a.ID, &a.WorkspaceID, &a.PhaseID, &a.TaskID,
+		&a.AgentType, &a.Type, &a.Title, &a.Content, &a.Metadata,
+		&a.Version, &a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+func (s *PostgresStore) CreateArtifact(ctx context.Context, artifact *models.Artifact) error {
+	return s.pool.QueryRow(ctx, `
+		INSERT INTO artifacts (id, workspace_id, phase_id, task_id, agent_type, type, title, content, metadata, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING created_at, updated_at`,
+		artifact.ID, artifact.WorkspaceID, artifact.PhaseID, artifact.TaskID,
+		string(artifact.AgentType), artifact.Type, artifact.Title, artifact.Content,
+		artifact.Metadata, artifact.Version,
+	).Scan(&artifact.CreatedAt, &artifact.UpdatedAt)
+}
+
+func (s *PostgresStore) ListArtifactsByWorkspace(ctx context.Context, workspaceID string) ([]models.Artifact, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+artifactCols+` FROM artifacts WHERE workspace_id = $1 ORDER BY created_at DESC`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("query artifacts: %w", err)
+	}
+	defer rows.Close()
+
+	var artifacts []models.Artifact
+	for rows.Next() {
+		a, err := scanArtifact(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan artifact: %w", err)
+		}
+		artifacts = append(artifacts, *a)
+	}
+	if artifacts == nil {
+		artifacts = []models.Artifact{}
+	}
+	return artifacts, nil
+}
+
+func (s *PostgresStore) ListArtifactsByPhase(ctx context.Context, workspaceID, phaseID string) ([]models.Artifact, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+artifactCols+` FROM artifacts WHERE workspace_id = $1 AND phase_id = $2 ORDER BY created_at DESC`,
+		workspaceID, phaseID)
+	if err != nil {
+		return nil, fmt.Errorf("query artifacts by phase: %w", err)
+	}
+	defer rows.Close()
+
+	var artifacts []models.Artifact
+	for rows.Next() {
+		a, err := scanArtifact(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan artifact: %w", err)
+		}
+		artifacts = append(artifacts, *a)
+	}
+	if artifacts == nil {
+		artifacts = []models.Artifact{}
+	}
+	return artifacts, nil
+}
+
+func (s *PostgresStore) GetArtifact(ctx context.Context, id string) (*models.Artifact, error) {
+	a, err := scanArtifact(s.pool.QueryRow(ctx, `SELECT `+artifactCols+` FROM artifacts WHERE id = $1`, id))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("query artifact: %w", err)
+	}
+	return a, nil
 }

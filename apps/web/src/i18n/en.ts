@@ -304,6 +304,22 @@ const en = {
   'homeDash.completedTasks': 'Completed',
   'homeDash.activeAgents': 'Active Agents',
   'homeDash.overview': 'Overview',
+
+  'workflow.runPhase': 'Run Phase',
+  'workflow.runProject': 'Run Full Project',
+  'workflow.running': 'Running...',
+  'workflow.phaseStart': 'Starting phase',
+  'workflow.phaseComplete': 'Phase complete',
+  'workflow.phaseSkip': 'Phase skipped',
+  'workflow.taskStart': 'Executing task',
+  'workflow.taskComplete': 'Task complete',
+  'workflow.taskError': 'Task error',
+  'workflow.projectStart': 'Starting project lifecycle',
+  'workflow.projectComplete': 'Project lifecycle complete',
+
+  'artifact.title': 'Artifacts',
+  'artifact.empty': 'No artifacts generated yet',
+  'artifact.viewAll': 'View all artifacts',
 } as const
 
 export type TranslationKey = keyof typeof en

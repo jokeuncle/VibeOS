@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { useT } from '../i18n'
-import type { Agent, AgentType, AgentStatus } from '../types'
+import { useWorkspaceStore } from '../stores/workspace'
+import type { Agent, AgentType, AgentStatus, WorkflowEvent } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 const STATUS_FILL: Record<AgentStatus, string> = {
@@ -73,8 +74,56 @@ function generateTimeline(agent: AgentType): TimelineSegment[] {
 const HOURS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
 const ALL_AGENTS: AgentType[] = ['pm', 'requirement', 'design', 'architecture', 'development', 'testing', 'cicd', 'monitoring']
 
+const PHASE_LABELS: Record<string, string> = {
+  requirement: 'REQ',
+  architecture: 'ARCH',
+  design: 'DES',
+  development: 'DEV',
+  testing: 'TEST',
+  deployment: 'DEPLOY',
+  monitoring: 'MON',
+}
+
+function WorkflowProgress({ events }: { events: WorkflowEvent[] }) {
+  const phases = ['requirement', 'architecture', 'design', 'development', 'testing', 'deployment', 'monitoring']
+  const completedPhases = new Set(
+    events.filter((e) => e.type === 'workflow:phase_complete').map((e) => e.phase)
+  )
+  const currentPhase = events.filter((e) => e.type === 'workflow:phase_start').map((e) => e.phase).pop()
+
+  if (events.length === 0) return null
+
+  return (
+    <div className="px-4 py-3 border-b border-border-subtle">
+      <div className="flex items-center gap-1">
+        {phases.map((phase) => {
+          const isCompleted = completedPhases.has(phase)
+          const isCurrent = phase === currentPhase && !isCompleted
+          return (
+            <div
+              key={phase}
+              className={`flex-1 h-1.5 rounded-full transition-colors ${
+                isCompleted ? 'bg-success' : isCurrent ? 'bg-accent animate-pulse' : 'bg-surface-3'
+              }`}
+              title={PHASE_LABELS[phase] || phase}
+            />
+          )
+        })}
+      </div>
+      <div className="flex justify-between mt-1.5">
+        {phases.map((phase) => (
+          <span key={phase} className="text-[8px] font-mono text-text-tertiary text-center" style={{ width: `${100/7}%` }}>
+            {PHASE_LABELS[phase]}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function AgentTimeline({ agents }: { agents: Agent[] }) {
   const t = useT()
+  const { workflowEvents } = useWorkspaceStore()
   const currentPercent = 72
 
   return (
@@ -84,6 +133,8 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
           {t('agent.timeline')}
         </span>
       </div>
+
+      <WorkflowProgress events={workflowEvents} />
 
       <div className="p-4 overflow-x-auto">
         <div style={{ minWidth: 380 }}>

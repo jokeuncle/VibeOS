@@ -74,6 +74,12 @@ function handleWSEvent(event: Record<string, any>) {
     })
   }
 
+  if (event.type?.startsWith('workflow:') && event.workspaceId === activeWsId) {
+    const wfStore = useWorkspaceStore.getState()
+    wfStore.workflowEvents.push(event as any)
+    useWorkspaceStore.setState({ workflowEvents: [...wfStore.workflowEvents] })
+  }
+
   if (event.workspaceId && event.workspaceId === activeWsId) {
     store.refreshActiveWorkspace()
   }

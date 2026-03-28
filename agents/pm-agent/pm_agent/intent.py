@@ -13,6 +13,9 @@ from vibeos_agent import AgentType, LLMGatewayClient
 INTENT_TYPES: list[str] = [
     "create_task",
     "query_progress",
+    "execute_task",
+    "execute_phase",
+    "run_project",
     "design_system",
     "generate_code",
     "run_tests",
@@ -25,6 +28,9 @@ INTENT_TYPES: list[str] = [
 _AGENT_MAP: dict[str, AgentType] = {
     "create_task": AgentType.PM,
     "query_progress": AgentType.PM,
+    "execute_task": AgentType.PM,
+    "execute_phase": AgentType.PM,
+    "run_project": AgentType.PM,
     "design_system": AgentType.ARCHITECTURE,
     "architecture_design": AgentType.ARCHITECTURE,
     "generate_code": AgentType.DEVELOPMENT,
@@ -37,7 +43,12 @@ _AGENT_MAP: dict[str, AgentType] = {
 CLASSIFICATION_PROMPT = (
     "You are a classifier. Given the user message, reply with ONLY a JSON object "
     '{"intent": "<intent_type>", "summary": "<one-line summary>"} where intent_type '
-    f"is one of: {', '.join(INTENT_TYPES)}. Do NOT include anything else."
+    f"is one of: {', '.join(INTENT_TYPES)}.\n"
+    "Intent guide:\n"
+    "- execute_task: user wants to run/execute a specific task\n"
+    "- execute_phase: user wants to run all tasks in a specific phase\n"
+    "- run_project: user wants to run the entire project lifecycle end-to-end\n"
+    "Do NOT include anything else."
 )
 
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)

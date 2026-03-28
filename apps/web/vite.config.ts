@@ -12,6 +12,10 @@ export default defineConfig({
         target: 'http://localhost:8040',
         changeOrigin: true,
       },
+      '/api/workflow': {
+        target: 'http://localhost:8040',
+        changeOrigin: true,
+      },
       '/api/agents': {
         target: 'http://localhost:8040',
         changeOrigin: true,

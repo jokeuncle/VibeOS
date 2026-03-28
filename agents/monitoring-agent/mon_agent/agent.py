@@ -137,9 +137,11 @@ class MonitoringAgent(BaseAgent):
             )
             await _log(task.workspace_id, agent_name, f"Starting task: {task.intent}", task_id=task.task_id)
 
+            user_msg = task.user_message or task.description
             prompt = (
                 f"Task: {task.intent}\n"
                 f"Description: {task.description}\n"
+                f"User request: {user_msg}\n"
                 f"Context: {json.dumps(task.context)}"
             )
 
@@ -151,6 +153,21 @@ class MonitoringAgent(BaseAgent):
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:
                 structured = {"summary": raw_reply, "alerts": [], "runbooks": [], "tasks": []}
+
+            # Save monitoring output as artifact
+            try:
+                mon_phase_id = await self.workspace_svc.find_phase_by_type(task.workspace_id, "monitoring")
+                await self._save_artifact(
+                    task.workspace_id,
+                    artifact_type="monitoring_config",
+                    title=f"Monitoring: {task.description[:80]}",
+                    content=raw_reply,
+                    phase_id=mon_phase_id,
+                    task_id=task.task_id,
+                )
+                await _log(task.workspace_id, agent_name, "Monitoring config saved as artifact", level="success", task_id=task.task_id)
+            except Exception as exc:
+                await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
 
             rich_blocks: list[RichBlock] = []
 

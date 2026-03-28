@@ -30,6 +30,16 @@ type UpdateTaskReq struct {
 	AssignedAgent *string  `json:"assignedAgent,omitempty"`
 }
 
+type CreateArtifactReq struct {
+	PhaseID   *string `json:"phaseId,omitempty"`
+	TaskID    *string `json:"taskId,omitempty"`
+	AgentType string  `json:"agentType"`
+	Type      string  `json:"type"`
+	Title     string  `json:"title"`
+	Content   string  `json:"content"`
+	Metadata  string  `json:"metadata,omitempty"`
+}
+
 type UpdatePhaseStatusReq struct {
 	Status string `json:"status"`
 }

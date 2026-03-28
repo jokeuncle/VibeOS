@@ -63,6 +63,7 @@ func main() {
 	wsHandler := handler.NewWorkspaceHandler(svc, logger)
 	taskHandler := handler.NewTaskHandler(svc, logger)
 	phaseHandler := handler.NewPhaseHandler(svc, logger)
+	artifactHandler := handler.NewArtifactHandler(svc, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -95,6 +96,11 @@ func main() {
 
 			r.Patch("/tasks/{taskId}", taskHandler.Update)
 			r.Delete("/tasks/{taskId}", taskHandler.Delete)
+
+			r.Get("/artifacts", artifactHandler.ListByWorkspace)
+			r.Post("/artifacts", artifactHandler.Create)
+			r.Get("/artifacts/{artifactId}", artifactHandler.Get)
+			r.Get("/phases/{phaseId}/artifacts", artifactHandler.ListByPhase)
 		})
 	})
 

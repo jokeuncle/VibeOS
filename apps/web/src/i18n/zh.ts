@@ -306,6 +306,22 @@ const zh: Record<TranslationKey, string> = {
   'homeDash.completedTasks': '已完成',
   'homeDash.activeAgents': '活跃 Agent',
   'homeDash.overview': '概览',
+
+  'workflow.runPhase': '执行阶段',
+  'workflow.runProject': '执行完整项目',
+  'workflow.running': '执行中...',
+  'workflow.phaseStart': '开始阶段',
+  'workflow.phaseComplete': '阶段完成',
+  'workflow.phaseSkip': '跳过阶段',
+  'workflow.taskStart': '执行任务',
+  'workflow.taskComplete': '任务完成',
+  'workflow.taskError': '任务出错',
+  'workflow.projectStart': '开始项目生命周期',
+  'workflow.projectComplete': '项目生命周期完成',
+
+  'artifact.title': '产出物',
+  'artifact.empty': '暂无产出物',
+  'artifact.viewAll': '查看全部产出物',
 }
 
 export default zh

@@ -239,6 +239,14 @@ func (s *Service) UpdateTask(ctx context.Context, wsID, taskID string, req model
 	s.logActivity(ctx, wsID, "task_updated", fmt.Sprintf("Task '%s' updated", task.Title), nil)
 	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, task)
 
+	if req.Status != nil && *req.Status == string(models.StatusCompleted) {
+		if completed, err := s.AutoCompletePhaseIfDone(ctx, wsID, task.PhaseID); err != nil {
+			s.log.Error("auto-complete phase check failed", "error", err)
+		} else if completed {
+			s.log.Info("phase auto-completed", "phaseId", task.PhaseID)
+		}
+	}
+
 	return task, nil
 }
 
@@ -282,8 +290,75 @@ func (s *Service) ListActivities(ctx context.Context, wsID string, page, pageSiz
 }
 
 // ---------------------------------------------------------------------------
+// Artifacts
+// ---------------------------------------------------------------------------
+
+func (s *Service) CreateArtifact(ctx context.Context, wsID string, req models.CreateArtifactReq) (*models.Artifact, error) {
+	metadata := req.Metadata
+	if metadata == "" {
+		metadata = "{}"
+	}
+	artifact := &models.Artifact{
+		ID:          uuid.New().String(),
+		WorkspaceID: wsID,
+		PhaseID:     req.PhaseID,
+		TaskID:      req.TaskID,
+		AgentType:   models.AgentType(req.AgentType),
+		Type:        req.Type,
+		Title:       req.Title,
+		Content:     req.Content,
+		Metadata:    metadata,
+		Version:     1,
+	}
+
+	if err := s.store.CreateArtifact(ctx, artifact); err != nil {
+		return nil, fmt.Errorf("create artifact: %w", err)
+	}
+
+	agentType := models.AgentType(req.AgentType)
+	s.logActivity(ctx, wsID, "artifact_created",
+		fmt.Sprintf("Artifact '%s' (%s) created by %s", req.Title, req.Type, req.AgentType), &agentType)
+	s.publishEvent(ctx, wsID, "artifact_created", artifact)
+
+	return artifact, nil
+}
+
+func (s *Service) ListArtifactsByWorkspace(ctx context.Context, wsID string) ([]models.Artifact, error) {
+	return s.store.ListArtifactsByWorkspace(ctx, wsID)
+}
+
+func (s *Service) ListArtifactsByPhase(ctx context.Context, wsID, phaseID string) ([]models.Artifact, error) {
+	return s.store.ListArtifactsByPhase(ctx, wsID, phaseID)
+}
+
+func (s *Service) GetArtifact(ctx context.Context, id string) (*models.Artifact, error) {
+	return s.store.GetArtifact(ctx, id)
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+func (s *Service) AutoCompletePhaseIfDone(ctx context.Context, wsID, phaseID string) (bool, error) {
+	total, completed, err := s.store.CountTasksByPhase(ctx, phaseID)
+	if err != nil {
+		return false, err
+	}
+	if total > 0 && completed == total {
+		phase, err := s.store.GetPhase(ctx, phaseID)
+		if err != nil {
+			return false, err
+		}
+		if phase.Status != models.StatusCompleted {
+			_, err = s.UpdatePhaseStatus(ctx, wsID, phaseID, string(models.StatusCompleted))
+			if err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 func (s *Service) recalculatePhaseProgress(ctx context.Context, phaseID string) error {
 	total, completed, err := s.store.CountTasksByPhase(ctx, phaseID)

@@ -110,6 +110,21 @@ type Agent struct {
 	UpdatedAt   time.Time   `json:"updatedAt" db:"updated_at"`
 }
 
+type Artifact struct {
+	ID          string    `json:"id" db:"id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	PhaseID     *string   `json:"phaseId,omitempty" db:"phase_id"`
+	TaskID      *string   `json:"taskId,omitempty" db:"task_id"`
+	AgentType   AgentType `json:"agentType" db:"agent_type"`
+	Type        string    `json:"type" db:"type"`
+	Title       string    `json:"title" db:"title"`
+	Content     string    `json:"content" db:"content"`
+	Metadata    string    `json:"metadata" db:"metadata"`
+	Version     int       `json:"version" db:"version"`
+	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+}
+
 type Activity struct {
 	ID          string     `json:"id" db:"id"`
 	WorkspaceID string     `json:"workspaceId" db:"workspace_id"`

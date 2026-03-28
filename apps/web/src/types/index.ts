@@ -81,6 +81,47 @@ export interface Workspace {
   updatedAt: string
 }
 
+export interface Artifact {
+  id: string
+  workspaceId: string
+  phaseId?: string
+  taskId?: string
+  agentType: AgentType
+  type: string
+  title: string
+  content: string
+  metadata: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowEventType =
+  | 'workflow:project_start'
+  | 'workflow:phase_start'
+  | 'workflow:phase_skip'
+  | 'workflow:phase_complete'
+  | 'workflow:task_start'
+  | 'workflow:task_complete'
+  | 'workflow:task_error'
+  | 'workflow:project_complete'
+  | 'workflow:project_error'
+
+export interface WorkflowEvent {
+  type: WorkflowEventType
+  workspace_id?: string
+  phase?: string
+  task_id?: string
+  task_title?: string
+  index?: number
+  total?: number
+  reason?: string
+  error?: string
+  result_summary?: string
+  tasks_executed?: number
+  phases?: string[]
+}
+
 export interface TaskComment {
   id: string
   author: string

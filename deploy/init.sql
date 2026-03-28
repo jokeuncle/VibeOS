@@ -115,6 +115,26 @@ CREATE TABLE notifications (
 
 CREATE INDEX idx_notifications_user ON notifications(user_id, created_at DESC);
 
+-- Artifacts produced by agents (schemas, APIs, ADRs, code, docs, etc.)
+CREATE TABLE artifacts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    phase_id UUID REFERENCES phases(id) ON DELETE SET NULL,
+    task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+    agent_type VARCHAR(32) NOT NULL,
+    type VARCHAR(64) NOT NULL,
+    title VARCHAR(512) NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    metadata JSONB DEFAULT '{}',
+    version INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_artifacts_workspace ON artifacts(workspace_id);
+CREATE INDEX idx_artifacts_phase ON artifacts(phase_id);
+CREATE INDEX idx_artifacts_task ON artifacts(task_id);
+
 -- ===================================================================
 -- Phase 2: Trust Score tracking
 -- ===================================================================

@@ -14,6 +14,8 @@ import ActivityLog from './ActivityLog'
 import AgentTopology from './AgentTopology'
 import AgentLogStream from './AgentLogStream'
 import AgentTimeline from './AgentTimeline'
+import WorkflowControls from './WorkflowControls'
+import ArtifactPanel from './ArtifactPanel'
 import FilterToolbar, { type FilterState } from './FilterToolbar'
 import type { TranslationKey } from '../i18n/en'
 import type { Phase, TaskPriority, Agent } from '../types'
@@ -281,6 +283,11 @@ export default function WorkspaceView() {
             </div>
           </div>
 
+          {/* Workflow controls */}
+          <div className="mb-4">
+            <WorkflowControls phases={workspace.phases} />
+          </div>
+
           {/* Empty state */}
           {totalTasks === 0 && currentViewMode !== 'dashboard' && currentViewMode !== 'agents' && (
             <motion.div
@@ -362,6 +369,11 @@ export default function WorkspaceView() {
               <AgentPanel agents={workspace.agents} />
             </div>
           )}
+
+          {/* Artifacts */}
+          <div className="mb-8">
+            <ArtifactPanel />
+          </div>
 
           {/* Activity Log */}
           <div className="mb-8">

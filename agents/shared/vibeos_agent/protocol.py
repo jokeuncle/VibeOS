@@ -76,6 +76,32 @@ class WorkspaceClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def complete_task(
+        self, workspace_id: str, task_id: str
+    ) -> dict[str, Any]:
+        return await self.update_task(workspace_id, task_id, {"status": "completed"})
+
+    async def get_task(
+        self, workspace_id: str, task_id: str
+    ) -> dict[str, Any] | None:
+        """Get task info from the workspace phases (by walking phases)."""
+        phases = await self.get_phases(workspace_id)
+        for phase in phases:
+            for task in phase.get("tasks", []):
+                if task.get("id") == task_id:
+                    return {**task, "phaseId": phase["id"], "phaseType": phase.get("type")}
+        return None
+
+    async def get_tasks_by_phase(
+        self, workspace_id: str, phase_id: str
+    ) -> list[dict[str, Any]]:
+        """Get all tasks under a specific phase."""
+        phases = await self.get_phases(workspace_id)
+        for phase in phases:
+            if phase.get("id") == phase_id:
+                return phase.get("tasks", [])
+        return []
+
     async def update_phase(
         self,
         workspace_id: str,
@@ -96,6 +122,46 @@ class WorkspaceClient:
         resp = await self._http.get(f"/api/workspaces/{workspace_id}")
         resp.raise_for_status()
         return resp.json()
+
+    async def create_artifact(
+        self,
+        workspace_id: str,
+        *,
+        agent_type: str,
+        artifact_type: str,
+        title: str,
+        content: str,
+        phase_id: str | None = None,
+        task_id: str | None = None,
+        metadata: str = "{}",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "agentType": agent_type,
+            "type": artifact_type,
+            "title": title,
+            "content": content,
+            "metadata": metadata,
+        }
+        if phase_id:
+            body["phaseId"] = phase_id
+        if task_id:
+            body["taskId"] = task_id
+        resp = await self._http.post(
+            f"/api/workspaces/{workspace_id}/artifacts", json=body
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def list_artifacts(
+        self, workspace_id: str, *, phase_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        url = f"/api/workspaces/{workspace_id}/artifacts"
+        if phase_id:
+            url = f"/api/workspaces/{workspace_id}/phases/{phase_id}/artifacts"
+        resp = await self._http.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", data) if isinstance(data, dict) else data
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -413,6 +479,27 @@ class KnowledgeClient:
         await self._http.aclose()
 
 
+PHASE_CONTEXT: dict[str, list[str]] = {
+    "requirement": [],
+    "architecture": ["requirement"],
+    "design": ["requirement", "architecture"],
+    "development": ["requirement", "architecture", "design"],
+    "testing": ["development", "design"],
+    "deployment": ["development", "testing"],
+    "monitoring": ["deployment"],
+}
+
+AGENT_PHASE_MAP: dict[str, str] = {
+    "requirement": "requirement",
+    "architecture": "architecture",
+    "design": "design",
+    "development": "development",
+    "testing": "testing",
+    "cicd": "deployment",
+    "monitoring": "monitoring",
+}
+
+
 class BaseAgent(ABC):
     """Abstract base every VibeOS domain agent must extend."""
 
@@ -542,8 +629,15 @@ class BaseAgent(ABC):
     async def _build_enriched_prompt(
         self, workspace_id: str, user_message: str
     ) -> str:
-        """Compose a context-aware system prompt from Memory + RAG + Knowledge."""
+        """Compose a context-aware system prompt from Memory + RAG + Knowledge + Upstream Artifacts."""
         sections = [self.system_prompt]
+
+        try:
+            upstream = await self._fetch_upstream_artifacts(workspace_id)
+            if upstream:
+                sections.append(upstream)
+        except Exception:
+            pass
 
         # L4: Preferences from memory service
         try:
@@ -619,6 +713,60 @@ class BaseAgent(ABC):
             content=content,
             rich_blocks=rich_blocks or [],
             timestamp=datetime.now(timezone.utc),
+        )
+
+    async def _fetch_upstream_artifacts(self, workspace_id: str) -> str:
+        """Fetch artifacts from upstream phases for context enrichment."""
+        agent_key = self.agent_type.value
+        phase_key = AGENT_PHASE_MAP.get(agent_key, agent_key)
+        upstream_phases = PHASE_CONTEXT.get(phase_key, [])
+        if not upstream_phases:
+            return ""
+
+        sections: list[str] = []
+        for up_phase in upstream_phases:
+            phase_id = await self.workspace_svc.find_phase_by_type(workspace_id, up_phase)
+            if not phase_id:
+                continue
+            try:
+                artifacts = await self.workspace_svc.list_artifacts(
+                    workspace_id, phase_id=phase_id
+                )
+                for art in artifacts[:5]:
+                    title = art.get("title", "untitled")
+                    content = art.get("content", "")[:2000]
+                    art_type = art.get("type", "unknown")
+                    sections.append(
+                        f"### [{up_phase}] {title} ({art_type})\n{content}"
+                    )
+            except Exception:
+                continue
+
+        if not sections:
+            return ""
+        return "## Upstream Artifacts\n\n" + "\n\n---\n\n".join(sections)
+
+    async def _save_artifact(
+        self,
+        workspace_id: str,
+        *,
+        artifact_type: str,
+        title: str,
+        content: str,
+        phase_id: str | None = None,
+        task_id: str | None = None,
+        metadata: str = "{}",
+    ) -> dict[str, Any]:
+        """Persist an artifact to workspace-svc."""
+        return await self.workspace_svc.create_artifact(
+            workspace_id,
+            agent_type=self.agent_type.value,
+            artifact_type=artifact_type,
+            title=title,
+            content=content,
+            phase_id=phase_id,
+            task_id=task_id,
+            metadata=metadata,
         )
 
     async def close(self) -> None:

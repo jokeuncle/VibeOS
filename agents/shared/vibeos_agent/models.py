@@ -134,12 +134,29 @@ class Message(BaseModel):
 # Agent protocol models
 # ---------------------------------------------------------------------------
 
+class Artifact(BaseModel):
+    """An artifact produced by an agent (schema, API spec, ADR, code, etc.)."""
+    id: str = ""
+    workspace_id: str = ""
+    phase_id: str | None = None
+    task_id: str | None = None
+    agent_type: str = ""
+    type: str = ""
+    title: str = ""
+    content: str = ""
+    metadata: str = "{}"
+    version: int = 1
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class AgentTask(BaseModel):
     """Payload sent *to* a domain agent to execute work."""
     task_id: str
     workspace_id: str
     intent: str
     description: str = ""
+    user_message: str = ""
     context: dict[str, Any] = Field(default_factory=dict)
 
 

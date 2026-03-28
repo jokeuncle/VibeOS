@@ -129,9 +129,11 @@ class ArchitectureAgent(BaseAgent):
             )
             await _log(task.workspace_id, agent_name, f"Starting task: {task.intent}", task_id=task.task_id)
 
+            user_msg = task.user_message or task.description
             prompt = (
                 f"Task: {task.intent}\n"
                 f"Description: {task.description}\n"
+                f"User request: {user_msg}\n"
                 f"Context: {json.dumps(task.context)}"
             )
 
@@ -144,19 +146,40 @@ class ArchitectureAgent(BaseAgent):
             except json.JSONDecodeError:
                 structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
 
+            arch_phase_id_for_artifact = await self.workspace_svc.find_phase_by_type(
+                task.workspace_id, "architecture"
+            )
+
             rich_blocks: list[RichBlock] = []
             for artifact in structured.get("artifacts", []):
+                art_title = artifact.get("title", "untitled")
+                art_type = artifact.get("type", "unknown")
+                art_content = artifact.get("content", "")
                 await _log(
                     task.workspace_id, agent_name,
-                    f"Generated artifact: {artifact.get('title', 'untitled')} ({artifact.get('type', 'unknown')})",
+                    f"Generated artifact: {art_title} ({art_type})",
                     task_id=task.task_id,
                 )
+
+                try:
+                    await self._save_artifact(
+                        task.workspace_id,
+                        artifact_type=art_type,
+                        title=art_title,
+                        content=art_content,
+                        phase_id=arch_phase_id_for_artifact,
+                        task_id=task.task_id,
+                    )
+                    await _log(task.workspace_id, agent_name, f"Artifact saved: {art_title}", level="success", task_id=task.task_id)
+                except Exception as exc:
+                    await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
+
                 rich_blocks.append(
                     RichBlock(
                         type="code",
-                        language=_lang_for(artifact.get("type", "")),
-                        content=artifact.get("content", ""),
-                        metadata={"title": artifact.get("title", "")},
+                        language=_lang_for(art_type),
+                        content=art_content,
+                        metadata={"title": art_title},
                     )
                 )
 

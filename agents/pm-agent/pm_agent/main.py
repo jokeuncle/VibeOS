@@ -25,6 +25,7 @@ from vibeos_agent import (
 
 from .dispatch import Dispatcher
 from .intent import parse_intent, ParsedIntent
+from .workflow import WorkflowEngine
 
 _TASK_EXTRACT_PROMPT = (
     "You are a project management assistant. Given the user's request and workspace phases, "
@@ -131,6 +132,9 @@ async def lifespan(app: FastAPI):
     app.state.dispatcher = Dispatcher()
     app.state.ws = WSGatewayClient()
     app.state.ws_client = WorkspaceClient()
+    app.state.workflow = WorkflowEngine(
+        app.state.dispatcher, app.state.ws_client, app.state.ws,
+    )
     yield
     await app.state.llm.close()
     await app.state.dispatcher.close()
@@ -172,20 +176,195 @@ class ChatResponse(BaseModel):
     rich_blocks: list[dict[str, Any]] = []
 
 
+async def _handle_execute_task(
+    workspace_id: str,
+    user_message: str,
+    dispatcher: "Dispatcher",
+    ws_client: WorkspaceClient,
+    ws_gw: WSGatewayClient,
+) -> dict[str, Any]:
+    """Find the right agent for a task and dispatch execution."""
+    phases = await ws_client.get_phases(workspace_id)
+    target_task = None
+    target_phase = None
+
+    for phase in phases:
+        for t in phase.get("tasks", []):
+            if t.get("status") != "completed":
+                target_task = t
+                target_phase = phase
+                break
+        if target_task:
+            break
+
+    if not target_task:
+        return {"handled_by": "pm", "summary": "No pending tasks found to execute."}
+
+    phase_type = target_phase.get("type", "development")
+
+    from vibeos_agent import AGENT_PHASE_MAP
+    agent_type_str = None
+    for agent_key, phase_key in AGENT_PHASE_MAP.items():
+        if phase_key == phase_type:
+            agent_type_str = agent_key
+            break
+    if not agent_type_str:
+        agent_type_str = "development"
+
+    try:
+        at = AgentType(agent_type_str)
+    except ValueError:
+        at = AgentType.DEVELOPMENT
+
+    await ws_gw.publish_log(
+        workspace_id, "pm",
+        f"Dispatching task '{target_task.get('title', '')}' to {at.value} agent",
+    )
+
+    await ws_client.update_task(workspace_id, target_task["id"], {"status": "in_progress"})
+
+    task = AgentTask(
+        task_id=target_task["id"],
+        workspace_id=workspace_id,
+        intent=f"execute_{phase_type}",
+        description=target_task.get("title", ""),
+        user_message=user_message,
+        context={
+            "task_title": target_task.get("title", ""),
+            "task_description": target_task.get("description", ""),
+            "phase_type": phase_type,
+        },
+    )
+
+    result = await dispatcher.dispatch(at, task)
+
+    try:
+        await ws_client.complete_task(workspace_id, target_task["id"])
+    except Exception:
+        pass
+
+    return {
+        "handled_by": "pm",
+        "action": "task_executed",
+        "summary": f"Executed task: {target_task.get('title', '')} via {at.value} agent",
+        "result": result,
+    }
+
+
+async def _handle_execute_phase(
+    workspace_id: str,
+    user_message: str,
+    dispatcher: "Dispatcher",
+    ws_client: WorkspaceClient,
+    ws_gw: WSGatewayClient,
+) -> dict[str, Any]:
+    """Execute all pending tasks in a specific phase."""
+    phases = await ws_client.get_phases(workspace_id)
+
+    target_phase = None
+    for phase in phases:
+        if phase.get("status") != "completed":
+            target_phase = phase
+            break
+
+    if not target_phase:
+        return {"handled_by": "pm", "summary": "All phases are completed."}
+
+    phase_type = target_phase.get("type", "development")
+    tasks = target_phase.get("tasks", [])
+    pending_tasks = [t for t in tasks if t.get("status") != "completed"]
+
+    if not pending_tasks:
+        return {"handled_by": "pm", "summary": f"No pending tasks in {phase_type} phase."}
+
+    await ws_gw.publish_log(
+        workspace_id, "pm",
+        f"Executing {len(pending_tasks)} tasks in {phase_type} phase",
+    )
+
+    from vibeos_agent import AGENT_PHASE_MAP
+    agent_type_str = None
+    for agent_key, phase_key in AGENT_PHASE_MAP.items():
+        if phase_key == phase_type:
+            agent_type_str = agent_key
+            break
+    if not agent_type_str:
+        agent_type_str = "development"
+
+    try:
+        at = AgentType(agent_type_str)
+    except ValueError:
+        at = AgentType.DEVELOPMENT
+
+    await ws_client.update_task(workspace_id, target_phase["id"], {"status": "in_progress"})
+
+    results = []
+    for t in pending_tasks:
+        await ws_gw.publish_log(
+            workspace_id, "pm",
+            f"Executing task: {t.get('title', '')}",
+        )
+
+        await ws_client.update_task(workspace_id, t["id"], {"status": "in_progress"})
+
+        agent_task = AgentTask(
+            task_id=t["id"],
+            workspace_id=workspace_id,
+            intent=f"execute_{phase_type}",
+            description=t.get("title", ""),
+            user_message=user_message,
+            context={
+                "task_title": t.get("title", ""),
+                "task_description": t.get("description", ""),
+                "phase_type": phase_type,
+            },
+        )
+        result = await dispatcher.dispatch(at, agent_task)
+        results.append(result)
+
+        try:
+            await ws_client.complete_task(workspace_id, t["id"])
+        except Exception:
+            pass
+
+    await ws_gw.publish_log(
+        workspace_id, "pm",
+        f"Phase {phase_type} execution complete ({len(results)} tasks)",
+        level="success",
+    )
+
+    return {
+        "handled_by": "pm",
+        "action": "phase_executed",
+        "summary": f"Executed {len(results)} tasks in {phase_type} phase",
+        "phase": phase_type,
+        "results": results,
+    }
+
+
 async def _execute_pm_intent(
     parsed: ParsedIntent,
     req: NLPRequest,
     llm: LLMGatewayClient,
     ws: WSGatewayClient,
     ws_client: WorkspaceClient,
+    dispatcher: "Dispatcher | None" = None,
 ) -> dict[str, Any]:
-    """Execute PM-handled intents (create_task, query_progress, etc.)."""
+    """Execute PM-handled intents (create_task, query_progress, execute_task, execute_phase, etc.)."""
     if parsed.intent == "create_task":
         return await _handle_create_task(
             req.workspace_id, req.message, parsed.summary, llm, ws_client, ws,
         )
     if parsed.intent == "query_progress":
         return await _handle_query_progress(req.workspace_id, llm, ws_client)
+    if parsed.intent == "execute_task" and dispatcher:
+        return await _handle_execute_task(
+            req.workspace_id, req.message, dispatcher, ws_client, ws,
+        )
+    if parsed.intent in ("execute_phase", "run_project") and dispatcher:
+        return await _handle_execute_phase(
+            req.workspace_id, req.message, dispatcher, ws_client, ws,
+        )
     return {"handled_by": "pm", "summary": parsed.summary}
 
 
@@ -215,7 +394,7 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
         )
 
         if parsed.target_agent == AgentType.PM:
-            result = await _execute_pm_intent(parsed, req, llm, ws, ws_client)
+            result = await _execute_pm_intent(parsed, req, llm, ws, ws_client, dispatcher)
             return NLPResponse(
                 intent=parsed.intent,
                 summary=result.get("summary", parsed.summary),
@@ -228,6 +407,7 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
             workspace_id=req.workspace_id,
             intent=parsed.intent,
             description=parsed.summary,
+            user_message=req.message,
             context=req.context or {},
         )
 
@@ -277,7 +457,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             )
 
             if parsed.target_agent == AgentType.PM:
-                result = await _execute_pm_intent(parsed, req, llm, ws, ws_client)
+                result = await _execute_pm_intent(parsed, req, llm, ws, ws_client, dispatcher)
                 yield f"event: result\ndata: {json.dumps(result)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
@@ -287,6 +467,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                 workspace_id=req.workspace_id,
                 intent=parsed.intent,
                 description=parsed.summary,
+                user_message=req.message,
                 context=req.context or {},
             )
 
@@ -349,6 +530,54 @@ async def handle_chat_stream(agent_type: str, req: ChatRequest) -> StreamingResp
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_gen(), media_type="text/event-stream")
+
+
+class RunPhaseRequest(BaseModel):
+    workspace_id: str
+    phase_type: str
+    user_message: str = ""
+
+
+class RunProjectRequest(BaseModel):
+    workspace_id: str
+    user_message: str = ""
+    start_phase: str | None = None
+
+
+@app.post("/api/workflow/run-phase")
+async def handle_run_phase(req: RunPhaseRequest) -> StreamingResponse:
+    """SSE: execute all pending tasks in a single phase."""
+    workflow: WorkflowEngine = app.state.workflow
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        try:
+            async for event in workflow.run_phase(
+                req.workspace_id, req.phase_type, req.user_message
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@app.post("/api/workflow/run-project")
+async def handle_run_project(req: RunProjectRequest) -> StreamingResponse:
+    """SSE: execute the full project lifecycle end-to-end."""
+    workflow: WorkflowEngine = app.state.workflow
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        try:
+            async for event in workflow.run_project(
+                req.workspace_id, req.user_message, start_phase=req.start_phase
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @app.get("/health")

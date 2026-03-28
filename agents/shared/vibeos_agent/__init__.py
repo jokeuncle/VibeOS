@@ -8,6 +8,7 @@ from .models import (
     AgentStatus,
     AgentTask,
     AgentType,
+    Artifact,
     CapabilityContract,
     Message,
     Phase,
@@ -18,7 +19,14 @@ from .models import (
     Task,
     Workspace,
 )
-from .protocol import BaseAgent, LLMGatewayClient, WorkspaceClient, WSGatewayClient
+from .protocol import (
+    AGENT_PHASE_MAP,
+    PHASE_CONTEXT,
+    BaseAgent,
+    LLMGatewayClient,
+    WorkspaceClient,
+    WSGatewayClient,
+)
 from .session import SessionManager
 
 __all__ = [
@@ -28,10 +36,13 @@ __all__ = [
     "AgentStatus",
     "AgentTask",
     "AgentType",
+    "Artifact",
+    "AGENT_PHASE_MAP",
     "BaseAgent",
     "CapabilityContract",
     "Config",
     "LLMGatewayClient",
+    "PHASE_CONTEXT",
     "Message",
     "Phase",
     "PhaseStatus",

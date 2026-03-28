@@ -94,6 +94,28 @@ export const workspaceApi = {
     request<{ data: ActivityItem[]; total: number; page: number; pageSize: number }>(
       `/api/workspaces/${wsId}/activities?page=${page}&pageSize=${pageSize}`,
     ),
+
+  listArtifacts: (wsId: string) =>
+    request<{ data: any[] }>(`/api/workspaces/${wsId}/artifacts`).then(unwrap),
+
+  listArtifactsByPhase: (wsId: string, phaseId: string) =>
+    request<{ data: any[] }>(`/api/workspaces/${wsId}/phases/${phaseId}/artifacts`).then(unwrap),
+}
+
+export const workflowApi = {
+  runPhase: (workspaceId: string, phaseType: string, userMessage = '') =>
+    streamSSE('/api/workflow/run-phase', {
+      workspace_id: workspaceId,
+      phase_type: phaseType,
+      user_message: userMessage,
+    }),
+
+  runProject: (workspaceId: string, userMessage = '', startPhase?: string) =>
+    streamSSE('/api/workflow/run-project', {
+      workspace_id: workspaceId,
+      user_message: userMessage,
+      start_phase: startPhase,
+    }),
 }
 
 export const agentApi = {

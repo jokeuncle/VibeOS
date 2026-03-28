@@ -4,9 +4,10 @@ import type {
   ActivityItem, AgentType, Task, TaskPriority, LabelColor,
 } from '../types'
 import {
-  workspaceApi, agentApi, mapNLPResultToMessage, mapAgentChatToMessage,
+  workspaceApi, workflowApi, agentApi, mapNLPResultToMessage, mapAgentChatToMessage,
   streamSSE,
 } from '../lib/api'
+import type { WorkflowEvent } from '../types'
 
 export interface LogEntry {
   id: string
@@ -56,6 +57,11 @@ interface WorkspaceState {
   sendNLPMessageStream: (input: string) => void
   sendAgentChatMessageStream: (agentType: string, input: string) => void
   appendExecutionLog: (workspaceId: string, entry: LogEntry) => void
+
+  workflowRunning: boolean
+  workflowEvents: WorkflowEvent[]
+  runPhase: (phaseType: string) => void
+  runProject: () => void
 }
 
 function patchWorkspace(
@@ -615,5 +621,54 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         [workspaceId]: [...(s.executionLogs[workspaceId] || []), entry].slice(-500),
       },
     }))
+  },
+
+  workflowRunning: false,
+  workflowEvents: [],
+
+  runPhase: (phaseType) => {
+    const wsId = get().activeWorkspaceId
+    if (!wsId || get().workflowRunning) return
+
+    set({ workflowRunning: true, workflowEvents: [] })
+
+    ;(async () => {
+      try {
+        for await (const evt of workflowApi.runPhase(wsId, phaseType)) {
+          try {
+            const data = JSON.parse(evt.data) as WorkflowEvent
+            set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
+          } catch { /* skip parse errors */ }
+        }
+      } catch (err) {
+        console.error('Workflow run-phase failed:', err)
+      } finally {
+        set({ workflowRunning: false })
+        get().refreshActiveWorkspace()
+      }
+    })()
+  },
+
+  runProject: () => {
+    const wsId = get().activeWorkspaceId
+    if (!wsId || get().workflowRunning) return
+
+    set({ workflowRunning: true, workflowEvents: [] })
+
+    ;(async () => {
+      try {
+        for await (const evt of workflowApi.runProject(wsId)) {
+          try {
+            const data = JSON.parse(evt.data) as WorkflowEvent
+            set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
+          } catch { /* skip parse errors */ }
+        }
+      } catch (err) {
+        console.error('Workflow run-project failed:', err)
+      } finally {
+        set({ workflowRunning: false })
+        get().refreshActiveWorkspace()
+      }
+    })()
   },
 }))
