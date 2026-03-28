@@ -50,15 +50,18 @@ type PaginatedResponse[T any] struct {
 	PageSize   int   `json:"pageSize"`
 }
 
-// WebSocket event types
+// WSEvent is a minimal envelope for extracting the workspaceId to route
+// broadcasts.  The full raw JSON is preserved and forwarded as-is so that
+// no extra fields published by Python agents are dropped.
 type WSEvent struct {
-	Type        string      `json:"type"`
-	WorkspaceID string      `json:"workspaceId,omitempty"`
-	Payload     interface{} `json:"payload"`
+	Type        string `json:"type"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
 }
 
 const (
-	WSEventAgentStatus  = "agent_status"
+	WSEventAgentStatus  = "agent:status"
+	WSEventAgentMessage = "agent:message"
+	WSEventAgentLog     = "agent:log"
 	WSEventActivity     = "activity"
 	WSEventChatMessage  = "chat_message"
 	WSEventTaskUpdate   = "task_update"

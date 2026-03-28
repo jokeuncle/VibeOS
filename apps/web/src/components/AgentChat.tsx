@@ -9,7 +9,7 @@ import type { TranslationKey } from '../i18n/en'
 export default function AgentChat() {
   const t = useT()
   const { agentChatOpen, agentChatAgentId, closeAgentChat } = useUIStore()
-  const { activeWorkspaceId, workspaces, agentChatMessages, sendAgentChatMessage } = useWorkspaceStore()
+  const { activeWorkspaceId, workspaces, agentChatMessages, sendAgentChatMessageStream: sendAgentChatMessage, chatLoading } = useWorkspaceStore()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -28,7 +28,7 @@ export default function AgentChat() {
 
   function handleSend(e: React.FormEvent) {
     e.preventDefault()
-    if (!input.trim() || !agent) return
+    if (!input.trim() || !agent || chatLoading) return
     sendAgentChatMessage(agent.type, input.trim())
     setInput('')
   }
@@ -75,14 +75,48 @@ export default function AgentChat() {
                 }`}>
                   {msg.role === 'user' ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <span className="text-[11px] font-medium text-text-secondary">
                     {msg.role === 'user' ? t('conversation.you') : t(nameKey)}
                   </span>
-                  <p className="text-xs text-text-primary/90 leading-relaxed mt-0.5">{msg.content}</p>
+                  <p className="text-xs text-text-primary/90 leading-relaxed mt-0.5 whitespace-pre-wrap">{msg.content}</p>
+                  {msg.richBlocks?.map((rb, i) => (
+                    <div key={i} className="mt-2">
+                      {rb.type === 'code' && rb.code && (
+                        <div className="rounded-lg border border-border-subtle overflow-hidden">
+                          {rb.title && (
+                            <div className="px-3 py-1.5 bg-surface-2 border-b border-border-subtle text-[10px] font-medium text-text-secondary">
+                              {rb.title}
+                            </div>
+                          )}
+                          <pre className="p-3 text-[11px] overflow-x-auto bg-surface-0 text-text-primary/80">
+                            <code>{rb.code}</code>
+                          </pre>
+                        </div>
+                      )}
+                      {rb.type === 'task_card' && rb.taskTitle && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border-subtle">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                          <span className="text-xs text-text-primary">{rb.taskTitle}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
+            {chatLoading && (
+              <div className="flex gap-2.5">
+                <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 bg-accent/10 text-accent">
+                  <Bot className="w-3 h-3" />
+                </div>
+                <div className="flex items-center gap-1 pt-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            )}
             <div ref={bottomRef} />
           </div>
 
@@ -96,8 +130,18 @@ export default function AgentChat() {
               className="flex-1 px-3 py-2 rounded-lg bg-surface-2 border border-border-default text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40"
             />
             {input.trim() && (
-              <button type="submit" className="w-7 h-7 rounded-lg bg-accent hover:bg-accent-hover flex items-center justify-center cursor-pointer transition-colors">
-                <ArrowUp className="w-3.5 h-3.5 text-white" />
+              <button
+                type="submit"
+                disabled={chatLoading}
+                className={`w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors ${
+                  chatLoading ? 'bg-accent/50 cursor-not-allowed' : 'bg-accent hover:bg-accent-hover'
+                }`}
+              >
+                {chatLoading ? (
+                  <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <ArrowUp className="w-3.5 h-3.5 text-white" />
+                )}
               </button>
             )}
           </form>

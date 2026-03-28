@@ -318,6 +318,11 @@ async def _stream_response(
             logger.error("Stream error: %s", exc)
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
+        if total_prompt or total_completion:
+            logger.info(
+                "Stream usage: prompt=%d completion=%d total=%d",
+                total_prompt, total_completion, total_prompt + total_completion,
+            )
         await _track_tokens(req.workspace_id, {
             "prompt_tokens": total_prompt,
             "completion_tokens": total_completion,

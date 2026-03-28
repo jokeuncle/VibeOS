@@ -113,87 +113,118 @@ class ArchitectureAgent(BaseAgent):
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.WORKING})
-
-        await self.ws.publish_agent_status(
-            task.workspace_id, self.agent_type, AgentStatus.WORKING, detail=task.intent
-        )
-
-        prompt = (
-            f"Task: {task.intent}\n"
-            f"Description: {task.description}\n"
-            f"Context: {json.dumps(task.context)}"
-        )
-        raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
+        _log = self.ws.publish_log
+        agent_name = self.agent_type.value
 
         try:
-            structured = json.loads(raw_reply)
-        except json.JSONDecodeError:
-            structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
+            await self.ws.publish_agent_status(
+                task.workspace_id, self.agent_type, AgentStatus.WORKING, detail=task.intent
+            )
+            await _log(task.workspace_id, agent_name, f"Starting task: {task.intent}", task_id=task.task_id)
 
-        rich_blocks: list[RichBlock] = []
-        for artifact in structured.get("artifacts", []):
-            rich_blocks.append(
-                RichBlock(
-                    type="code",
-                    language=_lang_for(artifact.get("type", "")),
-                    content=artifact.get("content", ""),
-                    metadata={"title": artifact.get("title", "")},
-                )
+            prompt = (
+                f"Task: {task.intent}\n"
+                f"Description: {task.description}\n"
+                f"Context: {json.dumps(task.context)}"
             )
 
-        yield self._make_event(
-            "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
-        )
+            await _log(task.workspace_id, agent_name, "Calling LLM for architecture analysis…", task_id=task.task_id)
+            raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
+            await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
-        arch_phase_id = await self.workspace_svc.find_phase_by_type(
-            task.workspace_id, "architecture"
-        )
-
-        created_tasks: list[dict[str, Any]] = []
-        for t in structured.get("tasks", []):
-            new_task = Task(title=t["title"], description=t.get("description", ""))
             try:
-                result = await self.workspace_svc.create_task(
-                    task.workspace_id, new_task, phase_id=arch_phase_id
+                structured = json.loads(raw_reply)
+            except json.JSONDecodeError:
+                structured = {"summary": raw_reply, "artifacts": [], "tasks": []}
+
+            rich_blocks: list[RichBlock] = []
+            for artifact in structured.get("artifacts", []):
+                await _log(
+                    task.workspace_id, agent_name,
+                    f"Generated artifact: {artifact.get('title', 'untitled')} ({artifact.get('type', 'unknown')})",
+                    task_id=task.task_id,
                 )
-                created_tasks.append(result)
                 rich_blocks.append(
                     RichBlock(
-                        type="task_card",
-                        content=t["title"],
-                        metadata={"task": result},
+                        type="code",
+                        language=_lang_for(artifact.get("type", "")),
+                        content=artifact.get("content", ""),
+                        metadata={"title": artifact.get("title", "")},
                     )
+                )
+
+            yield self._make_event(
+                "progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"}
+            )
+
+            arch_phase_id = await self.workspace_svc.find_phase_by_type(
+                task.workspace_id, "architecture"
+            )
+
+            created_tasks: list[dict[str, Any]] = []
+            task_list = structured.get("tasks", [])
+            if task_list:
+                await _log(task.workspace_id, agent_name, f"Creating {len(task_list)} tasks in workspace…", task_id=task.task_id)
+
+            for t in task_list:
+                title = t.get("title", "Untitled")
+                new_task = Task(title=title, description=t.get("description", ""))
+                try:
+                    result = await self.workspace_svc.create_task(
+                        task.workspace_id, new_task, phase_id=arch_phase_id
+                    )
+                    created_tasks.append(result)
+                    await _log(task.workspace_id, agent_name, f"Task created: {title}", level="success", task_id=task.task_id)
+                    rich_blocks.append(
+                        RichBlock(
+                            type="task_card",
+                            content=title,
+                            metadata={"task": result},
+                        )
+                    )
+                except Exception as exc:
+                    await _log(task.workspace_id, agent_name, f"Failed to create task '{title}': {exc}", level="error", task_id=task.task_id)
+                    rich_blocks.append(
+                        RichBlock(
+                            type="task_card",
+                            content=title,
+                            metadata={"description": t.get("description", "")},
+                        )
+                    )
+
+            msg = self._make_message(
+                task.workspace_id,
+                structured.get("summary", raw_reply),
+                rich_blocks=rich_blocks,
+            )
+            await self.session.append(task.workspace_id, self.agent_type, msg)
+            await self.ws.publish_message(task.workspace_id, msg)
+
+            await _log(task.workspace_id, agent_name, f"Execution complete. {len(created_tasks)} tasks created.", level="success", task_id=task.task_id)
+
+            yield self._make_event(
+                "result",
+                task.workspace_id,
+                {
+                    "summary": structured.get("summary", ""),
+                    "artifacts": structured.get("artifacts", []),
+                    "created_tasks": created_tasks,
+                },
+            )
+        except Exception as exc:
+            try:
+                await _log(task.workspace_id, agent_name, f"Execution failed: {exc}", level="error", task_id=task.task_id)
+            except Exception:
+                pass
+            yield self._make_event("error", task.workspace_id, {"error": "execute failed"})
+            raise
+        finally:
+            try:
+                await self.ws.publish_agent_status(
+                    task.workspace_id, self.agent_type, AgentStatus.IDLE
                 )
             except Exception:
-                rich_blocks.append(
-                    RichBlock(
-                        type="task_card",
-                        content=t["title"],
-                        metadata={"description": t.get("description", "")},
-                    )
-                )
-
-        msg = self._make_message(
-            task.workspace_id,
-            structured.get("summary", raw_reply),
-            rich_blocks=rich_blocks,
-        )
-        await self.session.append(task.workspace_id, self.agent_type, msg)
-        await self.ws.publish_message(task.workspace_id, msg)
-
-        await self.ws.publish_agent_status(
-            task.workspace_id, self.agent_type, AgentStatus.IDLE
-        )
-
-        yield self._make_event(
-            "result",
-            task.workspace_id,
-            {
-                "summary": structured.get("summary", ""),
-                "artifacts": structured.get("artifacts", []),
-                "created_tasks": created_tasks,
-            },
-        )
+                pass
 
     async def chat(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
@@ -208,20 +239,69 @@ class ArchitectureAgent(BaseAgent):
         )
         await self.session.append(workspace_id, self.agent_type, user_msg)
 
-        await self.ws.publish_agent_status(
-            workspace_id, self.agent_type, AgentStatus.THINKING
+        try:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.THINKING
+            )
+
+            reply_text = await self._call_llm(message, workspace_id=workspace_id)
+
+            reply_msg = self._make_message(workspace_id, reply_text)
+            await self.session.append(workspace_id, self.agent_type, reply_msg)
+
+            yield reply_msg
+        except Exception:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat failed"
+            )
+            raise
+        finally:
+            try:
+                await self.ws.publish_agent_status(
+                    workspace_id, self.agent_type, AgentStatus.IDLE
+                )
+            except Exception:
+                pass
+
+
+    async def chat_stream(
+        self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
+    ) -> AsyncIterator[str]:
+        """Stream chat response token-by-token."""
+        user_msg = Message(
+            id=uuid.uuid4().hex,
+            workspace_id=workspace_id,
+            agent_type=self.agent_type,
+            role="user",
+            content=message,
+            timestamp=datetime.now(timezone.utc),
         )
+        await self.session.append(workspace_id, self.agent_type, user_msg)
 
-        reply_text = await self._call_llm(message, workspace_id=workspace_id)
+        try:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.THINKING
+            )
 
-        reply_msg = self._make_message(workspace_id, reply_text)
-        await self.session.append(workspace_id, self.agent_type, reply_msg)
+            full_reply = ""
+            async for delta in self._call_llm_stream(message, workspace_id=workspace_id):
+                full_reply += delta
+                yield delta
 
-        await self.ws.publish_agent_status(
-            workspace_id, self.agent_type, AgentStatus.IDLE
-        )
-
-        yield reply_msg
+            reply_msg = self._make_message(workspace_id, full_reply)
+            await self.session.append(workspace_id, self.agent_type, reply_msg)
+        except Exception:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat stream failed"
+            )
+            raise
+        finally:
+            try:
+                await self.ws.publish_agent_status(
+                    workspace_id, self.agent_type, AgentStatus.IDLE
+                )
+            except Exception:
+                pass
 
 
 def _lang_for(artifact_type: str) -> str:

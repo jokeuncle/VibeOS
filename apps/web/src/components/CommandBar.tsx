@@ -39,7 +39,7 @@ export default function CommandBar() {
   const [focused, setFocused] = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { activeWorkspaceId, workspaces, sendNLPMessage } = useWorkspaceStore()
+  const { activeWorkspaceId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading } = useWorkspaceStore()
   const { setHomeSearchQuery, commandPaletteOpen } = useUIStore()
   const t = useT()
 
@@ -160,7 +160,7 @@ export default function CommandBar() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!input.trim() || !activeWorkspaceId) return
+    if (!input.trim() || !activeWorkspaceId || nlpLoading) return
     sendNLPMessage(input.trim())
     setInput('')
   }
@@ -251,9 +251,16 @@ export default function CommandBar() {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             type="submit"
-            className="w-7 h-7 rounded-lg bg-accent hover:bg-accent-hover flex items-center justify-center transition-colors cursor-pointer"
+            disabled={nlpLoading}
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+              nlpLoading ? 'bg-accent/50 cursor-not-allowed' : 'bg-accent hover:bg-accent-hover'
+            }`}
           >
-            <ArrowUp className="w-4 h-4 text-white" />
+            {nlpLoading ? (
+              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <ArrowUp className="w-4 h-4 text-white" />
+            )}
           </motion.button>
         ) : (
           <kbd className="hidden sm:flex items-center gap-0.5 text-[10px] text-text-tertiary bg-surface-3 px-1.5 py-0.5 rounded-md border border-border-subtle font-mono">

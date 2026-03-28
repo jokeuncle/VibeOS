@@ -12,10 +12,14 @@ export default defineConfig({
         target: 'http://localhost:8040',
         changeOrigin: true,
       },
-      '/api/agents/architecture': {
-        target: 'http://localhost:8041',
+      '/api/agents': {
+        target: 'http://localhost:8040',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/agents\/architecture/, '/api'),
+        rewrite: (path) => {
+          // /api/agents/{type}/chat/stream -> /api/chat/{type}/stream
+          // /api/agents/{type}/chat -> /api/chat/{type}
+          return path.replace(/^\/api\/agents\/([^/]+)\/chat(\/stream)?$/, '/api/chat/$1$2')
+        },
       },
       '/api': {
         target: 'http://localhost:8010',

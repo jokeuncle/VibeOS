@@ -59,7 +59,7 @@ class Task(BaseModel):
     phase_id: str = ""
     assigned_agent: AgentType | None = None
     status: PhaseStatus = PhaseStatus.PENDING
-    priority: int = 0
+    priority: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

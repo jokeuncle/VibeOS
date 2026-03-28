@@ -175,7 +175,7 @@ function WorkspaceCard({
 }
 
 export default function WorkspaceHome() {
-  const { workspaces, setActiveWorkspace } = useWorkspaceStore()
+  const { workspaces, setActiveWorkspace, loading } = useWorkspaceStore()
   const { setTemplatePickerOpen, homeSearchQuery } = useUIStore()
   const t = useT()
 
@@ -246,6 +246,18 @@ export default function WorkspaceHome() {
           </motion.div>
         )}
 
+        {loading && workspaces.length === 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl w-full mb-8">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="p-6 rounded-2xl border border-border-subtle bg-surface-1 min-h-[200px] animate-pulse">
+                <div className="h-4 w-2/3 bg-surface-3 rounded mb-3" />
+                <div className="h-3 w-full bg-surface-3 rounded mb-2" />
+                <div className="h-3 w-1/2 bg-surface-3 rounded mb-6" />
+                <div className="h-2 w-full bg-surface-3 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <motion.div
           variants={container}
           initial="hidden"
@@ -273,6 +285,7 @@ export default function WorkspaceHome() {
             <span className="text-sm font-medium">{t('workspace.new')}</span>
           </motion.button>
         </motion.div>
+        )}
       </div>
     </div>
   )

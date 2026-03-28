@@ -213,6 +213,8 @@ const zh: Record<TranslationKey, string> = {
 
   'agent.topology': 'Agent 拓扑图',
   'agent.logStream': '执行日志',
+  'agent.taskLog': '任务执行日志',
+  'agent.noLogs': '暂无执行日志。Agent 工作时日志会显示在这里。',
   'agent.timeline': '状态时间线',
 
   'markdown.edit': '编辑',

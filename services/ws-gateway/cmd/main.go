@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -73,11 +74,34 @@ func (h *Hub) Broadcast(workspaceID string, data []byte) {
 	}
 }
 
+const (
+	writeWait  = 10 * time.Second
+	pongWait   = 60 * time.Second
+	pingPeriod = (pongWait * 9) / 10
+)
+
 func (c *Client) writePump() {
-	defer c.conn.Close()
-	for msg := range c.send {
-		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-			return
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+	for {
+		select {
+		case msg, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -87,9 +111,9 @@ func (c *Client) readPump(hub *Hub) {
 		hub.Unregister(c)
 		c.conn.Close()
 	}()
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 	for {
@@ -126,17 +150,17 @@ func main() {
 
 	hub := NewHub()
 
-	// Subscribe to Redis Pub/Sub for cross-instance broadcasting
 	go func() {
 		pubsub := rdb.Subscribe(ctx, "vibeos:events")
 		defer pubsub.Close()
 		for msg := range pubsub.Channel() {
-			var evt models.WSEvent
-			if err := json.Unmarshal([]byte(msg.Payload), &evt); err != nil {
+			raw := []byte(msg.Payload)
+			var envelope models.WSEvent
+			if err := json.Unmarshal(raw, &envelope); err != nil {
 				slog.Warn("invalid event payload", "error", err)
 				continue
 			}
-			hub.Broadcast(evt.WorkspaceID, []byte(msg.Payload))
+			hub.Broadcast(envelope.WorkspaceID, raw)
 		}
 	}()
 
@@ -156,7 +180,6 @@ func main() {
 		})
 	})
 
-	// WebSocket endpoint
 	r.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
 		wsID := r.URL.Query().Get("workspace_id")
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -174,20 +197,20 @@ func main() {
 		go client.readPump(hub)
 	})
 
-	// HTTP endpoint for other services to publish events
 	r.Post("/api/publish", func(w http.ResponseWriter, r *http.Request) {
-		var evt models.WSEvent
-		if err := json.NewDecoder(r.Body).Decode(&evt); err != nil {
+		raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			http.Error(w, `{"error":"read failed"}`, http.StatusBadRequest)
+			return
+		}
+		var envelope models.WSEvent
+		if err := json.Unmarshal(raw, &envelope); err != nil {
 			http.Error(w, `{"error":"invalid payload"}`, http.StatusBadRequest)
 			return
 		}
-		data, _ := json.Marshal(evt)
 
-		// Publish to Redis for cross-instance broadcast
-		rdb.Publish(ctx, "vibeos:events", string(data))
-
-		// Also broadcast locally
-		hub.Broadcast(evt.WorkspaceID, data)
+		rdb.Publish(ctx, "vibeos:events", string(raw))
+		hub.Broadcast(envelope.WorkspaceID, raw)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"ok":true}`))
@@ -205,7 +228,13 @@ func main() {
 		})
 	})
 
-	srv := &http.Server{Addr: ":" + port, Handler: r}
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 
 	go func() {
 		slog.Info("ws-gateway starting", "port", port)
@@ -223,4 +252,5 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	srv.Shutdown(shutdownCtx)
+	rdb.Close()
 }

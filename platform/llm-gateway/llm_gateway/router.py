@@ -114,10 +114,13 @@ MODEL_REGISTRY: dict[str, ModelProfile] = {
 }
 
 AGENT_TYPE_DEFAULTS: dict[str, str] = {
-    "coder": "claude-sonnet-4-20250514",
-    "planner": "gpt-4o",
-    "reviewer": "deepseek-chat",
-    "translator": "qwen-plus",
+    "pm": "doubao-seed-2-0-pro-260215",
+    "architecture": "doubao-seed-2-0-pro-260215",
+    "frontend": "claude-sonnet-4-20250514",
+    "backend": "claude-sonnet-4-20250514",
+    "development": "claude-sonnet-4-20250514",
+    "qa": "deepseek-chat",
+    "devops": "deepseek-chat",
     "default": "doubao-seed-2-0-pro-260215",
 }
 

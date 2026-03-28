@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -78,6 +80,47 @@ class Dispatcher:
         )
         return result
 
+    async def dispatch_stream(
+        self,
+        agent_type: AgentType,
+        task: AgentTask,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Forward agent execute as SSE stream, yielding parsed events."""
+        base = AGENT_ENDPOINTS.get(agent_type.value)
+        if base is None:
+            yield {"error": f"No endpoint registered for {agent_type}"}
+            return
+
+        await self.ws.publish_agent_status(
+            task.workspace_id, agent_type, AgentStatus.WORKING,
+            detail=f"Executing: {task.intent}",
+        )
+
+        try:
+            async with self._http.stream(
+                "POST",
+                f"{base}/api/execute/stream",
+                json=task.model_dump(mode="json"),
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            return
+                        try:
+                            yield json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+            await self.ws.publish_agent_status(
+                task.workspace_id, agent_type, AgentStatus.ERROR, detail=str(exc),
+            )
+            yield {"error": f"Agent {agent_type} unavailable: {exc}"}
+
     async def dispatch_parallel(
         self,
         assignments: list[tuple[AgentType, AgentTask]],
@@ -120,6 +163,40 @@ class Dispatcher:
             return resp.json()
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
             return {"error": f"Agent {agent_type} unavailable: {exc}"}
+
+    async def forward_chat_stream(
+        self,
+        agent_type: AgentType,
+        workspace_id: str,
+        message: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Forward chat to agent's /api/chat/stream and yield SSE chunks."""
+        base = AGENT_ENDPOINTS.get(agent_type.value)
+        if base is None:
+            yield {"error": f"No endpoint registered for {agent_type}"}
+            return
+
+        try:
+            async with self._http.stream(
+                "POST",
+                f"{base}/api/chat/stream",
+                json={"workspace_id": workspace_id, "message": message},
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            return
+                        try:
+                            yield json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+            yield {"error": f"Agent {agent_type} unavailable: {exc}"}
 
     async def close(self) -> None:
         await self._http.aclose()

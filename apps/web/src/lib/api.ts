@@ -18,23 +18,47 @@ function unwrap<T>(resp: { data?: T; error?: string }): T {
   return resp.data as T
 }
 
+function scaleProgress(val: number): number {
+  return val <= 1 ? Math.round(val * 100) : val
+}
+
+function normalizeWorkspace(ws: Workspace): Workspace {
+  return {
+    ...ws,
+    progress: scaleProgress(ws.progress),
+    phases: ws.phases.map((p) => ({
+      ...p,
+      progress: scaleProgress(p.progress),
+    })),
+  }
+}
+
 export const workspaceApi = {
-  list: () => request<{ data: Workspace[] }>('/api/workspaces').then(unwrap),
+  list: () =>
+    request<{ data: Workspace[] }>('/api/workspaces')
+      .then(unwrap)
+      .then((list) => list.map(normalizeWorkspace)),
 
   get: (id: string) =>
-    request<{ data: Workspace }>(`/api/workspaces/${id}`).then(unwrap),
+    request<{ data: Workspace }>(`/api/workspaces/${id}`)
+      .then(unwrap)
+      .then(normalizeWorkspace),
 
   create: (name: string, description: string, color = 'indigo') =>
     request<{ data: Workspace }>('/api/workspaces', {
       method: 'POST',
       body: JSON.stringify({ name, description, color }),
-    }).then(unwrap),
+    })
+      .then(unwrap)
+      .then(normalizeWorkspace),
 
   update: (id: string, updates: { name?: string; description?: string }) =>
     request<{ data: Workspace }>(`/api/workspaces/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
-    }).then(unwrap),
+    })
+      .then(unwrap)
+      .then(normalizeWorkspace),
 
   delete: (id: string) =>
     request<void>(`/api/workspaces/${id}`, { method: 'DELETE' }),
@@ -87,6 +111,60 @@ export const agentApi = {
         body: JSON.stringify({ workspace_id: workspaceId, message }),
       },
     ),
+
+  nlpStream: (workspaceId: string, message: string) =>
+    streamSSE('/api/nlp/stream', { workspace_id: workspaceId, message }),
+
+  chatStream: (agentType: string, workspaceId: string, message: string) =>
+    streamSSE(`/api/agents/${agentType}/chat/stream`, {
+      workspace_id: workspaceId,
+      message,
+    }),
+}
+
+export interface SSEEvent {
+  event?: string
+  data: string
+}
+
+export async function* streamSSE(
+  url: string,
+  body: object,
+): AsyncGenerator<SSEEvent> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw new Error(`SSE ${res.status}: ${await res.text().catch(() => '')}`)
+  }
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop()!
+
+    for (const part of parts) {
+      if (!part.trim()) continue
+      let eventName: string | undefined
+      let dataLines: string[] = []
+      for (const line of part.split('\n')) {
+        if (line.startsWith('event: ')) eventName = line.slice(7).trim()
+        else if (line.startsWith('data: ')) dataLines.push(line.slice(6))
+        else if (line.startsWith(':')) continue
+      }
+      if (dataLines.length > 0) {
+        yield { event: eventName, data: dataLines.join('\n') }
+      }
+    }
+  }
 }
 
 function mapNLPResultToMessage(
@@ -121,7 +199,7 @@ function mapNLPResultToMessage(
     result.payload?.summary || result.error || resp.summary || 'Request processed.'
 
   return {
-    id: `msg-${Date.now()}`,
+    id: crypto.randomUUID(),
     role: 'agent',
     content,
     richBlocks: richBlocks.length > 0 ? richBlocks : undefined,
@@ -139,31 +217,54 @@ function mapAgentChatToMessage(
 
   let content = resp.reply || ''
 
-  try {
-    const parsed = JSON.parse(content)
-    content = parsed.summary || content
+  // Parse rich_blocks from the response payload
+  if (resp.rich_blocks?.length) {
+    for (const rb of resp.rich_blocks) {
+      if (rb.type === 'code') {
+        richBlocks.push({
+          type: 'code',
+          title: rb.metadata?.title || rb.title,
+          language: rb.language,
+          code: rb.content || rb.code,
+        })
+      } else if (rb.type === 'task_card') {
+        richBlocks.push({
+          type: 'task_card',
+          taskTitle: rb.content || rb.taskTitle,
+          taskStatus: 'pending',
+        })
+      }
+    }
+  }
 
-    for (const art of parsed.artifacts || []) {
-      richBlocks.push({
-        type: 'code',
-        title: art.title,
-        language: art.type === 'diagram' ? 'text' : art.type,
-        code: art.content,
-      })
+  // Also try to parse structured JSON from the reply text
+  if (richBlocks.length === 0) {
+    try {
+      const parsed = JSON.parse(content)
+      content = parsed.summary || content
+
+      for (const art of parsed.artifacts || []) {
+        richBlocks.push({
+          type: 'code',
+          title: art.title,
+          language: art.type === 'diagram' ? 'text' : art.type,
+          code: art.content,
+        })
+      }
+      for (const t of parsed.tasks || []) {
+        richBlocks.push({
+          type: 'task_card',
+          taskTitle: t.title,
+          taskStatus: 'pending',
+        })
+      }
+    } catch {
+      // reply is plain text
     }
-    for (const t of parsed.tasks || []) {
-      richBlocks.push({
-        type: 'task_card',
-        taskTitle: t.title,
-        taskStatus: 'pending',
-      })
-    }
-  } catch {
-    // reply is plain text
   }
 
   return {
-    id: `msg-${Date.now()}`,
+    id: crypto.randomUUID(),
     role: 'agent',
     content,
     richBlocks: richBlocks.length > 0 ? richBlocks : undefined,

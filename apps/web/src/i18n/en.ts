@@ -211,6 +211,8 @@ const en = {
 
   'agent.topology': 'Agent Topology',
   'agent.logStream': 'Execution Log',
+  'agent.taskLog': 'Task Execution Log',
+  'agent.noLogs': 'No execution logs yet. Logs will appear here when agents are working.',
   'agent.timeline': 'State Timeline',
 
   'markdown.edit': 'Edit',

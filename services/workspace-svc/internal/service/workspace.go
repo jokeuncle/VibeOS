@@ -329,10 +329,10 @@ func (s *Service) publishEvent(ctx context.Context, wsID, eventType string, payl
 	if s.redis == nil {
 		return
 	}
-	evt := models.WSEvent{
-		Type:        eventType,
-		WorkspaceID: wsID,
-		Payload:     payload,
+	evt := map[string]any{
+		"type":        eventType,
+		"workspaceId": wsID,
+		"payload":     payload,
 	}
 	data, err := json.Marshal(evt)
 	if err != nil {

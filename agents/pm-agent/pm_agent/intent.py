@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from pydantic import BaseModel
@@ -38,6 +40,34 @@ CLASSIFICATION_PROMPT = (
     f"is one of: {', '.join(INTENT_TYPES)}. Do NOT include anything else."
 )
 
+_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+_FIRST_BRACE_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    """Best-effort extraction of a JSON object from potentially wrapped text."""
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    m = _CODE_FENCE_RE.search(text)
+    if m:
+        try:
+            return json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    m = _FIRST_BRACE_RE.search(text)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    return {"intent": "general_chat", "summary": text[:120]}
+
 
 class ParsedIntent(BaseModel):
     intent: str
@@ -58,12 +88,7 @@ async def parse_intent(
     result = await llm.chat(messages, temperature=0.0)
     raw = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-    import json
-
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        data = {"intent": "general_chat", "summary": user_input[:120]}
+    data = _extract_json(raw)
 
     intent_name = data.get("intent", "general_chat")
     if intent_name not in INTENT_TYPES:

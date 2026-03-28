@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
@@ -82,17 +83,14 @@ class WorkspaceClient:
         status: PhaseStatus | None = None,
         progress: float | None = None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {}
         if status is not None:
-            body["status"] = status.value
-        if progress is not None:
-            body["progress"] = progress
-        resp = await self._http.patch(
-            f"/api/workspaces/{workspace_id}/phases/{phase_id}",
-            json=body,
-        )
-        resp.raise_for_status()
-        return resp.json()
+            resp = await self._http.patch(
+                f"/api/workspaces/{workspace_id}/phases/{phase_id}/status",
+                json={"status": status.value},
+            )
+            resp.raise_for_status()
+            return resp.json()
+        return {}
 
     async def get_workspace(self, workspace_id: str) -> dict[str, Any]:
         resp = await self._http.get(f"/api/workspaces/{workspace_id}")
@@ -129,6 +127,41 @@ class LLMGatewayClient:
         resp = await self._http.post("/api/chat/completions", json=body)
         resp.raise_for_status()
         return resp.json()
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        temperature: float = 0.7,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield SSE chunks from the LLM gateway streaming endpoint."""
+        body: dict[str, Any] = {
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if model:
+            body["model"] = model
+        if tools:
+            body["tools"] = tools
+        async with self._http.stream(
+            "POST", "/api/chat/completions", json=body
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                line = line.strip()
+                if not line or line.startswith(":"):
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        return
+                    try:
+                        yield json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -172,7 +205,30 @@ class WSGatewayClient:
             {
                 "type": "agent:message",
                 "workspaceId": workspace_id,
-                "message": message.model_dump(mode="json", exclude_none=True),
+                "payload": {"message": message.model_dump(mode="json", exclude_none=True)},
+            }
+        )
+
+    async def publish_log(
+        self,
+        workspace_id: str,
+        agent_type: str,
+        message: str,
+        *,
+        level: str = "info",
+        task_id: str = "",
+    ) -> None:
+        await self.publish(
+            {
+                "type": "agent:log",
+                "workspaceId": workspace_id,
+                "payload": {
+                    "taskId": task_id,
+                    "agent": agent_type,
+                    "level": level,
+                    "message": message,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             }
         )
 
@@ -436,6 +492,51 @@ class BaseAgent(ABC):
             pass
 
         return reply
+
+    async def _call_llm_stream(
+        self,
+        user_message: str,
+        *,
+        workspace_id: str,
+        extra_messages: list[dict[str, str]] | None = None,
+        enrich_context: bool = True,
+    ) -> AsyncIterator[str]:
+        """Stream LLM response token-by-token. Yields content deltas."""
+        enriched_system = self.system_prompt
+        if enrich_context:
+            enriched_system = await self._build_enriched_prompt(
+                workspace_id, user_message
+            )
+
+        history = await self.session.get_history(workspace_id, self.agent_type)
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": enriched_system}
+        ]
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+        if extra_messages:
+            messages.extend(extra_messages)
+        messages.append({"role": "user", "content": user_message})
+
+        full_reply = ""
+        async for chunk in self.llm.chat_stream(messages, tools=self.tools or None):
+            delta = (
+                chunk.get("choices", [{}])[0]
+                .get("delta", {})
+                .get("content", "")
+            )
+            if delta:
+                full_reply += delta
+                yield delta
+
+        try:
+            await self.memory.add_memory(
+                f"User asked: {user_message}\nAgent replied: {full_reply[:500]}",
+                workspace_id=workspace_id,
+                agent_type=self.agent_type.value,
+            )
+        except Exception:
+            pass
 
     async def _build_enriched_prompt(
         self, workspace_id: str, user_message: str

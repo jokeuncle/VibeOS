@@ -3,6 +3,7 @@ import { CheckCircle2, Circle, Loader2, Eye, Pencil, Paperclip, Upload, User, Se
 import { marked } from 'marked'
 import SlideOver from './ui/SlideOver'
 import DatePicker from './ui/DatePicker'
+import AgentLogStream from './AgentLogStream'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
@@ -346,6 +347,9 @@ export default function TaskDetail() {
               )}
             </div>
           </div>
+
+          {/* Task Execution Log */}
+          <AgentLogStream agents={workspace?.agents || []} taskId={taskDetailTaskId || undefined} />
 
           {/* Actions */}
           <div className="flex gap-2 pt-2">

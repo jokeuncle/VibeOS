@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from vibeos_agent import AgentTask, config
@@ -27,7 +29,6 @@ app = FastAPI(title="Architecture Agent", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -52,6 +53,20 @@ async def execute_task(task: AgentTask) -> dict[str, Any]:
     return last_event
 
 
+@app.post("/api/execute/stream")
+async def execute_task_stream(task: AgentTask) -> StreamingResponse:
+    """Stream execute events as SSE."""
+    agent: ArchitectureAgent = app.state.agent
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        async for event in agent.execute(task):
+            data = event.model_dump(mode="json", exclude_none=True)
+            yield f"event: {event.type}\ndata: {json.dumps(data)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     agent: ArchitectureAgent = app.state.agent
@@ -69,6 +84,19 @@ async def chat(req: ChatRequest) -> ChatResponse:
             for rb in last_msg.rich_blocks
         ],
     )
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(req: ChatRequest) -> StreamingResponse:
+    """Stream chat response token-by-token as SSE."""
+    agent: ArchitectureAgent = app.state.agent
+
+    async def token_gen() -> AsyncGenerator[str, None]:
+        async for delta in agent.chat_stream(req.message, workspace_id=req.workspace_id):
+            yield f"data: {json.dumps({'delta': delta})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(token_gen(), media_type="text/event-stream")
 
 
 @app.get("/health")
