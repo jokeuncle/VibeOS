@@ -69,6 +69,25 @@ type Store interface {
 	UpdateWorkspaceRepo(ctx context.Context, id string, req models.UpdateWorkspaceRepoReq) (*models.WorkspaceRepo, error)
 	DeleteWorkspaceRepo(ctx context.Context, id string) error
 	ListReposForPhase(ctx context.Context, workspaceID, phaseType string) ([]models.WorkspaceRepo, error)
+
+	// Chat message persistence
+	GetOrCreateChatSession(ctx context.Context, workspaceID, agentType string) (*models.ChatSession, error)
+	SaveChatMessage(ctx context.Context, msg *models.ChatMessage) error
+	ListChatMessages(ctx context.Context, workspaceID string, cursor string, limit int) ([]models.ChatMessage, string, bool, error)
+
+	// Artifact metadata-only listing
+	ListArtifactMetaByWorkspace(ctx context.Context, workspaceID string) ([]models.ArtifactMeta, error)
+
+	// Workspace lifecycle
+	ArchiveWorkspace(ctx context.Context, id string) error
+	UnarchiveWorkspace(ctx context.Context, id string) error
+	ListWorkspacesByStatus(ctx context.Context, status string) ([]models.Workspace, error)
+
+	// Conversation & activity summaries
+	SaveConversationSummary(ctx context.Context, s *models.ConversationSummary) error
+	ListConversationSummaries(ctx context.Context, workspaceID string) ([]models.ConversationSummary, error)
+	SaveActivitySummary(ctx context.Context, s *models.ActivitySummary) error
+	ListActivitySummaries(ctx context.Context, workspaceID string) ([]models.ActivitySummary, error)
 }
 
 type PostgresStore struct {

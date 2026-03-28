@@ -43,8 +43,15 @@ export default function StatusBar() {
                 </span>
               )}
             </span>
-            <span className="flex items-center gap-1.5">
-              <Cpu className="w-2.5 h-2.5" />
+            <span className={`flex items-center gap-1.5 ${activeAgents > 0 ? 'text-accent font-semibold' : ''}`}>
+              {activeAgents > 0 ? (
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                  <Cpu className="relative inline-flex w-2.5 h-2.5 text-accent" />
+                </span>
+              ) : (
+                <Cpu className="w-2.5 h-2.5" />
+              )}
               {activeAgents}{' '}
               {activeAgents === 1
                 ? t('statusbar.agentActive_one')
@@ -65,7 +72,7 @@ export default function StatusBar() {
         )}
       </div>
       <div className="flex items-center gap-3">
-        <span className="text-text-tertiary/60">VibeOS v0.1.0</span>
+        <span className="text-text-tertiary/60">{t('statusbar.version' as import('../i18n/en').TranslationKey)}</span>
       </div>
     </footer>
   )

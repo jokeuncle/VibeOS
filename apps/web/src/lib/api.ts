@@ -107,6 +107,41 @@ export const workspaceApi = {
   listArtifactsByPhase: (wsId: string, phaseId: string) =>
     request<{ data: any[] }>(`/api/workspaces/${wsId}/phases/${phaseId}/artifacts`).then(unwrap),
 
+  listArtifactsMeta: (wsId: string) =>
+    request<{ data: any[] }>(`/api/workspaces/${wsId}/artifacts/meta`).then(unwrap),
+
+  // Chat message persistence (cursor-paginated)
+  listMessages: (wsId: string, cursor?: string, limit = 50) =>
+    request<{ data: any[]; cursor?: string; hasMore: boolean }>(
+      `/api/workspaces/${wsId}/messages?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+    ),
+
+  saveMessage: (wsId: string, msg: { role: string; content: string; agentType?: string; richBlocks?: string }) =>
+    request<{ data: any }>(`/api/workspaces/${wsId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(msg),
+    }).then(unwrap),
+
+  // Workspace lifecycle
+  archiveWorkspace: (wsId: string) =>
+    request<{ data: string }>(`/api/workspaces/${wsId}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'archived' }),
+    }).then(unwrap),
+
+  unarchiveWorkspace: (wsId: string) =>
+    request<{ data: string }>(`/api/workspaces/${wsId}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'active' }),
+    }).then(unwrap),
+
+  // AI-generated summaries
+  listConversationSummaries: (wsId: string) =>
+    request<{ data: any[] }>(`/api/workspaces/${wsId}/summaries/conversations`).then(unwrap),
+
+  listActivitySummaries: (wsId: string) =>
+    request<{ data: any[] }>(`/api/workspaces/${wsId}/summaries/activities`).then(unwrap),
+
   // GitLab repo bindings
   listRepos: (wsId: string) =>
     request<{ data: WorkspaceRepo[] }>(`/api/workspaces/${wsId}/repos`).then(unwrap),
@@ -244,7 +279,8 @@ export async function* streamSSE(
   if (!res.ok) {
     throw new Error(`SSE ${res.status}: ${await res.text().catch(() => '')}`)
   }
-  const reader = res.body!.getReader()
+  if (!res.body) throw new Error('Response body is null')
+  const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
 
@@ -420,9 +456,11 @@ export const feedbackApi = {
     original_output?: string
     context?: Record<string, unknown>
   }) =>
-    request<{ status: string }>('/api/feedback', {
+    request<{ status: string; error?: string }>('/api/feedback', {
       method: 'POST',
       body: JSON.stringify(body),
+    }).then((resp) => {
+      if (resp.status === 'error') throw new Error(resp.error || 'Feedback failed')
     }),
 }
 

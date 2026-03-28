@@ -1,6 +1,7 @@
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useT } from '../i18n'
-import { useWorkspaceStore } from '../stores/workspace'
+import { useWorkspaceStore, type AgentStatusEvent } from '../stores/workspace'
 import type { Agent, AgentType, AgentStatus, WorkflowEvent } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -15,63 +16,43 @@ interface TimelineSegment {
   status: AgentStatus
   start: number
   end: number
+  detail?: string
 }
 
-function generateTimeline(agent: AgentType): TimelineSegment[] {
-  const patterns: Record<string, TimelineSegment[]> = {
-    pm: [
-      { status: 'running', start: 0, end: 15 },
-      { status: 'idle', start: 15, end: 30 },
-      { status: 'running', start: 30, end: 45 },
-      { status: 'idle', start: 45, end: 60 },
-      { status: 'running', start: 60, end: 75 },
-      { status: 'waiting', start: 75, end: 100 },
-    ],
-    requirement: [
-      { status: 'idle', start: 0, end: 5 },
-      { status: 'running', start: 5, end: 25 },
-      { status: 'idle', start: 25, end: 100 },
-    ],
-    design: [
-      { status: 'idle', start: 0, end: 20 },
-      { status: 'running', start: 20, end: 40 },
-      { status: 'waiting', start: 40, end: 45 },
-      { status: 'running', start: 45, end: 55 },
-      { status: 'idle', start: 55, end: 100 },
-    ],
-    architecture: [
-      { status: 'idle', start: 0, end: 30 },
-      { status: 'running', start: 30, end: 50 },
-      { status: 'idle', start: 50, end: 100 },
-    ],
-    development: [
-      { status: 'idle', start: 0, end: 40 },
-      { status: 'running', start: 40, end: 70 },
-      { status: 'error', start: 70, end: 75 },
-      { status: 'running', start: 75, end: 90 },
-      { status: 'idle', start: 90, end: 100 },
-    ],
-    testing: [
-      { status: 'idle', start: 0, end: 55 },
-      { status: 'running', start: 55, end: 80 },
-      { status: 'waiting', start: 80, end: 85 },
-      { status: 'running', start: 85, end: 95 },
-      { status: 'idle', start: 95, end: 100 },
-    ],
-    cicd: [
-      { status: 'idle', start: 0, end: 75 },
-      { status: 'running', start: 75, end: 90 },
-      { status: 'idle', start: 90, end: 100 },
-    ],
-    monitoring: [
-      { status: 'idle', start: 0, end: 85 },
-      { status: 'running', start: 85, end: 100 },
-    ],
+function buildSegments(events: AgentStatusEvent[], agentType: string, windowStart: number, windowEnd: number): TimelineSegment[] {
+  const agentEvents = events.filter((e) => e.agentType === agentType && e.timestamp >= windowStart)
+  if (agentEvents.length === 0) {
+    return [{ status: 'idle', start: 0, end: 100 }]
   }
-  return patterns[agent] || [{ status: 'idle' as AgentStatus, start: 0, end: 100 }]
+
+  const span = windowEnd - windowStart
+  if (span <= 0) return [{ status: 'idle', start: 0, end: 100 }]
+
+  const segments: TimelineSegment[] = []
+  let lastPct = 0
+  let lastStatus: AgentStatus = 'idle'
+
+  for (const ev of agentEvents) {
+    const pct = Math.min(100, ((ev.timestamp - windowStart) / span) * 100)
+    if (pct > lastPct) {
+      segments.push({ status: lastStatus, start: lastPct, end: pct })
+    }
+    lastPct = pct
+    lastStatus = ev.status
+  }
+
+  if (lastPct < 100) {
+    segments.push({ status: lastStatus, start: lastPct, end: 100 })
+  }
+
+  return segments.filter((s) => s.end - s.start > 0.2)
 }
 
-const HOURS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
+function formatTime(ts: number) {
+  const d = new Date(ts)
+  return d.toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit' })
+}
+
 const ALL_AGENTS: AgentType[] = ['pm', 'requirement', 'design', 'architecture', 'development', 'testing', 'cicd', 'monitoring']
 
 const PHASE_LABELS: Record<string, string> = {
@@ -123,15 +104,47 @@ function WorkflowProgress({ events }: { events: WorkflowEvent[] }) {
 
 export default function AgentTimeline({ agents }: { agents: Agent[] }) {
   const t = useT()
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const agentStatusHistory = useWorkspaceStore((s) => s.agentStatusHistory)
   const { workflowEvents } = useWorkspaceStore()
-  const currentPercent = 72
+
+  const history = activeWorkspaceId ? agentStatusHistory[activeWorkspaceId] || [] : []
+  const hasHistory = history.length > 0
+
+  const { windowStart, windowEnd, timeLabels, nowPct } = useMemo(() => {
+    const now = Date.now()
+    if (!hasHistory) {
+      const start = now - 30 * 60_000
+      return {
+        windowStart: start,
+        windowEnd: now,
+        timeLabels: Array.from({ length: 7 }, (_, i) => formatTime(start + (i * 30 * 60_000) / 6)),
+        nowPct: 100,
+      }
+    }
+    const earliest = Math.min(...history.map((e) => e.timestamp))
+    const start = earliest - 60_000
+    const end = Math.max(now, ...history.map((e) => e.timestamp)) + 60_000
+    const span = end - start
+    return {
+      windowStart: start,
+      windowEnd: end,
+      timeLabels: Array.from({ length: 7 }, (_, i) => formatTime(start + (i * span) / 6)),
+      nowPct: Math.min(100, ((now - start) / span) * 100),
+    }
+  }, [hasHistory, history])
 
   return (
     <div className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden">
-      <div className="px-4 py-3 border-b border-border-subtle">
+      <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
         <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
           {t('agent.timeline')}
         </span>
+        {hasHistory && (
+          <span className="text-[10px] font-mono text-text-tertiary">
+            {history.length} events
+          </span>
+        )}
       </div>
 
       <WorkflowProgress events={workflowEvents} />
@@ -140,8 +153,8 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
         <div style={{ minWidth: 380 }}>
         {/* Time axis */}
         <div className="flex mb-1 ml-20">
-          {HOURS.map((h, i) => (
-            <span key={h} className="text-[9px] font-mono text-text-tertiary/50" style={{ width: `${100 / HOURS.length}%` }}>
+          {timeLabels.map((h, i) => (
+            <span key={i} className="text-[9px] font-mono text-text-tertiary/50" style={{ width: `${100 / timeLabels.length}%` }}>
               {h}
             </span>
           ))}
@@ -150,7 +163,12 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
         {/* Timeline tracks */}
         <div className="space-y-1.5">
           {ALL_AGENTS.map((type, i) => {
-            const segments = generateTimeline(type)
+            const segments = hasHistory
+              ? buildSegments(history, type, windowStart, windowEnd)
+              : [{ status: 'idle' as AgentStatus, start: 0, end: 100 }]
+            const currentAgent = agents.find((a) => a.type === type)
+            const currentStatus = currentAgent?.status || 'idle'
+
             return (
               <motion.div
                 key={type}
@@ -187,13 +205,23 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
                   {/* Current time indicator */}
                   <motion.div
                     className="absolute top-0 bottom-0 w-px bg-accent z-10"
-                    style={{ left: `${currentPercent}%` }}
+                    style={{ left: `${nowPct}%` }}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.5 }}
                   >
                     <div className="w-1.5 h-1.5 rounded-full bg-accent absolute -top-0.5 -left-[2.5px]" />
                   </motion.div>
+
+                  {/* Live status indicator on the right edge */}
+                  {currentStatus === 'running' && (
+                    <motion.div
+                      className="absolute right-0 top-0 bottom-0 w-1 rounded-r-sm"
+                      style={{ backgroundColor: STATUS_FILL.running }}
+                      animate={{ opacity: [1, 0.3, 1] }}
+                      transition={{ duration: 1.2, repeat: Infinity }}
+                    />
+                  )}
                 </div>
               </motion.div>
             )
@@ -212,6 +240,11 @@ export default function AgentTimeline({ agents }: { agents: Agent[] }) {
             <div className="w-px h-3 bg-accent" />
             <span className="text-[10px] text-text-tertiary">Now</span>
           </div>
+          {!hasHistory && (
+            <span className="text-[10px] text-text-tertiary/50 italic ml-2">
+              {t('agent.noLogs' as TranslationKey)}
+            </span>
+          )}
         </div>
         </div>
       </div>

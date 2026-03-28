@@ -22,6 +22,13 @@ function friendlyError(raw: string): string {
   if (/network|fetch|ECONNREFUSED/i.test(raw)) {
     return '网络连接异常，请检查服务是否正常运行。'
   }
+  if (/nodename nor servname|Name or service not known|agent.*unavailable/i.test(raw)) {
+    const agentMatch = raw.match(/Agent (\w+) unavailable/i)
+    const agentName = agentMatch?.[1] || ''
+    return agentName
+      ? `${agentName} Agent 服务未启动，请先启动对应的 Agent 服务。`
+      : 'Agent 服务未启动或无法连接，请检查服务配置。'
+  }
   return raw
 }
 
@@ -57,6 +64,13 @@ export interface LogEntry {
   taskId?: string
 }
 
+export interface AgentStatusEvent {
+  agentType: string
+  status: import('../types').AgentStatus
+  detail?: string
+  timestamp: number
+}
+
 interface WorkspaceState {
   workspaces: Workspace[]
   activeWorkspaceId: string | null
@@ -66,6 +80,7 @@ interface WorkspaceState {
   nlpLoading: boolean
   chatLoading: boolean
   executionLogs: Record<string, LogEntry[]>
+  agentStatusHistory: Record<string, AgentStatusEvent[]>
 
   fetchWorkspaces: () => Promise<void>
   refreshActiveWorkspace: () => Promise<void>
@@ -109,6 +124,25 @@ interface WorkspaceState {
   addRepo: (wsId: string, repo: WorkspaceRepo) => void
   removeRepo: (wsId: string, repoId: string) => void
   updateRepoInStore: (wsId: string, repo: WorkspaceRepo) => void
+
+  // Workspace lifecycle
+  archiveWorkspace: (wsId: string) => void
+  unarchiveWorkspace: (wsId: string) => void
+
+  // Chat cursor pagination
+  loadOlderMessages: () => void
+  messagesCursor: string | null
+  messagesHasMore: boolean
+}
+
+function safeParseRichBlocks(raw: unknown): import('../types').RichBlock[] | undefined {
+  if (!raw) return undefined
+  if (typeof raw !== 'string') return raw as import('../types').RichBlock[]
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
 }
 
 function patchWorkspace(
@@ -167,6 +201,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   nlpLoading: false,
   chatLoading: false,
   executionLogs: {},
+  agentStatusHistory: {},
 
   fetchWorkspaces: async () => {
     set({ loading: true })
@@ -196,7 +231,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         agentType: a.agentType,
       }))
       set((s) => ({
-        workspaces: patchWorkspace(s.workspaces, id, () => ({ ...ws, activities })),
+        workspaces: patchWorkspace(s.workspaces, id, (prev) => {
+          const liveAgentStatus = new Map(
+            prev.agents
+              .filter((a) => a.status !== 'idle')
+              .map((a) => [a.type, { status: a.status, currentTask: a.currentTask }]),
+          )
+          const mergedAgents = (ws.agents || []).map((a: any) => {
+            const live = liveAgentStatus.get(a.type)
+            return live ? { ...a, ...live } : a
+          })
+          return { ...ws, activities, agents: mergedAgents }
+        }),
       }))
     } catch (err) {
       console.error('Failed to refresh workspace:', err)
@@ -206,11 +252,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setActiveWorkspace: (id) => {
     const gen = ++wsLoadGeneration
     set({ activeWorkspaceId: id, activePhaseId: null, messages: [] })
-    if (id) {
+    if (id && !id.startsWith('ws-temp-')) {
       Promise.all([
         workspaceApi.get(id),
         workspaceApi.listActivities(id, 1, 50),
-      ]).then(([ws, actResp]) => {
+        workspaceApi.listMessages(id, undefined, 50).catch(() => ({ data: [], hasMore: false })),
+      ]).then(([ws, actResp, msgResp]) => {
         if (wsLoadGeneration !== gen) return
         const activities = (actResp.data || []).map((a: any) => ({
           id: a.id,
@@ -220,7 +267,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           agentType: a.agentType,
         }))
         const merged = { ...ws, activities }
+        // Restore persisted messages (API returns newest-first, UI needs oldest-first)
+        const restored: Message[] = (msgResp.data || []).reverse().map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          agentType: m.agentType,
+          timestamp: m.createdAt,
+          richBlocks: safeParseRichBlocks(m.richBlocks),
+          sessionId: m.sessionId,
+        }))
         set((s) => ({
+          messages: restored,
+          messagesCursor: (msgResp as any).cursor || null,
+          messagesHasMore: (msgResp as any).hasMore || false,
           workspaces: s.workspaces.some((w) => w.id === id)
             ? patchWorkspace(s.workspaces, id, () => merged)
             : [...s.workspaces, merged],
@@ -231,8 +291,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActivePhase: (id) => set({ activePhaseId: id }),
 
-  addMessage: (message) =>
-    set((s) => ({ messages: [...s.messages, message] })),
+  addMessage: (message) => {
+    set((s) => ({ messages: [...s.messages, message] }))
+    const wsId = get().activeWorkspaceId
+    if (wsId && !wsId.startsWith('ws-temp-')) {
+      workspaceApi.saveMessage(wsId, {
+        role: message.role,
+        content: message.content || '',
+        agentType: message.agentType,
+        richBlocks: message.richBlocks ? JSON.stringify(message.richBlocks) : undefined,
+      }).catch((err) => console.warn('Failed to persist message:', err))
+    }
+  },
 
   sendNLPMessage: (input) => {
     const wsId = get().activeWorkspaceId
@@ -241,19 +311,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const sessionId = `s-${Math.floor(Date.now() / 300000)}`
     const ts = new Date().toISOString()
 
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: 'user' as const,
+      content: input,
+      timestamp: ts,
+      sessionId,
+    }
+
     set((s) => ({
       nlpLoading: true,
-      messages: [
-        ...s.messages,
-        {
-          id: crypto.randomUUID(),
-          role: 'user' as const,
-          content: input,
-          timestamp: ts,
-          sessionId,
-        },
-      ],
+      messages: [...s.messages, userMsg],
     }))
+
+    if (!wsId.startsWith('ws-temp-')) {
+      workspaceApi.saveMessage(wsId, { role: 'user', content: input })
+        .catch((err) => console.warn('Failed to persist user message:', err))
+    }
 
     const nlpCtx = buildNlpPhaseContext(get)
     agentApi
@@ -264,23 +338,35 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           nlpLoading: false,
           messages: [...s.messages, agentMsg],
         }))
+        if (!wsId.startsWith('ws-temp-')) {
+          workspaceApi.saveMessage(wsId, {
+            role: agentMsg.role,
+            content: agentMsg.content || '',
+            agentType: agentMsg.agentType,
+            richBlocks: agentMsg.richBlocks ? JSON.stringify(agentMsg.richBlocks) : undefined,
+          }).catch((err) => console.warn('Failed to persist agent message:', err))
+        }
         get().refreshActiveWorkspace()
       })
       .catch((err) => {
+        const errContent = friendlyError(err.message)
+        const errMsg: Message = {
+          id: crypto.randomUUID(),
+          role: 'agent' as const,
+          content: errContent,
+          agentType: 'pm' as AgentType,
+          timestamp: new Date().toISOString(),
+          sessionId,
+        }
         set((s) => ({
           nlpLoading: false,
-          messages: [
-            ...s.messages,
-            {
-              id: crypto.randomUUID(),
-              role: 'agent' as const,
-              content: `Request failed: ${err.message}`,
-              agentType: 'pm' as AgentType,
-              timestamp: new Date().toISOString(),
-              sessionId,
-            },
-          ],
+          messages: [...s.messages, errMsg],
         }))
+        if (!wsId.startsWith('ws-temp-')) {
+          workspaceApi.saveMessage(wsId, {
+            role: 'agent', content: errContent, agentType: 'pm',
+          }).catch(() => {})
+        }
       })
   },
 
@@ -579,6 +665,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const sessionId = `s-${Math.floor(Date.now() / 300000)}`
     const ts = new Date().toISOString()
     const msgId = crypto.randomUUID()
+    const persist = !wsId.startsWith('ws-temp-')
 
     set((s) => ({
       nlpLoading: true,
@@ -587,6 +674,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         { id: crypto.randomUUID(), role: 'user' as const, content: input, timestamp: ts, sessionId },
       ],
     }))
+
+    if (persist) {
+      workspaceApi.saveMessage(wsId, { role: 'user', content: input }).catch(() => {})
+    }
 
     ;(async () => {
       let content = ''
@@ -623,14 +714,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         }
       } catch (err: any) {
         if (!content) {
+          content = friendlyError(err.message)
           set((s) => ({
             messages: s.messages.map((m) =>
-              m.id === msgId ? { ...m, content: friendlyError(err.message) } : m
+              m.id === msgId ? { ...m, content } : m
             ),
           }))
         }
       } finally {
         set({ nlpLoading: false })
+        if (persist && content) {
+          workspaceApi.saveMessage(wsId, {
+            role: 'agent', content, agentType,
+          }).catch(() => {})
+        }
         get().refreshActiveWorkspace()
       }
     })()
@@ -718,15 +815,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   updateAgentStatus: (workspaceId, agentType, status, detail) => {
+    const event: AgentStatusEvent = { agentType, status, detail, timestamp: Date.now() }
     set((s) => ({
       workspaces: patchWorkspace(s.workspaces, workspaceId, (w) => ({
         ...w,
         agents: w.agents.map((a) =>
           a.type === agentType
-            ? { ...a, status, ...(detail !== undefined ? { currentTask: detail } : {}) }
+            ? {
+                ...a,
+                status,
+                currentTask: status === 'idle' ? undefined : (detail !== undefined ? detail : a.currentTask),
+              }
             : a
         ),
       })),
+      agentStatusHistory: {
+        ...s.agentStatusHistory,
+        [workspaceId]: [...(s.agentStatusHistory[workspaceId] || []), event].slice(-200),
+      },
     }))
   },
 
@@ -864,5 +970,49 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         get().refreshActiveWorkspace()
       }
     })()
+  },
+
+  // ---- Workspace lifecycle ----
+  archiveWorkspace: (wsId) => {
+    workspaceApi.archiveWorkspace(wsId).then(() => {
+      set((s) => ({
+        workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({ ...w, status: 'archived' })),
+      }))
+    }).catch((err) => console.error('Failed to archive workspace:', err))
+  },
+
+  unarchiveWorkspace: (wsId) => {
+    workspaceApi.unarchiveWorkspace(wsId).then(() => {
+      set((s) => ({
+        workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({ ...w, status: 'active' })),
+      }))
+    }).catch((err) => console.error('Failed to unarchive workspace:', err))
+  },
+
+  // ---- Chat cursor pagination ----
+  messagesCursor: null,
+  messagesHasMore: false,
+
+  loadOlderMessages: () => {
+    const wsId = get().activeWorkspaceId
+    const cursor = get().messagesCursor
+    if (!wsId || !cursor) return
+
+    return workspaceApi.listMessages(wsId, cursor, 50).then((resp) => {
+      const older: Message[] = (resp.data || []).reverse().map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        agentType: m.agentType,
+        timestamp: m.createdAt,
+        richBlocks: safeParseRichBlocks(m.richBlocks),
+        sessionId: m.sessionId,
+      }))
+      set((s) => ({
+        messages: [...older, ...s.messages],
+        messagesCursor: resp.cursor || null,
+        messagesHasMore: resp.hasMore,
+      }))
+    }).catch((err) => console.error('Failed to load older messages:', err))
   },
 }))

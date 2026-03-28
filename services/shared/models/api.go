@@ -108,6 +108,20 @@ type AddMemberReq struct {
 	Role  string `json:"role"` // editor | viewer
 }
 
+// Chat message persistence
+type SendMessageReq struct {
+	Role       string `json:"role"`       // user | agent | system
+	Content    string `json:"content"`
+	AgentType  string `json:"agentType,omitempty"`
+	SessionID  string `json:"sessionId,omitempty"`
+	RichBlocks string `json:"richBlocks,omitempty"` // JSON string
+}
+
+// Archive workspace
+type ArchiveWorkspaceReq struct {
+	Status string `json:"status"` // active | archived
+}
+
 type APIResponse[T any] struct {
 	Data  T      `json:"data"`
 	Error string `json:"error,omitempty"`
@@ -118,6 +132,14 @@ type PaginatedResponse[T any] struct {
 	Total      int64 `json:"total"`
 	Page       int   `json:"page"`
 	PageSize   int   `json:"pageSize"`
+}
+
+// Cursor-based pagination for time-series data (messages, activities).
+// More stable than offset pagination when new items are inserted at head.
+type CursorResponse[T any] struct {
+	Data    []T    `json:"data"`
+	Cursor  string `json:"cursor,omitempty"`  // opaque cursor for next page
+	HasMore bool   `json:"hasMore"`
 }
 
 // WSEvent is a minimal envelope for extracting the workspaceId to route

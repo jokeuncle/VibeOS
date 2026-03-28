@@ -2,6 +2,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let intentionalClose = false
 let currentWorkspaceId: string | null = null
 let refreshDebounce: ReturnType<typeof setTimeout> | null = null
@@ -10,7 +11,7 @@ export function connectWebSocket(workspaceId: string | null) {
   if (workspaceId === currentWorkspaceId && socket?.readyState === WebSocket.OPEN) return
 
   disconnectWebSocket()
-  if (!workspaceId) return
+  if (!workspaceId || workspaceId.startsWith('ws-temp-')) return
 
   intentionalClose = false
   currentWorkspaceId = workspaceId
@@ -26,6 +27,12 @@ export function connectWebSocket(workspaceId: string | null) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
+    if (heartbeatTimer) clearInterval(heartbeatTimer)
+    heartbeatTimer = setInterval(() => {
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ping' }))
+      }
+    }, 30_000)
   }
 
   socket.onmessage = (event) => {
@@ -39,6 +46,7 @@ export function connectWebSocket(workspaceId: string | null) {
 
   socket.onclose = () => {
     socket = null
+    if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
     if (intentionalClose) return
     console.log('[WS] disconnected, reconnecting in 3s')
     reconnectTimer = setTimeout(() => connectWebSocket(currentWorkspaceId), 3000)
@@ -63,6 +71,21 @@ export function disconnectWebSocket() {
 function handleWSEvent(event: Record<string, any>) {
   const store = useWorkspaceStore.getState()
   const activeWsId = store.activeWorkspaceId
+
+  if (event.type === 'chat_message' && event.workspaceId === activeWsId && event.payload) {
+    const p = event.payload
+    const existing = store.messages.find((m) => m.id === p.id)
+    if (!existing) {
+      store.addMessage({
+        id: p.id || `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role: p.role,
+        content: p.content,
+        agentType: p.agentType,
+        timestamp: p.createdAt || new Date().toISOString(),
+        sessionId: p.sessionId,
+      })
+    }
+  }
 
   if (event.type === 'agent:log') {
     store.appendExecutionLog(event.workspaceId, {
@@ -108,8 +131,14 @@ function handleWSEvent(event: Record<string, any>) {
     }
   }
 
-  // Debounced full refresh for all workspace-related events (tasks created, etc.)
-  if (event.workspaceId && event.workspaceId === activeWsId) {
+  // Debounced full refresh for structural events (tasks created, phases changed).
+  // Skip agent:status events — they're patched directly above and a full refresh
+  // would overwrite the transient running/error state with the server's stale idle.
+  if (
+    event.workspaceId &&
+    event.workspaceId === activeWsId &&
+    event.type !== 'agent:status'
+  ) {
     if (refreshDebounce) clearTimeout(refreshDebounce)
     refreshDebounce = setTimeout(() => {
       useWorkspaceStore.getState().refreshActiveWorkspace()

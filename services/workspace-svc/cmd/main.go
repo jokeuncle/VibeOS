@@ -68,6 +68,7 @@ func main() {
 	repoHandler := handler.NewWorkspaceRepoHandler(svc, logger)
 	authHandler := handler.NewAuthHandler(svc, logger)
 	memberHandler := handler.NewMemberHandler(svc, logger)
+	chatHandler := handler.NewChatHandler(st, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -109,6 +110,7 @@ func main() {
 
 			r.Get("/artifacts", artifactHandler.ListByWorkspace)
 			r.Post("/artifacts", artifactHandler.Create)
+			r.Get("/artifacts/meta", chatHandler.ListArtifactsMeta)
 			r.Get("/artifacts/{artifactId}", artifactHandler.Get)
 			r.Get("/phases/{phaseId}/artifacts", artifactHandler.ListByPhase)
 
@@ -123,6 +125,17 @@ func main() {
 			r.Get("/members", memberHandler.List)
 			r.With(mw.RequireAuth).Post("/members", memberHandler.Add)
 			r.With(mw.RequireAuth).Delete("/members/{memberId}", memberHandler.Remove)
+
+			// Chat message persistence (cursor-paginated)
+			r.Get("/messages", chatHandler.ListMessages)
+			r.Post("/messages", chatHandler.SaveMessage)
+
+			// Workspace lifecycle (archive/unarchive)
+			r.Patch("/archive", chatHandler.ArchiveWorkspace)
+
+			// AI-generated summaries (conversation + activity)
+			r.Get("/summaries/conversations", chatHandler.ListConversationSummaries)
+			r.Get("/summaries/activities", chatHandler.ListActivitySummaries)
 		})
 	})
 

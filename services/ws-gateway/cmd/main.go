@@ -124,6 +124,9 @@ func (c *Client) readPump(hub *Hub) {
 		if err != nil {
 			break
 		}
+		// Any received message (including client-side JSON pings) resets the deadline,
+		// keeping the connection alive even when a proxy strips WebSocket-level pongs.
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	}
 }
 

@@ -8,6 +8,9 @@ const en = {
   'workspace.rename': 'Rename',
   'workspace.delete': 'Delete',
   'workspace.deleteConfirm': 'Delete this workspace?',
+  'workspace.archive': 'Archive',
+  'workspace.unarchive': 'Unarchive',
+  'workspace.archived': 'Archived',
   'workspace.emptyName': 'Name your workspace…',
   'workspace.emptyDesc': 'Add a description…',
   'workspace.created': 'Workspace created',
@@ -87,6 +90,7 @@ const en = {
   'conversation.you': 'You',
   'conversation.agent': 'agent',
   'conversation.mockReply': 'Understood. I\'ll analyze your request and coordinate with the relevant agents to proceed.',
+  'conversation.loadOlder': 'Load earlier messages',
 
   'progress.phasesComplete': 'phases complete',
   'progress.of': 'of',
@@ -370,6 +374,10 @@ const en = {
   'gitlab.close': 'Close',
   'gitlab.back': '← Back',
   'gitlab.repoRequired': 'Credential, project ID, and project name are required',
+  'gitlab.linkRepo': 'Link repo',
+  'gitlab.repoCount': '{count} repo',
+  'gitlab.repoCountPlural': '{count} repos',
+  'gitlab.manageRepos': 'Manage linked repositories',
 
   'auth.login': 'Log In',
   'auth.register': 'Sign Up',
@@ -397,6 +405,10 @@ const en = {
   'error.llmRateLimit': 'The AI model has reached its usage limit. Please try again later or switch to another model.',
   'error.llmUnavailable': 'The AI service is temporarily unavailable. Please try again shortly.',
   'error.requestFailed': 'Request failed',
+
+  'statusbar.version': 'VibeOS v0.1.0',
+  'conversation.loading': 'Loading…',
+  'rich.actionModify': 'Preparing modifications…',
 } as const
 
 export type TranslationKey = keyof typeof en

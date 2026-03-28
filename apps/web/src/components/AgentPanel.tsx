@@ -16,7 +16,8 @@ function AgentStatusBadge({ status }: { status: AgentStatus }) {
   const key = `agent.status.${status}` as TranslationKey
 
   return (
-    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md border ${styles[status]}`}>
+    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md border ${styles[status]} ${status === 'running' ? 'animate-pulse' : ''}`}>
+      {status === 'running' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent mr-1 animate-ping" />}
       {t(key)}
     </span>
   )

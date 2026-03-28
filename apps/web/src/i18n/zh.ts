@@ -10,6 +10,9 @@ const zh: Record<TranslationKey, string> = {
   'workspace.rename': '重命名',
   'workspace.delete': '删除',
   'workspace.deleteConfirm': '确定删除此空间？',
+  'workspace.archive': '归档',
+  'workspace.unarchive': '取消归档',
+  'workspace.archived': '已归档',
   'workspace.emptyName': '为空间命名…',
   'workspace.emptyDesc': '添加描述…',
   'workspace.created': '空间已创建',
@@ -89,6 +92,7 @@ const zh: Record<TranslationKey, string> = {
   'conversation.you': '你',
   'conversation.agent': 'Agent',
   'conversation.mockReply': '收到。我将分析你的请求，并协调相关 Agent 推进执行。',
+  'conversation.loadOlder': '加载更早的消息',
 
   'progress.phasesComplete': '个阶段已完成',
   'progress.of': '/',
@@ -372,6 +376,10 @@ const zh: Record<TranslationKey, string> = {
   'gitlab.close': '关闭',
   'gitlab.back': '← 返回',
   'gitlab.repoRequired': '请选择凭证并填写项目 ID 和名称',
+  'gitlab.linkRepo': '绑定仓库',
+  'gitlab.repoCount': '{count} 个仓库',
+  'gitlab.repoCountPlural': '{count} 个仓库',
+  'gitlab.manageRepos': '管理已绑定的仓库',
 
   'auth.login': '登录',
   'auth.register': '注册',
@@ -399,6 +407,10 @@ const zh: Record<TranslationKey, string> = {
   'error.llmRateLimit': 'AI 模型已达到使用限制，请稍后重试或切换到其他模型。',
   'error.llmUnavailable': 'AI 服务暂时不可用，请稍后重试。',
   'error.requestFailed': '请求失败',
+
+  'statusbar.version': 'VibeOS v0.1.0',
+  'conversation.loading': '加载中…',
+  'rich.actionModify': '正在准备修改…',
 }
 
 export default zh

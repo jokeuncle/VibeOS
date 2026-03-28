@@ -79,7 +79,7 @@ function RichBlockRenderer({ block }: { block: RichBlock }) {
         addToast({ type: 'info', message: t('rich.actionDetail') })
         break
       case 'modify':
-        addToast({ type: 'info', message: t('rich.actionDetail') })
+        addToast({ type: 'info', message: t('rich.actionModify' as TranslationKey) })
         break
       default:
         addToast({ type: 'info', message: `${action.label}` })
@@ -174,6 +174,9 @@ function RichBlockRenderer({ block }: { block: RichBlock }) {
           ))}
         </div>
       )
+
+    default:
+      return null
   }
 }
 
@@ -323,15 +326,23 @@ function groupIntoSessions(messages: Message[]): Session[] {
 }
 
 export default function MessageThread() {
-  const { messages } = useWorkspaceStore()
+  const { messages, messagesHasMore, loadOlderMessages } = useWorkspaceStore()
   const t = useT()
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(new Set())
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const isLoadingOlderRef = useRef(false)
+  const prevMsgCountRef = useRef(0)
 
   const sessions = groupIntoSessions(messages)
   const lastMsgContent = messages[messages.length - 1]?.content
 
   useEffect(() => {
+    if (isLoadingOlderRef.current) {
+      isLoadingOlderRef.current = false
+      return
+    }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, lastMsgContent])
 
@@ -360,6 +371,33 @@ export default function MessageThread() {
       </div>
 
       <div className="max-h-[500px] overflow-y-auto">
+        {messagesHasMore && (
+          <div className="flex justify-center py-2 border-b border-border-subtle">
+            <button
+              onClick={async () => {
+                setLoadingOlder(true)
+                isLoadingOlderRef.current = true
+                try {
+                  await loadOlderMessages()
+                } finally {
+                  setLoadingOlder(false)
+                }
+              }}
+              disabled={loadingOlder}
+              className="text-[10px] text-accent hover:text-accent-hover font-medium px-3 py-1
+                         rounded-md bg-accent/5 hover:bg-accent/10 transition-colors cursor-pointer
+                         disabled:opacity-50"
+            >
+              {loadingOlder ? (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> {t('conversation.loading' as TranslationKey)}
+                </span>
+              ) : (
+                t('conversation.loadOlder' as TranslationKey)
+              )}
+            </button>
+          </div>
+        )}
         {sessions.map((session, si) => {
           const isCollapsed = collapsedSessions.has(session.id)
 

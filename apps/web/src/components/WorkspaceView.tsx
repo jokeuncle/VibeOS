@@ -254,12 +254,12 @@ export default function WorkspaceView() {
                       ? 'text-accent bg-accent/10 hover:bg-accent/20'
                       : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-2'
                   }`}
-                  title="Manage linked repositories"
+                  title={t('gitlab.manageRepos' as TranslationKey)}
                 >
                   <GitBranch className="w-3 h-3" />
                   {workspace.repos?.length
-                    ? `${workspace.repos.length} repo${workspace.repos.length > 1 ? 's' : ''}`
-                    : 'Link repo'}
+                    ? t((workspace.repos.length > 1 ? 'gitlab.repoCountPlural' : 'gitlab.repoCount') as TranslationKey).replace('{count}', String(workspace.repos.length))
+                    : t('gitlab.linkRepo' as TranslationKey)}
                 </button>
               </div>
             </div>

@@ -136,6 +136,71 @@ type Activity struct {
 }
 
 // ---------------------------------------------------------------------------
+// Chat persistence models
+// ---------------------------------------------------------------------------
+
+type ChatSession struct {
+	ID          string    `json:"id" db:"id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	AgentType   string    `json:"agentType" db:"agent_type"`
+	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+type ChatMessage struct {
+	ID          string    `json:"id" db:"id"`
+	SessionID   string    `json:"sessionId" db:"session_id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	Role        string    `json:"role" db:"role"`
+	Content     string    `json:"content" db:"content"`
+	RichBlocks  *string   `json:"richBlocks,omitempty" db:"rich_blocks"`
+	AgentType   *string   `json:"agentType,omitempty" db:"agent_type"`
+	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+}
+
+type ConversationSummary struct {
+	ID              string    `json:"id" db:"id"`
+	WorkspaceID     string    `json:"workspaceId" db:"workspace_id"`
+	SessionID       *string   `json:"sessionId,omitempty" db:"session_id"`
+	AgentType       *string   `json:"agentType,omitempty" db:"agent_type"`
+	Summary         string    `json:"summary" db:"summary"`
+	KeyDecisions    string    `json:"keyDecisions" db:"key_decisions"`
+	TimeRangeFrom   time.Time `json:"timeRangeFrom" db:"time_range_from"`
+	TimeRangeTo     time.Time `json:"timeRangeTo" db:"time_range_to"`
+	MessageCount    int       `json:"messageCount" db:"message_count"`
+	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
+}
+
+// ArtifactMeta is a lightweight projection of Artifact without the content field,
+// used for listing to avoid transferring large payloads.
+type ArtifactMeta struct {
+	ID          string    `json:"id" db:"id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	PhaseID     *string   `json:"phaseId,omitempty" db:"phase_id"`
+	TaskID      *string   `json:"taskId,omitempty" db:"task_id"`
+	AgentType   AgentType `json:"agentType" db:"agent_type"`
+	Type        string    `json:"type" db:"type"`
+	Title       string    `json:"title" db:"title"`
+	ContentSize int       `json:"contentSize" db:"content_size"`
+	Metadata    string    `json:"metadata" db:"metadata"`
+	Version     int       `json:"version" db:"version"`
+	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// ActivitySummary is an AI-generated roll-up of activities for a time window.
+type ActivitySummary struct {
+	ID            string    `json:"id" db:"id"`
+	WorkspaceID   string    `json:"workspaceId" db:"workspace_id"`
+	Summary       string    `json:"summary" db:"summary"`
+	KeyEvents     string    `json:"keyEvents" db:"key_events"`
+	TimeRangeFrom time.Time `json:"timeRangeFrom" db:"time_range_from"`
+	TimeRangeTo   time.Time `json:"timeRangeTo" db:"time_range_to"`
+	ActivityCount int       `json:"activityCount" db:"activity_count"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+}
+
+// ---------------------------------------------------------------------------
 // Auth & membership models
 // ---------------------------------------------------------------------------
 
