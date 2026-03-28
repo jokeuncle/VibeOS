@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from vibeos_agent import AgentTask, config
+from vibeos_agent import AgentTask
 
 from .agent import DesignAgent
 

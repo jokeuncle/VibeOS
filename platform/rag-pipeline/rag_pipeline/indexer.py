@@ -36,7 +36,14 @@ class WorkspaceIndexer:
         chunk_overlap: int = settings.CHUNK_OVERLAP,
     ) -> None:
         self.qdrant = QdrantClient(url=qdrant_url)
-        self.embed_model = OpenAIEmbedding(model=embedding_model, api_key=settings.OPENAI_API_KEY)
+        embed_kwargs: dict[str, Any] = {
+            "model": embedding_model,
+            "api_key": settings.EMBEDDING_API_KEY,
+        }
+        if settings.EMBEDDING_BASE_URL:
+            embed_kwargs["api_base"] = settings.EMBEDDING_BASE_URL
+        self.embed_model = OpenAIEmbedding(**embed_kwargs)
+        self._vector_dim = settings.EMBEDDING_DIM
         self.splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         self._redis: aioredis.Redis | None = None
 
@@ -51,7 +58,7 @@ class WorkspaceIndexer:
             self.qdrant.create_collection(
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(
-                    size=1536,
+                    size=self._vector_dim,
                     distance=models.Distance.COSINE,
                 ),
             )

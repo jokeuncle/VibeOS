@@ -12,6 +12,7 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
+    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
@@ -131,7 +132,7 @@ def _lang_for(infra_type: str) -> str:
 
 
 class CicdAgent(BaseAgent):
-    agent_type = "cicd"
+    agent_type = AgentType.CICD
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
     capabilities = [
@@ -140,6 +141,13 @@ class CicdAgent(BaseAgent):
             required_context_window=16_000,
         ),
     ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        from vibeos_agent.tools.workspace_tools import create_workspace_tools
+        from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
+        self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "cicd"))
+        self.tool_registry.register_many(create_gitlab_tools())
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})

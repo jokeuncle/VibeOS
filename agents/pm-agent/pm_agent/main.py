@@ -238,6 +238,14 @@ async def _handle_execute_task(
 
     result = await dispatcher.dispatch(at, task)
 
+    if isinstance(result, dict) and result.get("error"):
+        return {
+            "handled_by": "pm",
+            "action": "task_failed",
+            "summary": f"Task '{target_task.get('title', '')}' failed: {result['error']}",
+            "result": result,
+        }
+
     try:
         await ws_client.complete_task(workspace_id, target_task["id"])
     except Exception:
@@ -296,8 +304,6 @@ async def _handle_execute_phase(
     except ValueError:
         at = AgentType.DEVELOPMENT
 
-    await ws_client.update_task(workspace_id, target_phase["id"], {"status": "in_progress"})
-
     results = []
     for t in pending_tasks:
         await ws_gw.publish_log(
@@ -322,10 +328,17 @@ async def _handle_execute_phase(
         result = await dispatcher.dispatch(at, agent_task)
         results.append(result)
 
-        try:
-            await ws_client.complete_task(workspace_id, t["id"])
-        except Exception:
-            pass
+        if isinstance(result, dict) and result.get("error"):
+            await ws_gw.publish_log(
+                workspace_id, "pm",
+                f"Task '{t.get('title', '')}' failed: {result['error']}",
+                level="error",
+            )
+        else:
+            try:
+                await ws_client.complete_task(workspace_id, t["id"])
+            except Exception:
+                pass
 
     await ws_gw.publish_log(
         workspace_id, "pm",
@@ -457,8 +470,21 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             )
 
             if parsed.target_agent == AgentType.PM:
+                if parsed.intent == "general_chat":
+                    messages = [
+                        {"role": "system", "content": "You are VibeOS PM assistant. Help the user with project management, planning, and general questions. Respond in clear natural language."},
+                        {"role": "user", "content": req.message},
+                    ]
+                    async for chunk in llm.chat_stream(messages):
+                        delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if delta:
+                            yield f"data: {json.dumps({'delta': delta})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
                 result = await _execute_pm_intent(parsed, req, llm, ws, ws_client, dispatcher)
-                yield f"event: result\ndata: {json.dumps(result)}\n\n"
+                summary = result.get("summary", parsed.summary)
+                yield f"data: {json.dumps({'summary': summary})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 

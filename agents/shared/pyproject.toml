@@ -14,4 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+gitlab = ["python-gitlab"]
+feishu = ["lark-oapi"]
+tools = ["python-gitlab", "lark-oapi"]
 dev = ["pytest", "pytest-asyncio", "ruff"]

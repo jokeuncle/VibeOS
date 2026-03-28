@@ -35,7 +35,7 @@ const AGENT_COLOR: Record<string, string> = {
   monitoring: 'text-teal-400',
 }
 
-const ALL_AGENTS: string[] = ['pm', 'architecture', 'frontend', 'backend', 'qa', 'devops']
+const ALL_AGENTS: string[] = ['pm', 'requirement', 'design', 'architecture', 'development', 'testing', 'cicd', 'monitoring']
 
 interface Props {
   agents: Agent[]

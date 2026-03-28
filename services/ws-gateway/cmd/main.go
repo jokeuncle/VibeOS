@@ -61,10 +61,13 @@ func (h *Hub) ClientCount() int {
 }
 
 func (h *Hub) Broadcast(workspaceID string, data []byte) {
+	if workspaceID == "" {
+		return
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for c := range h.clients {
-		if c.workspaceID == "" || c.workspaceID == workspaceID || workspaceID == "" {
+		if c.workspaceID == workspaceID {
 			select {
 			case c.send <- data:
 			default:
@@ -148,6 +151,11 @@ func main() {
 		slog.Warn("redis not available at startup", "error", err)
 	}
 
+	publishSecret := os.Getenv("PUBLISH_SECRET")
+	if publishSecret == "" {
+		publishSecret = "vibeos-internal"
+	}
+
 	hub := NewHub()
 
 	go func() {
@@ -198,6 +206,12 @@ func main() {
 	})
 
 	r.Post("/api/publish", func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("X-Internal-Token")
+		if token != publishSecret {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
 		raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {
 			http.Error(w, `{"error":"read failed"}`, http.StatusBadRequest)
@@ -208,9 +222,12 @@ func main() {
 			http.Error(w, `{"error":"invalid payload"}`, http.StatusBadRequest)
 			return
 		}
+		if envelope.WorkspaceID == "" {
+			http.Error(w, `{"error":"workspaceId required"}`, http.StatusBadRequest)
+			return
+		}
 
 		rdb.Publish(ctx, "vibeos:events", string(raw))
-		hub.Broadcast(envelope.WorkspaceID, raw)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"ok":true}`))

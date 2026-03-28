@@ -11,6 +11,7 @@ from .config import config
 from .models import AgentType, Message
 
 _KEY_PREFIX = "session"
+_SESSION_TTL_SECONDS = 7 * 24 * 3600  # 7 days
 
 
 def _key(workspace_id: str, agent_type: AgentType) -> str:
@@ -48,10 +49,9 @@ class SessionManager:
         message: Message,
     ) -> None:
         r = await self._redis()
-        await r.rpush(
-            _key(workspace_id, agent_type),
-            message.model_dump_json(),
-        )
+        k = _key(workspace_id, agent_type)
+        await r.rpush(k, message.model_dump_json())
+        await r.expire(k, _SESSION_TTL_SECONDS)
 
     async def clear(self, workspace_id: str, agent_type: AgentType) -> None:
         r = await self._redis()

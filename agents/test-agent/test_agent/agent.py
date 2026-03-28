@@ -12,6 +12,7 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
+    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
@@ -117,9 +118,15 @@ TOOLS: list[dict[str, Any]] = [
 
 
 class TestingAgent(BaseAgent):
-    agent_type = "testing"
+    agent_type = AgentType.TESTING
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
+
+    def __init__(self) -> None:
+        super().__init__()
+        from vibeos_agent.tools.workspace_tools import create_workspace_tools
+        self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "testing"))
+
     capabilities = [
         CapabilityContract(
             name="testing",

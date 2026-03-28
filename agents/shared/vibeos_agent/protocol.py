@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
@@ -24,6 +26,14 @@ from .models import (
     Task,
 )
 from .session import SessionManager
+from .tools import ToolRegistry
+
+logger = logging.getLogger(__name__)
+
+
+def _enum_val(v: "AgentType | str") -> str:
+    """Safely extract the string value from an enum or plain string."""
+    return v.value if hasattr(v, "value") else str(v)
 
 
 class WorkspaceClient:
@@ -176,11 +186,12 @@ class LLMGatewayClient:
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         model: str | None = None,
         temperature: float = 0.7,
         tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "messages": messages,
@@ -190,19 +201,25 @@ class LLMGatewayClient:
             body["model"] = model
         if tools:
             body["tools"] = tools
+        if tool_choice is not None:
+            body["tool_choice"] = tool_choice
         resp = await self._http.post("/api/chat/completions", json=body)
         resp.raise_for_status()
         return resp.json()
 
     async def chat_stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         model: str | None = None,
         temperature: float = 0.7,
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Yield SSE chunks from the LLM gateway streaming endpoint."""
+        """Yield SSE chunks from the LLM gateway streaming endpoint.
+
+        When tools are present, the caller must handle tool_calls in the
+        accumulated delta (``delta.tool_calls`` list fragments).
+        """
         body: dict[str, Any] = {
             "messages": messages,
             "temperature": temperature,
@@ -238,16 +255,21 @@ class WSGatewayClient:
 
     def __init__(self, base_url: str | None = None) -> None:
         self._base = base_url or config.ws_gateway_url
+        self._publish_secret = os.environ.get("PUBLISH_SECRET", "vibeos-internal")
         self._http = httpx.AsyncClient(base_url=self._base, timeout=10)
 
     async def publish(self, event: dict[str, Any]) -> None:
-        resp = await self._http.post("/api/publish", json=event)
+        resp = await self._http.post(
+            "/api/publish",
+            json=event,
+            headers={"X-Internal-Token": self._publish_secret},
+        )
         resp.raise_for_status()
 
     async def publish_agent_status(
         self,
         workspace_id: str,
-        agent_type: AgentType,
+        agent_type: "AgentType | str",
         status: AgentStatus,
         *,
         detail: str = "",
@@ -257,7 +279,7 @@ class WSGatewayClient:
             {
                 "type": "agent:status",
                 "workspaceId": workspace_id,
-                "agentType": agent_type.value,
+                "agentType": _enum_val(agent_type),
                 "status": status.value,
                 "detail": detail,
                 "progress": progress,
@@ -516,6 +538,7 @@ class BaseAgent(ABC):
         self.memory = MemoryClient()
         self.rag = RAGClient()
         self.knowledge = KnowledgeClient()
+        self.tool_registry = ToolRegistry()
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -562,9 +585,7 @@ class BaseAgent(ABC):
             messages.extend(extra_messages)
         messages.append({"role": "user", "content": user_message})
 
-        result = await self.llm.chat(
-            messages, tools=self.tools or None
-        )
+        result = await self.llm.chat(messages)
 
         reply = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
@@ -573,7 +594,7 @@ class BaseAgent(ABC):
             await self.memory.add_memory(
                 f"User asked: {user_message}\nAgent replied: {reply[:500]}",
                 workspace_id=workspace_id,
-                agent_type=self.agent_type.value,
+                agent_type=_enum_val(self.agent_type),
             )
         except Exception:
             pass
@@ -607,7 +628,7 @@ class BaseAgent(ABC):
         messages.append({"role": "user", "content": user_message})
 
         full_reply = ""
-        async for chunk in self.llm.chat_stream(messages, tools=self.tools or None):
+        async for chunk in self.llm.chat_stream(messages):
             delta = (
                 chunk.get("choices", [{}])[0]
                 .get("delta", {})
@@ -621,10 +642,125 @@ class BaseAgent(ABC):
             await self.memory.add_memory(
                 f"User asked: {user_message}\nAgent replied: {full_reply[:500]}",
                 workspace_id=workspace_id,
-                agent_type=self.agent_type.value,
+                agent_type=_enum_val(self.agent_type),
             )
         except Exception:
             pass
+
+    def _get_tool_schemas(self) -> list[dict[str, Any]] | None:
+        """Return merged tool schemas from registry + class-level tools."""
+        schemas: list[dict[str, Any]] = []
+        if self.tool_registry.has_tools:
+            schemas.extend(self.tool_registry.get_schemas())
+        if self.tools:
+            seen = {s.get("function", {}).get("name") for s in schemas}
+            for t in self.tools:
+                name = t.get("function", {}).get("name", "")
+                if name and name not in seen:
+                    schemas.append(t)
+        return schemas or None
+
+    async def _call_llm_with_tools(
+        self,
+        user_message: str,
+        *,
+        workspace_id: str,
+        extra_messages: list[dict[str, Any]] | None = None,
+        enrich_context: bool = True,
+        max_iterations: int = 5,
+    ) -> str:
+        """Call LLM with tool-use loop: if the model returns tool_calls, execute
+        them and feed results back until a final text response is produced.
+
+        Falls back to ``_call_llm`` behavior when no tools are registered.
+        """
+        tool_schemas = self._get_tool_schemas()
+        if not tool_schemas:
+            return await self._call_llm(
+                user_message,
+                workspace_id=workspace_id,
+                extra_messages=extra_messages,
+                enrich_context=enrich_context,
+            )
+
+        enriched_system = self.system_prompt
+        if enrich_context:
+            enriched_system = await self._build_enriched_prompt(
+                workspace_id, user_message
+            )
+
+        history = await self.session.get_history(workspace_id, self.agent_type)
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": enriched_system}
+        ]
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+        if extra_messages:
+            messages.extend(extra_messages)
+        messages.append({"role": "user", "content": user_message})
+
+        for iteration in range(max_iterations):
+            result = await self.llm.chat(
+                messages, tools=tool_schemas
+            )
+
+            choice = result.get("choices", [{}])[0]
+            msg = choice.get("message", {})
+            tool_calls = msg.get("tool_calls")
+
+            if not tool_calls:
+                reply = msg.get("content", "")
+                try:
+                    await self.memory.add_memory(
+                        f"User asked: {user_message}\nAgent replied: {reply[:500]}",
+                        workspace_id=workspace_id,
+                        agent_type=_enum_val(self.agent_type),
+                    )
+                except Exception:
+                    pass
+                return reply
+
+            messages.append(msg)
+
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                tool_name = fn.get("name", "")
+                arguments = fn.get("arguments", "{}")
+                tc_id = tc.get("id", "")
+
+                if isinstance(arguments, str):
+                    try:
+                        parsed_args = json.loads(arguments) if arguments else {}
+                    except json.JSONDecodeError:
+                        parsed_args = {}
+                else:
+                    parsed_args = arguments
+
+                parsed_args["_workspace_id"] = workspace_id
+
+                logger.info(
+                    "Tool call [%s] %s(%s)", _enum_val(self.agent_type), tool_name, list(parsed_args.keys())
+                )
+
+                try:
+                    await self.ws.publish_log(
+                        workspace_id, _enum_val(self.agent_type),
+                        f"Calling tool: {tool_name}",
+                        level="info",
+                    )
+                except Exception:
+                    pass
+
+                tool_result = await self.tool_registry.execute(tool_name, parsed_args)
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": tool_result,
+                })
+
+        final = messages[-1]
+        return final.get("content", "") if isinstance(final, dict) else str(final)
 
     async def _build_enriched_prompt(
         self, workspace_id: str, user_message: str
@@ -642,7 +778,7 @@ class BaseAgent(ABC):
         # L4: Preferences from memory service
         try:
             memory_ctx = await self.memory.assemble_context(
-                workspace_id, self.agent_type.value, user_message
+                workspace_id, _enum_val(self.agent_type), user_message
             )
             if memory_ctx:
                 sections.append(
@@ -717,7 +853,7 @@ class BaseAgent(ABC):
 
     async def _fetch_upstream_artifacts(self, workspace_id: str) -> str:
         """Fetch artifacts from upstream phases for context enrichment."""
-        agent_key = self.agent_type.value
+        agent_key = _enum_val(self.agent_type)
         phase_key = AGENT_PHASE_MAP.get(agent_key, agent_key)
         upstream_phases = PHASE_CONTEXT.get(phase_key, [])
         if not upstream_phases:
@@ -760,7 +896,7 @@ class BaseAgent(ABC):
         """Persist an artifact to workspace-svc."""
         return await self.workspace_svc.create_artifact(
             workspace_id,
-            agent_type=self.agent_type.value,
+            agent_type=_enum_val(self.agent_type),
             artifact_type=artifact_type,
             title=title,
             content=content,

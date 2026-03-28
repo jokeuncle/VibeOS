@@ -246,10 +246,11 @@ export default function MessageThread() {
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(new Set())
 
   const sessions = groupIntoSessions(messages)
+  const lastMsgContent = messages[messages.length - 1]?.content
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
+  }, [messages.length, lastMsgContent])
 
   if (messages.length === 0) return null
 

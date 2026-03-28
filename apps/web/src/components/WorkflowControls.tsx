@@ -36,9 +36,9 @@ function eventLabel(event: WorkflowEvent): string {
     case 'workflow:phase_start': return `Phase: ${event.phase}`
     case 'workflow:phase_complete': return `${event.phase} complete (${event.tasks_executed} tasks)`
     case 'workflow:phase_skip': return `${event.phase} skipped: ${event.reason}`
-    case 'workflow:task_start': return `[${event.index! + 1}/${event.total}] ${event.task_title}`
-    case 'workflow:task_complete': return `Done: ${event.task_title}`
-    case 'workflow:task_error': return `Error: ${event.task_title} - ${event.error}`
+    case 'workflow:task_start': return `[${(event.index ?? 0) + 1}/${event.total ?? '?'}] ${event.task_title ?? ''}`
+    case 'workflow:task_complete': return `Done: ${event.task_title ?? event.task_id ?? ''}`
+    case 'workflow:task_error': return `Error: ${event.task_title ?? event.task_id ?? ''} - ${event.error ?? 'unknown'}`
     default: return event.type
   }
 }

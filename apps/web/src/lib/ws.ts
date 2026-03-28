@@ -4,6 +4,7 @@ let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let intentionalClose = false
 let currentWorkspaceId: string | null = null
+let refreshDebounce: ReturnType<typeof setTimeout> | null = null
 
 export function connectWebSocket(workspaceId: string | null) {
   if (workspaceId === currentWorkspaceId && socket?.readyState === WebSocket.OPEN) return
@@ -75,12 +76,16 @@ function handleWSEvent(event: Record<string, any>) {
   }
 
   if (event.type?.startsWith('workflow:') && event.workspaceId === activeWsId) {
-    const wfStore = useWorkspaceStore.getState()
-    wfStore.workflowEvents.push(event as any)
-    useWorkspaceStore.setState({ workflowEvents: [...wfStore.workflowEvents] })
+    if (!store.workflowRunning) {
+      const prev = useWorkspaceStore.getState().workflowEvents
+      useWorkspaceStore.setState({ workflowEvents: [...prev, event as any] })
+    }
   }
 
   if (event.workspaceId && event.workspaceId === activeWsId) {
-    store.refreshActiveWorkspace()
+    if (refreshDebounce) clearTimeout(refreshDebounce)
+    refreshDebounce = setTimeout(() => {
+      useWorkspaceStore.getState().refreshActiveWorkspace()
+    }, 500)
   }
 }

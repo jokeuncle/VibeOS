@@ -152,6 +152,9 @@ func (s *Service) UpdatePhaseStatus(ctx context.Context, wsID, phaseID, status s
 	if err != nil {
 		return nil, err
 	}
+	if phase.WorkspaceID != wsID {
+		return nil, store.ErrNotFound
+	}
 
 	newStatus := models.PhaseStatus(status)
 	allowed, ok := validTransitions[phase.Status]
@@ -331,8 +334,8 @@ func (s *Service) ListArtifactsByPhase(ctx context.Context, wsID, phaseID string
 	return s.store.ListArtifactsByPhase(ctx, wsID, phaseID)
 }
 
-func (s *Service) GetArtifact(ctx context.Context, id string) (*models.Artifact, error) {
-	return s.store.GetArtifact(ctx, id)
+func (s *Service) GetArtifact(ctx context.Context, wsID, id string) (*models.Artifact, error) {
+	return s.store.GetArtifact(ctx, wsID, id)
 }
 
 // ---------------------------------------------------------------------------
@@ -344,20 +347,49 @@ func (s *Service) AutoCompletePhaseIfDone(ctx context.Context, wsID, phaseID str
 	if err != nil {
 		return false, err
 	}
-	if total > 0 && completed == total {
-		phase, err := s.store.GetPhase(ctx, phaseID)
-		if err != nil {
+	if total == 0 || completed != total {
+		return false, nil
+	}
+
+	phase, err := s.store.GetPhase(ctx, phaseID)
+	if err != nil {
+		return false, err
+	}
+	if phase.Status == models.StatusCompleted {
+		return false, nil
+	}
+
+	if phase.Status == models.StatusPending {
+		if _, err := s.UpdatePhaseStatus(ctx, wsID, phaseID, string(models.StatusInProgress)); err != nil {
 			return false, err
 		}
-		if phase.Status != models.StatusCompleted {
-			_, err = s.UpdatePhaseStatus(ctx, wsID, phaseID, string(models.StatusCompleted))
-			if err != nil {
-				return false, err
+	}
+	if _, err := s.UpdatePhaseStatus(ctx, wsID, phaseID, string(models.StatusCompleted)); err != nil {
+		return false, err
+	}
+
+	s.advanceCurrentPhase(ctx, wsID, phaseID)
+	return true, nil
+}
+
+func (s *Service) advanceCurrentPhase(ctx context.Context, wsID, completedPhaseID string) {
+	phases, err := s.store.ListPhasesByWorkspace(ctx, wsID)
+	if err != nil {
+		s.log.Error("failed to list phases for advance", "error", err)
+		return
+	}
+	found := false
+	for _, p := range phases {
+		if found && p.Status != models.StatusCompleted {
+			if err := s.store.UpdateWorkspaceCurrentPhase(ctx, wsID, &p.ID); err != nil {
+				s.log.Error("failed to advance current_phase_id", "error", err)
 			}
-			return true, nil
+			return
+		}
+		if p.ID == completedPhaseID {
+			found = true
 		}
 	}
-	return false, nil
 }
 
 func (s *Service) recalculatePhaseProgress(ctx context.Context, phaseID string) error {

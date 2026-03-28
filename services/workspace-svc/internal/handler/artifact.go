@@ -33,6 +33,15 @@ func (h *ArtifactHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title, type, and agentType are required")
 		return
 	}
+	validAgents := map[string]bool{
+		"requirement": true, "design": true, "architecture": true,
+		"development": true, "testing": true, "cicd": true,
+		"monitoring": true, "pm": true,
+	}
+	if !validAgents[req.AgentType] {
+		writeError(w, http.StatusBadRequest, "invalid agentType")
+		return
+	}
 
 	artifact, err := h.svc.CreateArtifact(r.Context(), wsID, req)
 	if err != nil {
@@ -69,9 +78,10 @@ func (h *ArtifactHandler) ListByPhase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ArtifactHandler) Get(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "wsId")
 	id := chi.URLParam(r, "artifactId")
 
-	artifact, err := h.svc.GetArtifact(r.Context(), id)
+	artifact, err := h.svc.GetArtifact(r.Context(), wsID, id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "artifact not found")

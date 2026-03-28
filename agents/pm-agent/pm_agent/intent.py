@@ -22,6 +22,7 @@ INTENT_TYPES: list[str] = [
     "deploy",
     "analyze_requirements",
     "architecture_design",
+    "ui_design",
     "general_chat",
 ]
 
@@ -33,6 +34,7 @@ _AGENT_MAP: dict[str, AgentType] = {
     "run_project": AgentType.PM,
     "design_system": AgentType.ARCHITECTURE,
     "architecture_design": AgentType.ARCHITECTURE,
+    "ui_design": AgentType.DESIGN,
     "generate_code": AgentType.DEVELOPMENT,
     "run_tests": AgentType.TESTING,
     "deploy": AgentType.CICD,
@@ -48,6 +50,7 @@ CLASSIFICATION_PROMPT = (
     "- execute_task: user wants to run/execute a specific task\n"
     "- execute_phase: user wants to run all tasks in a specific phase\n"
     "- run_project: user wants to run the entire project lifecycle end-to-end\n"
+    "- ui_design: user is asking about UI/UX design, wireframes, mockups, or visual design\n"
     "Do NOT include anything else."
 )
 

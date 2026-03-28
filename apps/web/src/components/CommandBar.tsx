@@ -40,7 +40,7 @@ export default function CommandBar() {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const { activeWorkspaceId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading } = useWorkspaceStore()
-  const { setHomeSearchQuery, commandPaletteOpen } = useUIStore()
+  const { setHomeSearchQuery } = useUIStore()
   const t = useT()
 
   useEffect(() => {

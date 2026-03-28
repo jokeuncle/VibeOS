@@ -28,6 +28,7 @@ from .protocol import (
     WSGatewayClient,
 )
 from .session import SessionManager
+from .tools import BaseTool, ToolRegistry
 
 __all__ = [
     "Activity",
@@ -39,6 +40,7 @@ __all__ = [
     "Artifact",
     "AGENT_PHASE_MAP",
     "BaseAgent",
+    "BaseTool",
     "CapabilityContract",
     "Config",
     "LLMGatewayClient",
@@ -51,6 +53,7 @@ __all__ = [
     "RichBlock",
     "SessionManager",
     "Task",
+    "ToolRegistry",
     "WSGatewayClient",
     "Workspace",
     "WorkspaceClient",

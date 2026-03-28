@@ -43,7 +43,7 @@ type Store interface {
 	CreateArtifact(ctx context.Context, artifact *models.Artifact) error
 	ListArtifactsByWorkspace(ctx context.Context, workspaceID string) ([]models.Artifact, error)
 	ListArtifactsByPhase(ctx context.Context, workspaceID, phaseID string) ([]models.Artifact, error)
-	GetArtifact(ctx context.Context, id string) (*models.Artifact, error)
+	GetArtifact(ctx context.Context, workspaceID, id string) (*models.Artifact, error)
 }
 
 type PostgresStore struct {
@@ -769,8 +769,8 @@ func (s *PostgresStore) ListArtifactsByPhase(ctx context.Context, workspaceID, p
 	return artifacts, nil
 }
 
-func (s *PostgresStore) GetArtifact(ctx context.Context, id string) (*models.Artifact, error) {
-	a, err := scanArtifact(s.pool.QueryRow(ctx, `SELECT `+artifactCols+` FROM artifacts WHERE id = $1`, id))
+func (s *PostgresStore) GetArtifact(ctx context.Context, workspaceID, id string) (*models.Artifact, error) {
+	a, err := scanArtifact(s.pool.QueryRow(ctx, `SELECT `+artifactCols+` FROM artifacts WHERE id = $1 AND workspace_id = $2`, id, workspaceID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound

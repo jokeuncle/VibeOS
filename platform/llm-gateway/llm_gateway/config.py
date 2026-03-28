@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Settings:
-    port: int = int(os.getenv("PORT", "8100"))
+    port: int = int(os.getenv("PORT", "8030"))
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")

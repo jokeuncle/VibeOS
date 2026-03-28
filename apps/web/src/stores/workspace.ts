@@ -583,6 +583,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           const data = JSON.parse(evt.data)
           if (data.delta) {
             content += data.delta
+          } else if (data.summary) {
+            content = data.summary
+          } else if (data.content) {
+            content = data.content
+          } else if (data.error) {
+            content = `Error: ${data.error}`
+          }
+          if (content) {
             set((s) => ({
               agentChatMessages: {
                 ...s.agentChatMessages,
@@ -591,8 +599,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 ),
               },
             }))
-          } else if (data.error) {
-            content = `Error: ${data.error}`
           }
         }
       } catch (err: any) {

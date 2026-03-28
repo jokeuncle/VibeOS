@@ -188,7 +188,9 @@ export async function* streamSSE(
         else if (line.startsWith(':')) continue
       }
       if (dataLines.length > 0) {
-        yield { event: eventName, data: dataLines.join('\n') }
+        const joined = dataLines.join('\n')
+        if (joined === '[DONE]') continue
+        yield { event: eventName, data: joined }
       }
     }
   }

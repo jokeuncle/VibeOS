@@ -35,16 +35,16 @@ function StatusIcon({ status }: { status: PhaseStatus }) {
   }
 }
 
-const NEXT_STATUS: Record<PhaseStatus, PhaseStatus> = {
+const NEXT_STATUS: Record<PhaseStatus, PhaseStatus | null> = {
   pending: 'in_progress',
   in_progress: 'completed',
-  completed: 'pending',
+  completed: null,
 }
 
 const STATUS_TOOLTIP: Record<PhaseStatus, TranslationKey> = {
   pending: 'phase.markInProgress',
   in_progress: 'phase.markCompleted',
-  completed: 'phase.markPending',
+  completed: 'phase.markCompleted',
 }
 
 export default function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
@@ -101,11 +101,13 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
           onClick={(e) => {
             e.stopPropagation()
             if (!activeWorkspaceId) return
-            updatePhaseStatus(activeWorkspaceId, phase.id, NEXT_STATUS[phase.status])
+            const next = NEXT_STATUS[phase.status]
+            if (!next) return
+            updatePhaseStatus(activeWorkspaceId, phase.id, next)
             addToast({ type: 'info', message: t('phase.statusUpdated') })
           }}
           title={t(STATUS_TOOLTIP[phase.status])}
-          className="cursor-pointer hover:scale-110 transition-transform"
+          className={`hover:scale-110 transition-transform ${phase.status === 'completed' ? 'cursor-default' : 'cursor-pointer'}`}
         >
           <StatusIcon status={phase.status} />
         </button>

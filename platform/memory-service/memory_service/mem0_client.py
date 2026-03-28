@@ -28,13 +28,22 @@ class VibeOSMemory:
                 "config": {
                     "url": config.qdrant_url,
                     "collection_name": "vibeos_memories",
+                    "embedding_model_dims": config.embedding_dim,
                 },
             },
             "llm": {
+                "provider": "litellm",
+                "config": {
+                    "model": config.volcengine_llm_model,
+                    "api_key": config.volcengine_api_key,
+                },
+            },
+            "embedder": {
                 "provider": "openai",
                 "config": {
-                    "model": "gpt-4o-mini",
-                    "api_key": config.openai_api_key,
+                    "model": config.embedding_model,
+                    "api_key": config.volcengine_api_key,
+                    "openai_base_url": config.volcengine_base_url,
                 },
             },
             "version": "v1.1",

@@ -110,6 +110,12 @@ class ArchitectureAgent(BaseAgent):
     agent_type = AgentType.ARCHITECTURE
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
+
+    def __init__(self) -> None:
+        super().__init__()
+        from vibeos_agent.tools.workspace_tools import create_workspace_tools
+        self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "architecture"))
+
     capabilities = [
         CapabilityContract(
             name="architecture",

@@ -1,29 +1,24 @@
-"""LangGraph-based workflow engine for VibeOS project lifecycle orchestration.
+"""Workflow engine for VibeOS project lifecycle orchestration.
 
-Defines a state graph that orchestrates multi-phase, multi-agent project execution:
+Orchestrates multi-phase, multi-agent project execution:
 
   requirement -> architecture -> design -> development -> testing -> deployment -> monitoring
 
-Each phase node:
+Each phase:
 1. Fetches pending tasks for the phase
 2. Dispatches each task to the corresponding domain agent
 3. Marks tasks complete
-4. Emits real-time progress events via SSE
+4. Emits real-time progress events via SSE + WebSocket
 """
 
 from __future__ import annotations
 
-import json
-import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from langgraph.graph import StateGraph, END
-
 from vibeos_agent import (
     AGENT_PHASE_MAP,
-    PHASE_CONTEXT,
     AgentStatus,
     AgentTask,
     AgentType,
@@ -46,7 +41,7 @@ PHASE_ORDER = [
 
 @dataclass
 class WorkflowState:
-    """Mutable state threaded through the LangGraph workflow."""
+    """Mutable state threaded through the workflow engine."""
     workspace_id: str = ""
     user_message: str = ""
     current_phase_idx: int = 0
@@ -68,7 +63,7 @@ def _agent_for_phase(phase_type: str) -> AgentType:
 
 
 class WorkflowEngine:
-    """LangGraph-powered orchestrator for full project lifecycle."""
+    """Orchestrator for full project lifecycle execution."""
 
     def __init__(
         self,
@@ -176,26 +171,39 @@ class WorkflowEngine:
 
             try:
                 result = await self.dispatcher.dispatch(agent_type, agent_task)
-                task_done_evt = {
-                    "type": "workflow:task_complete",
-                    "phase": phase_type,
-                    "task_id": task["id"],
-                    "task_title": task_title,
-                    "result_summary": str(result)[:200],
-                }
-                yield task_done_evt
-                await self._broadcast(workspace_id, task_done_evt)
 
-                try:
-                    await self.ws_client.complete_task(workspace_id, task["id"])
-                except Exception:
-                    pass
+                if isinstance(result, dict) and result.get("error"):
+                    err_evt = {
+                        "type": "workflow:task_error",
+                        "phase": phase_type,
+                        "task_id": task["id"],
+                        "task_title": task_title,
+                        "error": str(result["error"]),
+                    }
+                    yield err_evt
+                    await self._broadcast(workspace_id, err_evt)
+                else:
+                    task_done_evt = {
+                        "type": "workflow:task_complete",
+                        "phase": phase_type,
+                        "task_id": task["id"],
+                        "task_title": task_title,
+                        "result_summary": str(result)[:200],
+                    }
+                    yield task_done_evt
+                    await self._broadcast(workspace_id, task_done_evt)
+
+                    try:
+                        await self.ws_client.complete_task(workspace_id, task["id"])
+                    except Exception:
+                        pass
 
             except Exception as exc:
                 err_evt = {
                     "type": "workflow:task_error",
                     "phase": phase_type,
                     "task_id": task["id"],
+                    "task_title": task_title,
                     "error": str(exc),
                 }
                 yield err_evt
@@ -222,7 +230,7 @@ class WorkflowEngine:
         *,
         start_phase: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Execute the full project lifecycle using LangGraph state machine."""
+        """Execute the full project lifecycle end-to-end."""
         proj_start_evt = {
             "type": "workflow:project_start",
             "workspace_id": workspace_id,
@@ -240,6 +248,7 @@ class WorkflowEngine:
         if start_phase and start_phase in PHASE_ORDER:
             start_idx = PHASE_ORDER.index(start_phase)
 
+        has_error = False
         for phase_type in PHASE_ORDER[start_idx:]:
             async for event in self.run_phase(workspace_id, phase_type, user_message):
                 yield event
@@ -252,10 +261,15 @@ class WorkflowEngine:
                     }
                     yield proj_err_evt
                     await self._broadcast(workspace_id, proj_err_evt)
+                    has_error = True
+                    break
+            if has_error:
+                break
 
         proj_done_evt = {
             "type": "workflow:project_complete",
             "workspace_id": workspace_id,
+            "success": not has_error,
         }
         yield proj_done_evt
         await self._broadcast(workspace_id, proj_done_evt)
@@ -266,6 +280,6 @@ class WorkflowEngine:
 
         await self.ws_gw.publish_log(
             workspace_id, "pm",
-            "Full project lifecycle complete",
-            level="success",
+            "Full project lifecycle complete" if not has_error else "Project stopped due to errors",
+            level="success" if not has_error else "error",
         )

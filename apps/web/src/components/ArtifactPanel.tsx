@@ -28,7 +28,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
   const Icon = ICON_MAP[artifact.type] || FileText
 
   function handleCopy() {
-    navigator.clipboard.writeText(artifact.content)
+    navigator.clipboard.writeText(artifact.content).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -84,18 +84,34 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
 }
 
 export default function ArtifactPanel() {
-  const { activeWorkspaceId } = useWorkspaceStore()
+  const { activeWorkspaceId, workflowRunning } = useWorkspaceStore()
   const t = useT()
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(false)
+  const [prevRunning, setPrevRunning] = useState(false)
+
+  useEffect(() => {
+    if (prevRunning && !workflowRunning) {
+      if (activeWorkspaceId) {
+        workspaceApi.listArtifacts(activeWorkspaceId)
+          .then((list) => setArtifacts(Array.isArray(list) ? list : []))
+          .catch(() => {})
+      }
+    }
+    setPrevRunning(workflowRunning)
+  }, [workflowRunning, activeWorkspaceId, prevRunning])
 
   useEffect(() => {
     if (!activeWorkspaceId) return
+    let cancelled = false
     setLoading(true)
-    workspaceApi.listArtifacts(activeWorkspaceId)
-      .then((list) => setArtifacts(Array.isArray(list) ? list : []))
-      .catch(() => setArtifacts([]))
-      .finally(() => setLoading(false))
+    const timer = setTimeout(() => {
+      workspaceApi.listArtifacts(activeWorkspaceId)
+        .then((list) => { if (!cancelled) setArtifacts(Array.isArray(list) ? list : []) })
+        .catch(() => { if (!cancelled) setArtifacts([]) })
+        .finally(() => { if (!cancelled) setLoading(false) })
+    }, 150)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [activeWorkspaceId])
 
   if (!activeWorkspaceId) return null

@@ -9,7 +9,7 @@ from typing import Any, AsyncGenerator
 
 import litellm
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -68,7 +68,10 @@ app.add_middleware(
 
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: str | None = ""
+    tool_calls: list[dict[str, Any]] | None = None
+    tool_call_id: str | None = None
+    name: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -82,6 +85,7 @@ class ChatRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, ge=1, le=200_000)
     tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
 
 
 class TokenUsage(BaseModel):
@@ -121,12 +125,13 @@ def _resolve_model_chain(req: ChatRequest) -> list[str]:
 
 async def _call_with_circuit_breaker(
     model_chain: list[str],
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     *,
     temperature: float,
     max_tokens: int,
     stream: bool = False,
     tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
 ) -> Any:
     assert cb_registry is not None
     last_err: Exception | None = None
@@ -148,6 +153,8 @@ async def _call_with_circuit_breaker(
             }
             if tools:
                 kwargs["tools"] = tools
+            if tool_choice is not None:
+                kwargs["tool_choice"] = tool_choice
             response = await litellm.acompletion(**kwargs)
             await cb.record_success()
             return response
@@ -219,6 +226,41 @@ async def get_usage(workspace_id: str) -> dict:
     }
 
 
+def _serialize_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
+    """Serialize ChatMessage list to dicts suitable for LiteLLM, preserving tool fields."""
+    result = []
+    for m in messages:
+        d: dict[str, Any] = {"role": m.role}
+        if m.content is not None:
+            d["content"] = m.content
+        if m.tool_calls:
+            d["tool_calls"] = m.tool_calls
+        if m.tool_call_id:
+            d["tool_call_id"] = m.tool_call_id
+        if m.name:
+            d["name"] = m.name
+        result.append(d)
+    return result
+
+
+def _extract_tool_calls(message: Any) -> list[dict[str, Any]] | None:
+    """Extract tool_calls from a LiteLLM response message into serializable dicts."""
+    raw = getattr(message, "tool_calls", None)
+    if not raw:
+        return None
+    calls = []
+    for tc in raw:
+        calls.append({
+            "id": getattr(tc, "id", ""),
+            "type": getattr(tc, "type", "function"),
+            "function": {
+                "name": getattr(tc.function, "name", ""),
+                "arguments": getattr(tc.function, "arguments", ""),
+            },
+        })
+    return calls or None
+
+
 @app.post("/api/chat/completions")
 async def chat_completions(req: ChatRequest) -> ChatResponse:
     if req.workspace_id and budget_manager:
@@ -230,7 +272,7 @@ async def chat_completions(req: ChatRequest) -> ChatResponse:
             )
 
     model_chain = _resolve_model_chain(req)
-    messages = [m.model_dump() for m in req.messages]
+    messages = _serialize_messages(req.messages)
 
     if req.stream:
         return await _stream_response(model_chain, messages, req)
@@ -241,18 +283,24 @@ async def chat_completions(req: ChatRequest) -> ChatResponse:
         temperature=req.temperature,
         max_tokens=req.max_tokens,
         tools=req.tools,
+        tool_choice=req.tool_choice,
     )
 
     usage_dict = dict(response.usage) if response.usage else {}
     budget_status = await _track_tokens(req.workspace_id, usage_dict)
 
     choice = response.choices[0]
+    tool_calls = _extract_tool_calls(choice.message)
     return ChatResponse(
         id=response.id,
         model=response.model,
         choices=[
             ChatChoice(
-                message=ChatMessage(role=choice.message.role, content=choice.message.content),
+                message=ChatMessage(
+                    role=choice.message.role,
+                    content=getattr(choice.message, "content", None) or "",
+                    tool_calls=tool_calls,
+                ),
                 finish_reason=choice.finish_reason,
             )
         ],
@@ -274,13 +322,38 @@ async def chat_completions_stream(req: ChatRequest) -> StreamingResponse:
             )
 
     model_chain = _resolve_model_chain(req)
-    messages = [m.model_dump() for m in req.messages]
+    messages = _serialize_messages(req.messages)
     return await _stream_response(model_chain, messages, req)
+
+
+def _extract_delta_tool_calls(delta: Any) -> list[dict[str, Any]] | None:
+    """Extract tool_calls fragments from a streaming delta."""
+    raw = getattr(delta, "tool_calls", None)
+    if not raw:
+        return None
+    calls = []
+    for tc in raw:
+        entry: dict[str, Any] = {"index": getattr(tc, "index", 0)}
+        if getattr(tc, "id", None):
+            entry["id"] = tc.id
+        if getattr(tc, "type", None):
+            entry["type"] = tc.type
+        fn = getattr(tc, "function", None)
+        if fn:
+            f: dict[str, str] = {}
+            if getattr(fn, "name", None):
+                f["name"] = fn.name
+            if getattr(fn, "arguments", None) is not None:
+                f["arguments"] = fn.arguments
+            if f:
+                entry["function"] = f
+        calls.append(entry)
+    return calls or None
 
 
 async def _stream_response(
     model_chain: list[str],
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     req: ChatRequest,
 ) -> StreamingResponse:
     response = await _call_with_circuit_breaker(
@@ -290,6 +363,7 @@ async def _stream_response(
         max_tokens=req.max_tokens,
         stream=True,
         tools=req.tools,
+        tool_choice=req.tool_choice,
     )
 
     async def event_generator() -> AsyncGenerator[str, None]:
@@ -300,12 +374,19 @@ async def _stream_response(
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
+                delta_dict: dict[str, Any] = {
+                    "role": getattr(delta, "role", None),
+                    "content": getattr(delta, "content", "") or "",
+                }
+                tc = _extract_delta_tool_calls(delta)
+                if tc:
+                    delta_dict["tool_calls"] = tc
                 data = {
                     "id": chunk.id,
                     "model": chunk.model,
                     "choices": [{
                         "index": 0,
-                        "delta": {"role": getattr(delta, "role", None), "content": getattr(delta, "content", "")},
+                        "delta": delta_dict,
                         "finish_reason": chunk.choices[0].finish_reason,
                     }],
                 }

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
@@ -16,24 +17,26 @@ from .mem0_client import VibeOSMemory
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="VibeOS Memory Service", version="0.1.0")
+memory_client: VibeOSMemory | None = None
+feedback_processor: FeedbackProcessor | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    global memory_client, feedback_processor  # noqa: PLW0603
+    memory_client = VibeOSMemory(settings)
+    feedback_processor = FeedbackProcessor(memory_client)
+    logger.info("Memory service started on port %s", settings.port)
+    yield
+
+
+app = FastAPI(title="VibeOS Memory Service", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-memory_client: VibeOSMemory | None = None
-feedback_processor: FeedbackProcessor | None = None
-
-
-@app.on_event("startup")
-async def startup() -> None:
-    global memory_client, feedback_processor  # noqa: PLW0603
-    memory_client = VibeOSMemory(settings)
-    feedback_processor = FeedbackProcessor(memory_client)
-    logger.info("Memory service started on port %s", settings.port)
 
 
 # ── Request / Response Models ────────────────────────────────────────

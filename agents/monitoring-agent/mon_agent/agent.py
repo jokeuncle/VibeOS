@@ -12,6 +12,7 @@ from vibeos_agent import (
     AgentEvent,
     AgentStatus,
     AgentTask,
+    AgentType,
     BaseAgent,
     CapabilityContract,
     Message,
@@ -116,7 +117,7 @@ TOOLS: list[dict[str, Any]] = [
 
 
 class MonitoringAgent(BaseAgent):
-    agent_type = "monitoring"
+    agent_type = AgentType.MONITORING
     system_prompt = SYSTEM_PROMPT
     tools = TOOLS
     capabilities = [
@@ -125,6 +126,11 @@ class MonitoringAgent(BaseAgent):
             required_context_window=16_000,
         ),
     ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        from vibeos_agent.tools.workspace_tools import create_workspace_tools
+        self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "monitoring"))
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})

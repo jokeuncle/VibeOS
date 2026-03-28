@@ -15,7 +15,6 @@ from vibeos_agent import (
     AgentTask,
     AgentType,
     WSGatewayClient,
-    config,
 )
 
 
@@ -122,6 +121,11 @@ class Dispatcher:
                 task.workspace_id, agent_type, AgentStatus.ERROR, detail=str(exc),
             )
             yield {"error": f"Agent {agent_type} unavailable: {exc}"}
+            return
+
+        await self.ws.publish_agent_status(
+            task.workspace_id, agent_type, AgentStatus.IDLE,
+        )
 
     async def dispatch_parallel(
         self,
@@ -131,7 +135,11 @@ class Dispatcher:
         import asyncio
 
         coros = [self.dispatch(at, task) for at, task in assignments]
-        return list(await asyncio.gather(*coros, return_exceptions=False))
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        return [
+            r if not isinstance(r, BaseException) else {"error": str(r)}
+            for r in results
+        ]
 
     async def dispatch_sequential(
         self,
