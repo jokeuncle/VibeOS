@@ -500,10 +500,11 @@ class BaseAgent(ABC):
         workspace_id: str,
         extra_messages: list[dict[str, str]] | None = None,
         enrich_context: bool = True,
+        system_prompt_override: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream LLM response token-by-token. Yields content deltas."""
-        enriched_system = self.system_prompt
-        if enrich_context:
+        enriched_system = system_prompt_override or self.system_prompt
+        if enrich_context and not system_prompt_override:
             enriched_system = await self._build_enriched_prompt(
                 workspace_id, user_message
             )

@@ -44,6 +44,13 @@ When responding, structure your output as JSON with the following shape:
 Always be specific and opinionated. Justify trade-offs.\
 """
 
+CHAT_PROMPT = """\
+You are an expert software architect having a conversation. Respond in clear, \
+well-structured natural language (use markdown formatting when helpful). \
+Be specific, opinionated, and justify trade-offs. \
+Do NOT respond with raw JSON—use prose, bullet points, code blocks, and headings.\
+"""
+
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -284,7 +291,11 @@ class ArchitectureAgent(BaseAgent):
             )
 
             full_reply = ""
-            async for delta in self._call_llm_stream(message, workspace_id=workspace_id):
+            async for delta in self._call_llm_stream(
+                message,
+                workspace_id=workspace_id,
+                system_prompt_override=CHAT_PROMPT,
+            ):
                 full_reply += delta
                 yield delta
 
