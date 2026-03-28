@@ -18,6 +18,9 @@ VibeOS is an AI-native SDLC platform organized as a monorepo.
 | `services/ws-gateway` | WebSocket real-time relay (Redis Pub/Sub) | Go |
 | `services/shared/models` | Shared Go DTOs & response types | Go |
 | `platform/llm-gateway` | Multi-provider LLM routing proxy | Python |
+| `platform/memory-service` | Mem0 memory (project/org/preference) + Qdrant | Python |
+| `platform/rag-pipeline` | LlamaIndex RAG indexing & retrieval | Python |
+| `platform/knowledge-service` | Knowledge graph (AGE) + LLM distillation | Python |
 | `deploy` | SQL init, migrations, docker-compose | SQL/YAML |
 
 ## Service Ports (local dev)
@@ -29,7 +32,16 @@ VibeOS is an AI-native SDLC platform organized as a monorepo.
 | ws-gateway | 8020 |
 | llm-gateway | 8030 |
 | pm-agent | 8040 |
+| architecture-agent | 8041 |
+| requirement-agent | 8042 |
+| design-agent | 8043 |
 | dev-agent | 8044 |
+| test-agent | 8045 |
+| cicd-agent | 8046 |
+| monitoring-agent | 8047 |
+| memory-service | 8050 |
+| rag-pipeline | 8060 |
+| knowledge-service | 8070 |
 
 ## Vite Proxy Rules
 

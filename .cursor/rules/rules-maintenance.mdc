@@ -1,0 +1,48 @@
+---
+description: When and how to keep Cursor rules in sync with code changes
+alwaysApply: true
+---
+
+# Rules Maintenance Guide
+
+When making code changes, check if any Cursor rules need updating. Stale rules produce stale AI output.
+
+## Trigger Checklist
+
+| Change Type | Rule(s) to Update |
+|-------------|-------------------|
+| New service/port added | `project-overview.mdc` (ports table, proxy rules), root `README.md` |
+| New agent created | `project-overview.mdc`, `python-agents.mdc` (if patterns change), `README.md` (ports/env) |
+| New env variable | `docker-deploy.mdc` (if in Compose), `README.md` (env vars section) |
+| New API endpoint on workspace-svc | `go-services.mdc` (if pattern deviates) |
+| Vite proxy rule changed | `project-overview.mdc` (proxy table) |
+| New WebSocket event type | `project-overview.mdc` (event lists) |
+| New Tailwind token in `@theme` | `design-system.mdc` (color table) |
+| New i18n key namespace | `frontend-i18n.mdc` (key naming examples) |
+| New shared Go model | `project-overview.mdc`, `go-services.mdc` |
+| New Python tool class | `python-agents.mdc` (if new pattern) |
+| New Zustand store | `frontend-react.mdc` (store naming) |
+| Redis DB index allocated | `docker-deploy.mdc`, `README.md` (Redis DB table) |
+| Migration added | `docker-deploy.mdc` (migration numbering) |
+| Docker Compose service added | `docker-deploy.mdc`, `README.md` |
+
+## How to Update
+
+1. Read the existing rule file
+2. Update only the sections affected by the change
+3. Keep rules concise — under 50 lines of content per rule
+4. Add concrete examples for new patterns, not just descriptions
+5. Run `ls .cursor/rules/` to verify all rules are present
+
+## Rule File Inventory
+
+| File | Scope | What it covers |
+|------|-------|---------------|
+| `project-overview.mdc` | Always | Architecture, ports, events, module refs |
+| `go-services.mdc` | `services/**/*.go` | Chi router, handler/service/store layering |
+| `python-agents.mdc` | `agents/**/*.py, platform/**/*.py` | BaseAgent, BaseTool, FastAPI lifespan |
+| `frontend-react.mdc` | `apps/web/src/**/*.{ts,tsx}` | Components, Zustand stores, Tailwind tokens |
+| `frontend-i18n.mdc` | `apps/web/src/**/*.{ts,tsx}` | Dictionary keys, `useT()`, key naming |
+| `design-system.mdc` | `apps/web/src/**/*.{css,tsx}` | Color tokens, utility classes, fonts |
+| `docker-deploy.mdc` | `deploy/**` | Compose naming, env vars, migrations |
+| `rules-maintenance.mdc` | Always | This file — when to update other rules |
