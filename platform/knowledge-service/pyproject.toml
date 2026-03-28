@@ -1,0 +1,12 @@
+[project]
+name = "knowledge-service"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "psycopg[binary]>=3.2.0",
+    "pydantic>=2.0",
+    "httpx>=0.28.0",
+    "redis>=5.0",
+]

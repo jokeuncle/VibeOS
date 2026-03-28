@@ -1,3 +1,18 @@
-
 node_modules
 dist
+*.pyc
+__pycache__
+.venv
+*.egg-info
+
+# Go binaries
+services/workspace-svc/workspace-svc
+services/ws-gateway/ws-gateway
+
+# Environment
+.env
+
+# Docker volumes
+pgdata
+redisdata
+qdrantdata

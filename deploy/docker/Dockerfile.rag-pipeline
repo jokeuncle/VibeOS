@@ -1,0 +1,7 @@
+FROM python:3.14-slim
+WORKDIR /app
+COPY platform/rag-pipeline/pyproject.toml .
+RUN pip install --no-cache-dir .
+COPY platform/rag-pipeline/ .
+EXPOSE 8060
+CMD ["uvicorn", "rag_pipeline.main:app", "--host", "0.0.0.0", "--port", "8060"]

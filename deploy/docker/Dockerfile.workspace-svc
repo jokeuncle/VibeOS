@@ -1,0 +1,13 @@
+FROM golang:1.25-alpine AS builder
+WORKDIR /build
+COPY services/shared/ ./shared/
+COPY services/workspace-svc/ ./workspace-svc/
+COPY services/go.work ./
+WORKDIR /build/workspace-svc
+RUN go build -o /workspace-svc ./cmd/main.go
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /workspace-svc /usr/local/bin/workspace-svc
+EXPOSE 8010
+CMD ["workspace-svc"]

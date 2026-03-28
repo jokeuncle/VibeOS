@@ -1,0 +1,188 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vibeos
+      POSTGRES_PASSWORD: vibeos_dev
+      POSTGRES_DB: vibeos
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibeos"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.2
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/6333"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  workspace-svc:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.workspace-svc
+    ports:
+      - "8010:8010"
+    environment:
+      DATABASE_URL: postgres://vibeos:vibeos_dev@postgres:5432/vibeos?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      PORT: "8010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ws-gateway:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.ws-gateway
+    ports:
+      - "8020:8020"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      PORT: "8020"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  llm-gateway:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.llm-gateway
+    ports:
+      - "8030:8030"
+    environment:
+      PORT: "8030"
+      REDIS_URL: redis://redis:6379/1
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  pm-agent:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.pm-agent
+    ports:
+      - "8040:8040"
+    environment:
+      PORT: "8040"
+      LLM_GATEWAY_URL: http://llm-gateway:8030
+      WORKSPACE_SVC_URL: http://workspace-svc:8010
+      WS_GATEWAY_URL: http://ws-gateway:8020
+      MEMORY_SVC_URL: http://memory-service:8050
+      RAG_SVC_URL: http://rag-pipeline:8060
+      KNOWLEDGE_SVC_URL: http://knowledge-service:8070
+      REDIS_URL: redis://redis:6379/2
+    depends_on:
+      - llm-gateway
+      - workspace-svc
+      - memory-service
+      - rag-pipeline
+
+  architecture-agent:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.arch-agent
+    ports:
+      - "8041:8041"
+    environment:
+      PORT: "8041"
+      LLM_GATEWAY_URL: http://llm-gateway:8030
+      WORKSPACE_SVC_URL: http://workspace-svc:8010
+      WS_GATEWAY_URL: http://ws-gateway:8020
+      MEMORY_SVC_URL: http://memory-service:8050
+      RAG_SVC_URL: http://rag-pipeline:8060
+      KNOWLEDGE_SVC_URL: http://knowledge-service:8070
+      REDIS_URL: redis://redis:6379/2
+    depends_on:
+      - llm-gateway
+      - workspace-svc
+      - memory-service
+      - rag-pipeline
+
+  # --- Phase 2: Platform Services ---
+
+  memory-service:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.memory-service
+    ports:
+      - "8050:8050"
+    environment:
+      PORT: "8050"
+      REDIS_URL: redis://redis:6379/3
+      QDRANT_URL: http://qdrant:6333
+      LLM_GATEWAY_URL: http://llm-gateway:8030
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  rag-pipeline:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.rag-pipeline
+    ports:
+      - "8060:8060"
+    environment:
+      PORT: "8060"
+      QDRANT_URL: http://qdrant:6333
+      LLM_GATEWAY_URL: http://llm-gateway:8030
+      REDIS_URL: redis://redis:6379/4
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  knowledge-service:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.knowledge-service
+    ports:
+      - "8070:8070"
+    environment:
+      PORT: "8070"
+      DATABASE_URL: postgres://vibeos:vibeos_dev@postgres:5432/vibeos?sslmode=disable
+      LLM_GATEWAY_URL: http://llm-gateway:8030
+      REDIS_URL: redis://redis:6379/5
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  qdrantdata:

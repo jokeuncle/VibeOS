@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.backends"
+
+[project]
+name = "vibeos-agent"
+version = "0.1.0"
+description = "VibeOS Agent Framework – shared base for all domain agents"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0",
+    "httpx",
+    "redis[hiredis]",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
