@@ -74,6 +74,26 @@ export interface Agent {
 export type RepoBranchStrategy = 'feature' | 'direct' | 'gitflow'
 export type RepoRole = 'primary' | 'secondary' | 'infra' | 'docs'
 
+export interface User {
+  id: string
+  email: string
+  name: string
+  avatarUrl?: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WorkspaceMember {
+  id: string
+  workspaceId: string
+  userId: string
+  role: 'owner' | 'editor' | 'viewer'
+  createdAt: string
+  userEmail?: string
+  userName?: string
+}
+
 export interface GitLabCredential {
   id: string
   gitlabUrl: string
@@ -160,6 +180,7 @@ export interface WorkflowEvent {
   /** Failed tasks in this phase when phase ended with errors. */
   tasks_failed?: number
   phases?: string[]
+  success?: boolean
 }
 
 export interface TaskComment {
@@ -198,7 +219,7 @@ export interface RichBlock {
 
 export interface Message {
   id: string
-  role: 'user' | 'agent'
+  role: 'user' | 'agent' | 'system'
   content: string
   richBlocks?: RichBlock[]
   agentType?: AgentType

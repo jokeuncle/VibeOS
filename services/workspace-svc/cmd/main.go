@@ -66,6 +66,8 @@ func main() {
 	artifactHandler := handler.NewArtifactHandler(svc, logger)
 	credHandler := handler.NewGitLabCredentialHandler(svc, logger)
 	repoHandler := handler.NewWorkspaceRepoHandler(svc, logger)
+	authHandler := handler.NewAuthHandler(svc, logger)
+	memberHandler := handler.NewMemberHandler(svc, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -74,11 +76,17 @@ func main() {
 	r.Use(chimw.RealIP)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
+	r.Use(mw.OptionalAuth)
 
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	// Auth (public, no token required)
+	r.Post("/api/auth/register", authHandler.Register)
+	r.Post("/api/auth/login", authHandler.Login)
+	r.With(mw.RequireAuth).Get("/api/auth/me", authHandler.Me)
 
 	r.Route("/api/workspaces", func(r chi.Router) {
 		r.Get("/", wsHandler.List)
@@ -110,6 +118,11 @@ func main() {
 			r.Patch("/repos/{repoId}", repoHandler.Update)
 			r.Delete("/repos/{repoId}", repoHandler.Delete)
 			r.Post("/repos/{repoId}/test", repoHandler.TestConnection)
+
+			// Workspace membership
+			r.Get("/members", memberHandler.List)
+			r.With(mw.RequireAuth).Post("/members", memberHandler.Add)
+			r.With(mw.RequireAuth).Delete("/members/{memberId}", memberHandler.Remove)
 		})
 	})
 
@@ -118,7 +131,6 @@ func main() {
 		r.Get("/", credHandler.List)
 		r.Post("/", credHandler.Create)
 		r.Delete("/{credId}", credHandler.Delete)
-		// Internal decrypt endpoint – network-restrict in production
 		r.Get("/{credId}/decrypt", credHandler.Decrypt)
 	})
 

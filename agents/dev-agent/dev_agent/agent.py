@@ -234,6 +234,14 @@ class DevelopmentAgent(BaseAgent):
             )
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
+            failed_tools = [r for r in self._tool_results if not r["ok"]]
+            critical_failures = [r for r in failed_tools if r["tool"] in ("gitlab_push_file", "gitlab_create_mr")]
+            if critical_failures:
+                failure_desc = "; ".join(f'{r["tool"]}: {r["result"][:120]}' for r in critical_failures)
+                await _log(task.workspace_id, agent_name, f"Critical tool failure: {failure_desc}", level="error", task_id=task.task_id)
+                yield self._make_event("error", task.workspace_id, {"error": f"Tool failure: {failure_desc}"})
+                raise RuntimeError(f"Critical tool(s) failed: {failure_desc}")
+
             try:
                 structured = json.loads(raw_reply)
             except json.JSONDecodeError:

@@ -136,6 +136,32 @@ type Activity struct {
 }
 
 // ---------------------------------------------------------------------------
+// Auth & membership models
+// ---------------------------------------------------------------------------
+
+type User struct {
+	ID           string    `json:"id" db:"id"`
+	Email        string    `json:"email" db:"email"`
+	Name         string    `json:"name" db:"name"`
+	PasswordHash string    `json:"-" db:"password_hash"`
+	AvatarURL    *string   `json:"avatarUrl,omitempty" db:"avatar_url"`
+	Status       string    `json:"status" db:"status"`
+	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+type WorkspaceMember struct {
+	ID          string    `json:"id" db:"id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	UserID      string    `json:"userId" db:"user_id"`
+	Role        string    `json:"role" db:"role"` // owner | editor | viewer
+	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+	// Populated by join queries
+	UserEmail string `json:"userEmail,omitempty" db:"user_email"`
+	UserName  string `json:"userName,omitempty" db:"user_name"`
+}
+
+// ---------------------------------------------------------------------------
 // GitLab integration models
 // ---------------------------------------------------------------------------
 

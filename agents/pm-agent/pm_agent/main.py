@@ -296,6 +296,40 @@ async def _handle_execute_task(
     }
 
 
+async def _enrich_context_with_gitlab(
+    workspace_id: str,
+    client_context: dict[str, Any] | None,
+    ws_client: WorkspaceClient,
+) -> dict[str, Any]:
+    """Merge client-supplied context with server-side GitLab repo information.
+
+    This ensures the domain agent always receives credential_id, project_id,
+    and branch info even when the NLP path (not workflow) is used.
+    """
+    ctx = dict(client_context or {})
+    if ctx.get("gitlab_credential_id"):
+        return ctx
+
+    phase_type = ctx.get("phase_type", "development")
+    try:
+        repos = await ws_client.get_repos_for_phase(workspace_id, phase_type)
+        primary = next((r for r in repos if r.get("isPrimary")), repos[0] if repos else None)
+        if primary:
+            strategy = primary.get("branchStrategy", "feature")
+            default_branch = primary.get("branchDefault", "main")
+            ctx.setdefault("gitlab_repos", repos)
+            ctx.setdefault("gitlab_primary_project", primary.get("projectId"))
+            ctx.setdefault("gitlab_primary_url", primary.get("gitlabUrl"))
+            ctx.setdefault("gitlab_branch_strategy", strategy)
+            ctx.setdefault("gitlab_branch_default", default_branch)
+            ctx.setdefault("gitlab_credential_id", primary.get("credentialId"))
+            task_hint = ctx.get("task_title", "task")
+            ctx.setdefault("gitlab_branch", resolve_branch_name(task_hint, strategy, default_branch))
+    except Exception:
+        pass
+    return ctx
+
+
 def _phase_type_from_nlp_context(context: dict[str, Any] | None) -> str | None:
     """Optional UI hint: current phase tab (same semantics as /api/workflow/run-phase)."""
     if not context:
@@ -510,13 +544,17 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
                 result=result,
             )
 
+        enriched_ctx = await _enrich_context_with_gitlab(
+            req.workspace_id, req.context, ws_client,
+        )
+
         task = AgentTask(
             task_id=uuid.uuid4().hex,
             workspace_id=req.workspace_id,
             intent=parsed.intent,
             description=parsed.summary,
             user_message=req.message,
-            context=req.context or {},
+            context=enriched_ctx,
         )
 
         result = await dispatcher.dispatch(parsed.target_agent, task)
@@ -586,13 +624,17 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                 yield "data: [DONE]\n\n"
                 return
 
+            enriched_ctx = await _enrich_context_with_gitlab(
+                req.workspace_id, req.context, ws_client,
+            )
+
             task = AgentTask(
                 task_id=uuid.uuid4().hex,
                 workspace_id=req.workspace_id,
                 intent=parsed.intent,
                 description=parsed.summary,
                 user_message=req.message,
-                context=req.context or {},
+                context=enriched_ctx,
             )
 
             async for chunk in dispatcher.dispatch_stream(parsed.target_agent, task):
@@ -656,6 +698,12 @@ async def handle_chat_stream(agent_type: str, req: ChatRequest) -> StreamingResp
     return StreamingResponse(token_gen(), media_type="text/event-stream")
 
 
+class RunTaskRequest(BaseModel):
+    workspace_id: str
+    task_id: str
+    user_message: str = ""
+
+
 class RunPhaseRequest(BaseModel):
     workspace_id: str
     phase_type: str
@@ -666,6 +714,24 @@ class RunProjectRequest(BaseModel):
     workspace_id: str
     user_message: str = ""
     start_phase: str | None = None
+
+
+@app.post("/api/workflow/run-task")
+async def handle_run_task(req: RunTaskRequest) -> StreamingResponse:
+    """SSE: execute a single task by ID."""
+    workflow: WorkflowEngine = app.state.workflow
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        try:
+            async for event in workflow.run_task(
+                req.workspace_id, req.task_id, req.user_message
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @app.post("/api/workflow/run-phase")

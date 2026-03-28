@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, Circle, Loader2, ChevronDown, Plus, Trash2, Pencil, GripVertical } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, ChevronDown, Plus, Trash2, Pencil, GripVertical, Play } from 'lucide-react'
 import { useState } from 'react'
 import {
   DndContext,
@@ -52,7 +52,7 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
   const [expanded, setExpanded] = useState(phase.status === 'in_progress')
   const [adding, setAdding] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
-  const { activeWorkspaceId, addTask, deleteTask, updatePhaseStatus, reorderTasks } = useWorkspaceStore()
+  const { activeWorkspaceId, addTask, deleteTask, updatePhaseStatus, reorderTasks, runTask, workflowRunning } = useWorkspaceStore()
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const { openTaskDetail, addToast, showConfirm } = useUIStore()
@@ -175,6 +175,7 @@ export default function PhaseCard({ phase, index }: { phase: Phase; index: numbe
                   phaseId={phase.id}
                   onOpen={() => openTaskDetail(phase.id, task.id)}
                   onDelete={() => handleDeleteTask(task.id)}
+                  onRun={task.status !== 'completed' && !workflowRunning ? () => runTask(task.id) : undefined}
                   t={t}
                 />
               ))}
@@ -230,6 +231,7 @@ interface TaskRowProps {
   phaseId: string
   onOpen: () => void
   onDelete: () => void
+  onRun?: () => void
   t: (key: TranslationKey) => string
   dragHandle?: React.ReactNode
   style?: React.CSSProperties
@@ -237,7 +239,7 @@ interface TaskRowProps {
   extraProps?: DraggableAttributes
 }
 
-function SortableTaskRow(props: Omit<TaskRowProps, 'dragHandle' | 'style' | 'innerRef' | 'extraProps'>) {
+function SortableTaskRow(props: Omit<TaskRowProps, 'dragHandle' | 'style' | 'innerRef' | 'extraProps'> & { onRun?: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.task.id })
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -265,6 +267,7 @@ function TaskRow({
   phaseId,
   onOpen,
   onDelete,
+  onRun,
   t,
   dragHandle,
   style,
@@ -274,6 +277,7 @@ function TaskRow({
   const { menu, onContextMenu, closeMenu } = useContextMenu()
 
   const menuItems: ContextMenuItem[] = [
+    ...(onRun ? [{ id: 'run', label: t('task.run' as TranslationKey), icon: <Play className="w-3.5 h-3.5" />, onClick: onRun }] : []),
     { id: 'edit', label: t('task.edit'), icon: <Pencil className="w-3.5 h-3.5" />, onClick: onOpen },
     { id: 'delete', label: t('task.delete'), icon: <Trash2 className="w-3.5 h-3.5" />, danger: true, onClick: onDelete },
   ]
@@ -318,6 +322,15 @@ function TaskRow({
           <span className="text-[9px] font-mono text-accent/60 bg-accent/5 px-1.5 py-0.5 rounded">
             {task.assignedAgent}
           </span>
+        )}
+        {onRun && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRun() }}
+            title={t('task.run' as TranslationKey)}
+            className="opacity-0 group-hover:opacity-100 p-0.5 text-accent hover:text-accent-hover transition-all cursor-pointer"
+          >
+            <Play className="w-3 h-3" />
+          </button>
         )}
         <button
           onClick={(e) => { e.stopPropagation(); onDelete() }}

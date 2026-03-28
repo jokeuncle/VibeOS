@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useWorkspaceStore } from './stores/workspace'
 import { useUIStore } from './stores/ui'
+import { useAuthStore } from './stores/auth'
 import { connectWebSocket, disconnectWebSocket } from './lib/ws'
 import { useI18nStore } from './i18n'
 import TitleBar from './components/TitleBar'
@@ -24,8 +25,13 @@ export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
   const { toggleSidebar, setSettingsOpen, theme, addTab, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, settingsOpen } = useUIStore()
   const { locale } = useI18nStore()
+  const restoreSession = useAuthStore((s) => s.restoreSession)
 
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
+
+  useEffect(() => {
+    restoreSession()
+  }, [restoreSession])
 
   useEffect(() => {
     fetchWorkspaces()

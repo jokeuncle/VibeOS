@@ -48,8 +48,11 @@ class ChatResponse(BaseModel):
 async def execute_task(task: AgentTask) -> dict[str, Any]:
     agent: DevelopmentAgent = app.state.agent
     last_event: dict[str, Any] = {}
-    async for event in agent.execute(task):
-        last_event = event.model_dump(mode="json", exclude_none=True)
+    try:
+        async for event in agent.execute(task):
+            last_event = event.model_dump(mode="json", exclude_none=True)
+    except Exception as exc:
+        return {"error": str(exc), "type": "error", "agent_type": "development"}
     return last_event
 
 
@@ -59,9 +62,12 @@ async def execute_task_stream(task: AgentTask) -> StreamingResponse:
     agent: DevelopmentAgent = app.state.agent
 
     async def event_gen() -> AsyncGenerator[str, None]:
-        async for event in agent.execute(task):
-            data = event.model_dump(mode="json", exclude_none=True)
-            yield f"event: {event.type}\ndata: {json.dumps(data)}\n\n"
+        try:
+            async for event in agent.execute(task):
+                data = event.model_dump(mode="json", exclude_none=True)
+                yield f"event: {event.type}\ndata: {json.dumps(data)}\n\n"
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

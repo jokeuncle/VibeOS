@@ -102,6 +102,7 @@ const zh: Record<TranslationKey, string> = {
 
   'task.add': '添加任务',
   'task.addPlaceholder': '任务标题…',
+  'task.run': '执行',
   'task.edit': '编辑',
   'task.delete': '删除',
   'task.deleted': '任务已删除',
@@ -322,6 +323,8 @@ const zh: Record<TranslationKey, string> = {
   'workflow.taskError': '任务出错',
   'workflow.projectStart': '开始项目生命周期',
   'workflow.projectComplete': '项目生命周期完成',
+  'workflow.addInstructions': '添加 Agent 执行指令',
+  'workflow.instructionPlaceholder': '可选：告诉 Agent 重点关注什么…',
 
   'artifact.title': '产出物',
   'artifact.empty': '暂无产出物',
@@ -369,6 +372,25 @@ const zh: Record<TranslationKey, string> = {
   'gitlab.close': '关闭',
   'gitlab.back': '← 返回',
   'gitlab.repoRequired': '请选择凭证并填写项目 ID 和名称',
+
+  'auth.login': '登录',
+  'auth.register': '注册',
+  'auth.logout': '退出',
+  'auth.emailPlaceholder': '邮箱',
+  'auth.passwordPlaceholder': '密码',
+  'auth.namePlaceholder': '姓名',
+  'auth.haveAccount': '已有账号？去登录',
+  'auth.noAccount': '没有账号？去注册',
+  'auth.loading': '请稍候…',
+  'auth.skipLogin': '跳过登录继续使用',
+
+  'member.title': '成员',
+  'member.add': '添加成员',
+  'member.remove': '移除',
+  'member.owner': '所有者',
+  'member.editor': '编辑者',
+  'member.viewer': '查看者',
+  'member.emailPlaceholder': '输入邮箱邀请…',
 
   'error.llmRateLimit': 'AI 模型已达到使用限制，请稍后重试或切换到其他模型。',
   'error.llmUnavailable': 'AI 服务暂时不可用，请稍后重试。',

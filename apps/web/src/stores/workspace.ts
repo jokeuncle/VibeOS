@@ -25,6 +25,29 @@ function friendlyError(raw: string): string {
   return raw
 }
 
+function workflowEventToMessage(event: WorkflowEvent): Message | null {
+  const eventLabels: Record<string, string> = {
+    'workflow:phase_start': `🚀 阶段开始: ${event.phase ?? ''}`,
+    'workflow:phase_complete': `✅ 阶段完成: ${event.phase ?? ''} (${event.tasks_executed ?? 0} 个任务)`,
+    'workflow:phase_skip': `⏭️ 阶段跳过: ${event.phase ?? ''} — ${event.reason ?? ''}`,
+    'workflow:task_start': `▶ 执行任务: ${event.task_title ?? ''}`,
+    'workflow:task_complete': `✅ 任务完成: ${event.task_title ?? ''}`,
+    'workflow:task_error': `❌ 任务失败: ${event.task_title ?? ''} — ${event.error ?? ''}`,
+    'workflow:project_start': '🎯 开始执行全项目流程',
+    'workflow:project_complete': event.success ? '🎉 项目执行完成' : '⚠️ 项目执行结束（有错误）',
+    'workflow:project_error': `❌ 项目执行出错: ${event.error ?? ''}`,
+  }
+  const content = eventLabels[event.type]
+  if (!content) return null
+  return {
+    id: crypto.randomUUID(),
+    role: 'system',
+    content,
+    agentType: 'pm' as import('../types').AgentType,
+    timestamp: new Date().toISOString(),
+  }
+}
+
 export interface LogEntry {
   id: string
   timestamp: string
@@ -78,8 +101,9 @@ interface WorkspaceState {
 
   workflowRunning: boolean
   workflowEvents: WorkflowEvent[]
-  runPhase: (phaseType: string) => void
-  runProject: () => void
+  runTask: (taskId: string) => void
+  runPhase: (phaseType: string, userMessage?: string) => void
+  runProject: (userMessage?: string) => void
 
   // GitLab repo management
   addRepo: (wsId: string, repo: WorkspaceRepo) => void
@@ -746,7 +770,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   workflowRunning: false,
   workflowEvents: [],
 
-  runPhase: (phaseType) => {
+  runTask: (taskId) => {
     const wsId = get().activeWorkspaceId
     if (!wsId || get().workflowRunning) return
 
@@ -754,11 +778,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     ;(async () => {
       try {
-        for await (const evt of workflowApi.runPhase(wsId, phaseType)) {
+        for await (const evt of workflowApi.runTask(wsId, taskId)) {
           try {
             const data = JSON.parse(evt.data) as WorkflowEvent
             set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
-            // Real-time task status patch – no API round-trip needed
             if (data.task_id) {
               if (data.type === 'workflow:task_start') {
                 get().patchTaskStatus(wsId, data.task_id, 'in_progress')
@@ -766,6 +789,40 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 get().patchTaskStatus(wsId, data.task_id, 'completed')
               }
             }
+            const sysMsg = workflowEventToMessage(data)
+            if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
+          } catch { /* skip parse errors */ }
+        }
+      } catch (err) {
+        console.error('Workflow run-task failed:', err)
+      } finally {
+        set({ workflowRunning: false })
+        get().refreshActiveWorkspace()
+      }
+    })()
+  },
+
+  runPhase: (phaseType, userMessage) => {
+    const wsId = get().activeWorkspaceId
+    if (!wsId || get().workflowRunning) return
+
+    set({ workflowRunning: true, workflowEvents: [] })
+
+    ;(async () => {
+      try {
+        for await (const evt of workflowApi.runPhase(wsId, phaseType, userMessage)) {
+          try {
+            const data = JSON.parse(evt.data) as WorkflowEvent
+            set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
+            if (data.task_id) {
+              if (data.type === 'workflow:task_start') {
+                get().patchTaskStatus(wsId, data.task_id, 'in_progress')
+              } else if (data.type === 'workflow:task_complete') {
+                get().patchTaskStatus(wsId, data.task_id, 'completed')
+              }
+            }
+            const sysMsg = workflowEventToMessage(data)
+            if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
           } catch { /* skip parse errors */ }
         }
       } catch (err) {
@@ -777,7 +834,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     })()
   },
 
-  runProject: () => {
+  runProject: (userMessage) => {
     const wsId = get().activeWorkspaceId
     if (!wsId || get().workflowRunning) return
 
@@ -785,11 +842,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     ;(async () => {
       try {
-        for await (const evt of workflowApi.runProject(wsId)) {
+        for await (const evt of workflowApi.runProject(wsId, userMessage)) {
           try {
             const data = JSON.parse(evt.data) as WorkflowEvent
             set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
-            // Real-time task status patch – no API round-trip needed
             if (data.task_id) {
               if (data.type === 'workflow:task_start') {
                 get().patchTaskStatus(wsId, data.task_id, 'in_progress')
@@ -797,6 +853,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 get().patchTaskStatus(wsId, data.task_id, 'completed')
               }
             }
+            const sysMsg = workflowEventToMessage(data)
+            if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
           } catch { /* skip parse errors */ }
         }
       } catch (err) {

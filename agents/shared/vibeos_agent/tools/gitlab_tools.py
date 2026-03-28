@@ -262,20 +262,44 @@ class GitLabPushFile(BaseTool):
             except ImportError:
                 raise RuntimeError("python-gitlab is not installed")
             project = gl.projects.get(project_id)
+            actual_branch = branch
+            created_branch = False
+
+            def _commit_file(target_branch: str) -> dict[str, Any]:
+                try:
+                    existing = project.files.get(file_path=file_path, ref=target_branch)
+                    existing.content = content
+                    existing.save(branch=target_branch, commit_message=commit_message)
+                    return {"action": "updated", "file_path": file_path, "branch": target_branch}
+                except _gitlab.exceptions.GitlabGetError:
+                    project.files.create({
+                        "file_path": file_path,
+                        "branch": target_branch,
+                        "content": content,
+                        "commit_message": commit_message,
+                    })
+                    return {"action": "created", "file_path": file_path, "branch": target_branch}
+
             try:
-                existing = project.files.get(file_path=file_path, ref=branch)
-                existing.content = content
-                existing.save(branch=branch, commit_message=commit_message)
-                return {"action": "updated", "file_path": file_path}
-            except _gitlab.exceptions.GitlabGetError:
-                # File does not exist yet – create it
-                project.files.create({
-                    "file_path": file_path,
-                    "branch": branch,
-                    "content": content,
-                    "commit_message": commit_message,
-                })
-                return {"action": "created", "file_path": file_path}
+                return _commit_file(actual_branch)
+            except _gitlab.exceptions.GitlabCreateError as exc:
+                err_msg = str(exc)
+                if "not allowed to push" not in err_msg and "protected branch" not in err_msg.lower():
+                    raise
+
+                feature_branch = f"vibeos/{file_path.replace('/', '-').replace('.', '-')}"
+                logger.info("Branch %s is protected, creating feature branch %s", branch, feature_branch)
+                try:
+                    project.branches.create({"branch": feature_branch, "ref": branch})
+                    created_branch = True
+                except _gitlab.exceptions.GitlabCreateError:
+                    pass  # branch may already exist
+
+                result = _commit_file(feature_branch)
+                result["fallback_branch"] = True
+                result["source_branch"] = feature_branch
+                result["target_branch"] = branch
+                return result
 
         result = await asyncio.to_thread(_push)
         return self._json_result({"status": "committed", **result})

@@ -564,6 +564,8 @@ class BaseAgent(ABC):
         self.tool_registry = ToolRegistry()
         # Set by execute() before tool calls so tools can resolve credentials from task context.
         self._current_task_context: dict[str, Any] | None = None
+        # Populated by _call_llm_with_tools so callers can inspect critical tool outcomes.
+        self._tool_results: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -704,6 +706,7 @@ class BaseAgent(ABC):
         """
         tool_schemas = self._get_tool_schemas()
         if not tool_schemas:
+            self._tool_results = []
             return await self._call_llm(
                 user_message,
                 workspace_id=workspace_id,
@@ -711,6 +714,8 @@ class BaseAgent(ABC):
                 enrich_context=enrich_context,
                 repo_context=repo_context,
             )
+
+        self._tool_results = []
 
         enriched_system = self.system_prompt
         if enrich_context:
@@ -766,7 +771,6 @@ class BaseAgent(ABC):
                     parsed_args = arguments
 
                 parsed_args["_workspace_id"] = workspace_id
-                # Inject task context so tools can resolve credentials, branch, etc.
                 if hasattr(self, "_current_task_context") and self._current_task_context:
                     parsed_args.setdefault("_context", self._current_task_context)
 
@@ -784,6 +788,16 @@ class BaseAgent(ABC):
                     pass
 
                 tool_result = await self.tool_registry.execute(tool_name, parsed_args)
+
+                is_error = any(
+                    marker in tool_result.lower()
+                    for marker in ("error:", "failed:", "exception:", "traceback")
+                )
+                self._tool_results.append({
+                    "tool": tool_name,
+                    "ok": not is_error,
+                    "result": tool_result[:500],
+                })
 
                 messages.append({
                     "role": "tool",

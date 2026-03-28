@@ -131,6 +131,124 @@ class WorkflowEngine:
             level="warn",
         )
 
+    async def run_task(
+        self,
+        workspace_id: str,
+        task_id: str,
+        user_message: str = "",
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Execute a single task by ID, yielding SSE events."""
+        phases = await self.ws_client.get_phases(workspace_id)
+        target_task: dict[str, Any] | None = None
+        phase_type: str = "development"
+        for phase in phases:
+            for t in phase.get("tasks", []):
+                if t.get("id") == task_id:
+                    target_task = t
+                    phase_type = phase.get("type", "development")
+                    break
+            if target_task:
+                break
+
+        if not target_task:
+            yield {"type": "workflow:task_error", "task_id": task_id, "error": "Task not found"}
+            return
+
+        task_title = target_task.get("title", "Untitled")
+        agent_type = _agent_for_phase(phase_type)
+
+        task_start_evt = {
+            "type": "workflow:task_start",
+            "phase": phase_type,
+            "task_id": task_id,
+            "task_title": task_title,
+            "index": 0,
+            "total": 1,
+        }
+        yield task_start_evt
+        await self._broadcast(workspace_id, task_start_evt)
+
+        try:
+            await self.ws_client.update_task(workspace_id, task_id, {"status": "in_progress"})
+        except Exception:
+            pass
+
+        repos = await self.ws_client.get_repos_for_phase(workspace_id, phase_type)
+        primary = next((r for r in repos if r.get("isPrimary")), repos[0] if repos else None)
+        gitlab_ctx: dict[str, Any] = {}
+        if primary:
+            strategy = primary.get("branchStrategy", "feature")
+            default_branch = primary.get("branchDefault", "main")
+            gitlab_ctx = {
+                "gitlab_repos": repos,
+                "gitlab_primary_project": primary.get("projectId"),
+                "gitlab_primary_url": primary.get("gitlabUrl"),
+                "gitlab_branch_strategy": strategy,
+                "gitlab_branch_default": default_branch,
+                "gitlab_branch": resolve_branch_name(task_title, strategy, default_branch),
+                "gitlab_credential_id": primary.get("credentialId"),
+            }
+
+        agent_task = AgentTask(
+            task_id=task_id,
+            workspace_id=workspace_id,
+            intent=f"execute_{phase_type}",
+            description=task_title,
+            user_message=user_message or target_task.get("description", ""),
+            context={
+                "task_title": task_title,
+                "task_description": target_task.get("description", ""),
+                "phase_type": phase_type,
+                **gitlab_ctx,
+            },
+        )
+
+        try:
+            result = await self.dispatcher.dispatch(agent_type, agent_task)
+
+            if isinstance(result, dict) and result.get("error"):
+                try:
+                    await self.ws_client.update_task(workspace_id, task_id, {"status": "pending"})
+                except Exception:
+                    pass
+                err_evt = {
+                    "type": "workflow:task_error",
+                    "phase": phase_type,
+                    "task_id": task_id,
+                    "task_title": task_title,
+                    "error": str(result["error"]),
+                }
+                yield err_evt
+                await self._broadcast(workspace_id, err_evt)
+            else:
+                try:
+                    await self.ws_client.complete_task(workspace_id, task_id)
+                except Exception:
+                    pass
+                done_evt = {
+                    "type": "workflow:task_complete",
+                    "phase": phase_type,
+                    "task_id": task_id,
+                    "task_title": task_title,
+                    "result_summary": str(result)[:200],
+                }
+                yield done_evt
+                await self._broadcast(workspace_id, done_evt)
+        except Exception as exc:
+            try:
+                await self.ws_client.update_task(workspace_id, task_id, {"status": "pending"})
+            except Exception:
+                pass
+            err_evt = {
+                "type": "workflow:task_error",
+                "phase": phase_type,
+                "task_id": task_id,
+                "task_title": task_title,
+                "error": str(exc),
+            }
+            yield err_evt
+            await self._broadcast(workspace_id, err_evt)
+
     async def run_phase(
         self,
         workspace_id: str,
@@ -305,6 +423,14 @@ class WorkflowEngine:
                 }
                 yield err_evt
                 await self._broadcast(workspace_id, err_evt)
+
+        final_status = PhaseStatus.COMPLETED if tasks_failed == 0 else PhaseStatus.IN_PROGRESS
+        try:
+            await self.ws_client.update_phase(
+                workspace_id, phase_id, status=final_status,
+            )
+        except Exception:
+            pass
 
         phase_done_evt = {
             "type": "workflow:phase_complete",

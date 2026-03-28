@@ -1,8 +1,13 @@
-import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo } from '../types'
+import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo, User, WorkspaceMember } from '../types'
+
+function getAuthHeader(): Record<string, string> {
+  const token = localStorage.getItem('vibeos_token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 async function request<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...opts?.headers },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader(), ...opts?.headers },
     ...opts,
   })
   if (!res.ok) {
@@ -161,6 +166,13 @@ export const gitlabCredentialApi = {
 }
 
 export const workflowApi = {
+  runTask: (workspaceId: string, taskId: string, userMessage = '') =>
+    streamSSE('/api/workflow/run-task', {
+      workspace_id: workspaceId,
+      task_id: taskId,
+      user_message: userMessage,
+    }),
+
   runPhase: (workspaceId: string, phaseType: string, userMessage = '') =>
     streamSSE('/api/workflow/run-phase', {
       workspace_id: workspaceId,
@@ -226,7 +238,7 @@ export async function* streamSSE(
 ): AsyncGenerator<SSEEvent> {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
@@ -366,6 +378,37 @@ function mapAgentChatToMessage(
     agentType: agentType as AgentType,
     timestamp: new Date().toISOString(),
   }
+}
+
+export const authApi = {
+  register: (email: string, password: string, name = '') =>
+    request<{ data: { token: string; user: User } }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    }).then(unwrap),
+
+  login: (email: string, password: string) =>
+    request<{ data: { token: string; user: User } }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }).then(unwrap),
+
+  me: () =>
+    request<{ data: User }>('/api/auth/me').then(unwrap),
+}
+
+export const memberApi = {
+  list: (wsId: string) =>
+    request<{ data: WorkspaceMember[] }>(`/api/workspaces/${wsId}/members`).then(unwrap),
+
+  add: (wsId: string, email: string, role = 'editor') =>
+    request<{ data: WorkspaceMember }>(`/api/workspaces/${wsId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    }).then(unwrap),
+
+  remove: (wsId: string, memberId: string) =>
+    request<void>(`/api/workspaces/${wsId}/members/${memberId}`, { method: 'DELETE' }),
 }
 
 export { mapNLPResultToMessage, mapAgentChatToMessage }

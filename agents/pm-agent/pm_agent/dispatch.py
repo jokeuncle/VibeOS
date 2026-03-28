@@ -65,14 +65,17 @@ class Dispatcher:
             )
             resp.raise_for_status()
             result = resp.json()
-        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:500] if exc.response else str(exc)
             await self.ws.publish_agent_status(
-                task.workspace_id,
-                agent_type,
-                AgentStatus.ERROR,
-                detail=str(exc),
+                task.workspace_id, agent_type, AgentStatus.ERROR, detail=body,
             )
-            return {"error": f"Agent {agent_type} unavailable: {exc}"}
+            return {"error": f"Agent {agent_type.value} error ({exc.response.status_code}): {body}"}
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            await self.ws.publish_agent_status(
+                task.workspace_id, agent_type, AgentStatus.ERROR, detail=str(exc),
+            )
+            return {"error": f"Agent {agent_type.value} unavailable: {exc}"}
 
         await self.ws.publish_agent_status(
             task.workspace_id,

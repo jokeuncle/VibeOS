@@ -86,6 +86,28 @@ type TestRepoConnectionResp struct {
 	Message     string `json:"message,omitempty"`
 }
 
+// Auth DTOs
+type RegisterReq struct {
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+type LoginReq struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type AuthResponse struct {
+	Token string `json:"token"`
+	User  User   `json:"user"`
+}
+
+type AddMemberReq struct {
+	Email string `json:"email"`
+	Role  string `json:"role"` // editor | viewer
+}
+
 type APIResponse[T any] struct {
 	Data  T      `json:"data"`
 	Error string `json:"error,omitempty"`

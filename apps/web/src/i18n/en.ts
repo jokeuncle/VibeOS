@@ -100,6 +100,7 @@ const en = {
 
   'task.add': 'Add task',
   'task.addPlaceholder': 'Task title…',
+  'task.run': 'Run',
   'task.edit': 'Edit',
   'task.delete': 'Delete',
   'task.deleted': 'Task deleted',
@@ -320,6 +321,8 @@ const en = {
   'workflow.taskError': 'Task error',
   'workflow.projectStart': 'Starting project lifecycle',
   'workflow.projectComplete': 'Project lifecycle complete',
+  'workflow.addInstructions': 'Add instructions for agents',
+  'workflow.instructionPlaceholder': 'Optional: tell the agent what to focus on…',
 
   'artifact.title': 'Artifacts',
   'artifact.empty': 'No artifacts generated yet',
@@ -367,6 +370,25 @@ const en = {
   'gitlab.close': 'Close',
   'gitlab.back': '← Back',
   'gitlab.repoRequired': 'Credential, project ID, and project name are required',
+
+  'auth.login': 'Log In',
+  'auth.register': 'Sign Up',
+  'auth.logout': 'Log Out',
+  'auth.emailPlaceholder': 'Email',
+  'auth.passwordPlaceholder': 'Password',
+  'auth.namePlaceholder': 'Name',
+  'auth.haveAccount': 'Already have an account? Log in',
+  'auth.noAccount': "Don't have an account? Sign up",
+  'auth.loading': 'Please wait…',
+  'auth.skipLogin': 'Continue without account',
+
+  'member.title': 'Members',
+  'member.add': 'Add member',
+  'member.remove': 'Remove',
+  'member.owner': 'Owner',
+  'member.editor': 'Editor',
+  'member.viewer': 'Viewer',
+  'member.emailPlaceholder': 'Enter email to invite…',
 
   'error.llmRateLimit': 'The AI model has reached its usage limit. Please try again later or switch to another model.',
   'error.llmUnavailable': 'The AI service is temporarily unavailable. Please try again shortly.',

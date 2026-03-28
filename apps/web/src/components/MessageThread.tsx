@@ -176,8 +176,24 @@ function RichBlockRenderer({ block }: { block: RichBlock }) {
   }
 }
 
+function SystemMessage({ msg }: { msg: Message }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-2 py-0.5"
+    >
+      <div className="flex-1 h-px bg-border-subtle" />
+      <span className="text-[10px] text-text-tertiary font-mono shrink-0">{msg.content}</span>
+      <div className="flex-1 h-px bg-border-subtle" />
+    </motion.div>
+  )
+}
+
 function MessageBubble({ msg }: { msg: Message }) {
   const t = useT()
+  if (msg.role === 'system') return <SystemMessage msg={msg} />
+
   const agentLabel = msg.agentType
     ? t(`agent.name.${msg.agentType}` as TranslationKey)
     : t('conversation.agent')

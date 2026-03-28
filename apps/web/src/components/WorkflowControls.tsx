@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Play, Zap, CheckCircle2, XCircle, Loader2, SkipForward, CircleDot } from 'lucide-react'
+import { Play, Zap, CheckCircle2, XCircle, Loader2, SkipForward, CircleDot, MessageSquare } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { WorkflowEvent, Phase } from '../types'
@@ -32,6 +33,8 @@ const EVENT_COLOR: Record<string, string> = {
 export default function WorkflowControls({ phases }: { phases: Phase[] }) {
   const { workflowRunning, workflowEvents, runPhase, runProject, activePhaseId } = useWorkspaceStore()
   const t = useT()
+  const [userMessage, setUserMessage] = useState('')
+  const [showMsgInput, setShowMsgInput] = useState(false)
 
   function phaseName(type: string | undefined): string {
     if (!type) return ''
@@ -74,10 +77,10 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
 
   return (
     <div className="rounded-xl border border-border-subtle bg-surface-1 overflow-hidden">
-      <div className="px-4 py-3 flex items-center gap-3">
-        <div className="flex items-center gap-2 flex-1">
+      <div className="px-4 py-3 space-y-2">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => runPhaseType && runPhase(runPhaseType)}
+            onClick={() => runPhaseType && runPhase(runPhaseType, userMessage || undefined)}
             disabled={workflowRunning}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               workflowRunning
@@ -99,7 +102,7 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
           </button>
 
           <button
-            onClick={runProject}
+            onClick={() => runProject(userMessage || undefined)}
             disabled={workflowRunning}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               workflowRunning
@@ -110,7 +113,36 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
             <Zap className="w-3.5 h-3.5" />
             {t('workflow.runProject' as TranslationKey)}
           </button>
+
+          <button
+            onClick={() => setShowMsgInput(!showMsgInput)}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              showMsgInput ? 'bg-accent/10 text-accent' : 'text-text-tertiary hover:bg-surface-3'
+            }`}
+            title={t('workflow.addInstructions' as TranslationKey)}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+          </button>
         </div>
+
+        <AnimatePresence>
+          {showMsgInput && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <input
+                type="text"
+                value={userMessage}
+                onChange={(e) => setUserMessage(e.target.value)}
+                placeholder={t('workflow.instructionPlaceholder' as TranslationKey)}
+                className="w-full px-3 py-1.5 rounded-lg border border-border-default bg-surface-2 text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <AnimatePresence>
