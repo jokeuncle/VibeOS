@@ -110,7 +110,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, req models.CreateWorkspac
 		return nil, fmt.Errorf("create workspace: %w", err)
 	}
 
-	s.logActivity(ctx, wsID, "workspace_created", fmt.Sprintf("Workspace '%s' created", req.Name), nil)
+	s.logActivity(ctx, wsID, "workspace_created", req.Name, nil)
 	s.publishEvent(ctx, wsID, "workspace_created", map[string]string{"id": wsID, "name": req.Name})
 
 	return s.store.GetWorkspace(ctx, wsID)
@@ -186,7 +186,7 @@ func (s *Service) UpdatePhaseStatus(ctx context.Context, wsID, phaseID, status s
 	}
 
 	s.logActivity(ctx, wsID, "phase_status_changed",
-		fmt.Sprintf("Phase '%s' changed to %s", updated.Name, status), nil)
+		fmt.Sprintf("%s → %s", updated.Name, status), nil)
 	s.publishEvent(ctx, wsID, models.WSEventPhaseUpdate, updated)
 
 	return updated, nil
@@ -226,7 +226,7 @@ func (s *Service) CreateTask(ctx context.Context, wsID, phaseID string, req mode
 		s.log.Error("failed to recalculate workspace progress", "error", err)
 	}
 
-	s.logActivity(ctx, wsID, "task_created", fmt.Sprintf("Task '%s' created", req.Title), nil)
+	s.logActivity(ctx, wsID, "task_created", req.Title, nil)
 	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, task)
 
 	return task, nil
@@ -247,7 +247,7 @@ func (s *Service) UpdateTask(ctx context.Context, wsID, taskID string, req model
 		}
 	}
 
-	s.logActivity(ctx, wsID, "task_updated", fmt.Sprintf("Task '%s' updated", task.Title), nil)
+	s.logActivity(ctx, wsID, "task_updated", task.Title, nil)
 	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, task)
 
 	if req.Status != nil && *req.Status == string(models.StatusCompleted) {
@@ -278,7 +278,7 @@ func (s *Service) DeleteTask(ctx context.Context, wsID, taskID string) error {
 		s.log.Error("failed to recalculate workspace progress", "error", err)
 	}
 
-	s.logActivity(ctx, wsID, "task_deleted", fmt.Sprintf("Task '%s' deleted", task.Title), nil)
+	s.logActivity(ctx, wsID, "task_deleted", task.Title, nil)
 	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, map[string]string{"id": taskID, "deleted": "true"})
 
 	return nil
@@ -328,7 +328,7 @@ func (s *Service) CreateArtifact(ctx context.Context, wsID string, req models.Cr
 
 	agentType := models.AgentType(req.AgentType)
 	s.logActivity(ctx, wsID, "artifact_created",
-		fmt.Sprintf("Artifact '%s' (%s) created by %s", req.Title, req.Type, req.AgentType), &agentType)
+		fmt.Sprintf("%s [%s]", req.Title, req.Type), &agentType)
 	s.publishEvent(ctx, wsID, "artifact_created", artifact)
 
 	return artifact, nil

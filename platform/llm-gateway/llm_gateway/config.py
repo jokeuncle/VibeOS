@@ -14,6 +14,7 @@ class Settings:
     deepseek_api_key: str | None = os.getenv("DEEPSEEK_API_KEY")
     dashscope_api_key: str | None = os.getenv("DASHSCOPE_API_KEY")
     volcengine_api_key: str | None = os.getenv("VOLCENGINE_API_KEY") or os.getenv("ARK_API_KEY")
+    llm_model: str = os.getenv("LLM_MODEL", "doubao-seed-2-0-pro-260215")
 
     default_model: str = os.getenv("DEFAULT_MODEL", "auto")
     default_temperature: float = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
@@ -34,14 +35,14 @@ class Settings:
         if self.dashscope_api_key:
             models.append("qwen-plus")
         if self.volcengine_api_key:
-            models.append("doubao-seed-2-0-pro-260215")
+            models.append(self.llm_model)
         return models
 
     @property
     def default_preference_order(self) -> list[str]:
         """Preferred model order when no capability contract is given."""
         return [m for m in [
-            "doubao-seed-2-0-pro-260215",
+            self.llm_model,
             "claude-sonnet-4-20250514",
             "gpt-4o",
             "deepseek-chat",

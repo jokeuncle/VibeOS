@@ -34,6 +34,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global router_instance, cb_registry, budget_manager, trust_manager, redis_client
 
     router_instance = ModelRouter(settings.available_models)
+    # Sync any dynamically registered models back into MODULE_REGISTRY so _call_llm can look them up
+    MODEL_REGISTRY.update(router_instance._profiles)
     cb_registry = CircuitBreakerRegistry()
 
     redis_client = redis.from_url(settings.redis_url, decode_responses=False)

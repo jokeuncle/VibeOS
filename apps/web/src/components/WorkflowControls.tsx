@@ -29,34 +29,41 @@ const EVENT_COLOR: Record<string, string> = {
   'workflow:project_error': 'text-danger',
 }
 
-function eventLabel(event: WorkflowEvent): string {
-  switch (event.type) {
-    case 'workflow:project_start': return 'Starting project lifecycle'
-    case 'workflow:project_complete': return 'Project lifecycle complete!'
-    case 'workflow:phase_start': return `Phase: ${event.phase}`
-    case 'workflow:phase_complete': {
-      const ok = event.tasks_executed ?? 0
-      const total = event.tasks_total
-      const failed = event.tasks_failed ?? 0
-      if (total != null && failed > 0) {
-        return `${event.phase} finished (${ok}/${total} ok, ${failed} failed)`
-      }
-      if (total != null && total !== ok) {
-        return `${event.phase} complete (${ok}/${total} tasks ok)`
-      }
-      return `${event.phase} complete (${ok} tasks)`
-    }
-    case 'workflow:phase_skip': return `${event.phase} skipped: ${event.reason}`
-    case 'workflow:task_start': return `[${(event.index ?? 0) + 1}/${event.total ?? '?'}] ${event.task_title ?? ''}`
-    case 'workflow:task_complete': return `Done: ${event.task_title ?? event.task_id ?? ''}`
-    case 'workflow:task_error': return `Error: ${event.task_title ?? event.task_id ?? ''} - ${event.error ?? 'unknown'}`
-    default: return event.type
-  }
-}
-
 export default function WorkflowControls({ phases }: { phases: Phase[] }) {
   const { workflowRunning, workflowEvents, runPhase, runProject, activePhaseId } = useWorkspaceStore()
   const t = useT()
+
+  function phaseName(type: string | undefined): string {
+    if (!type) return ''
+    const key = `phase.${type}` as TranslationKey
+    return t(key) || type
+  }
+
+  function eventLabel(event: WorkflowEvent): string {
+    switch (event.type) {
+      case 'workflow:project_start': return t('workflow.projectStart' as TranslationKey)
+      case 'workflow:project_complete': return t('workflow.projectComplete' as TranslationKey)
+      case 'workflow:phase_start': return `${t('workflow.phaseStart' as TranslationKey)}：${phaseName(event.phase)}`
+      case 'workflow:phase_complete': {
+        const ok = event.tasks_executed ?? 0
+        const total = event.tasks_total
+        const failed = event.tasks_failed ?? 0
+        const name = phaseName(event.phase)
+        if (total != null && failed > 0) {
+          return `${name} ${t('workflow.phaseComplete' as TranslationKey)}（${ok}/${total}，${failed} ${t('workflow.taskError' as TranslationKey)}）`
+        }
+        if (total != null && total !== ok) {
+          return `${name} ${t('workflow.phaseComplete' as TranslationKey)}（${ok}/${total} ${t('progress.tasks' as TranslationKey)}）`
+        }
+        return `${name} ${t('workflow.phaseComplete' as TranslationKey)}（${ok} ${t('progress.tasks' as TranslationKey)}）`
+      }
+      case 'workflow:phase_skip': return `${phaseName(event.phase)} ${t('workflow.phaseSkip' as TranslationKey)}：${event.reason ?? ''}`
+      case 'workflow:task_start': return `[${(event.index ?? 0) + 1}/${event.total ?? '?'}] ${event.task_title ?? ''}`
+      case 'workflow:task_complete': return `${t('workflow.taskComplete' as TranslationKey)}：${event.task_title ?? event.task_id ?? ''}`
+      case 'workflow:task_error': return `${t('workflow.taskError' as TranslationKey)}：${event.task_title ?? event.task_id ?? ''} - ${event.error ?? 'unknown'}`
+      default: return event.type
+    }
+  }
 
   const runPhaseType =
     phases.find((p) => p.id === activePhaseId)?.type

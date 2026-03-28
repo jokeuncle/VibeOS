@@ -111,23 +111,50 @@ MODEL_REGISTRY: dict[str, ModelProfile] = {
         chinese=True,
         litellm_model="volcengine/doubao-seed-2-0-pro-260215",
     ),
+    "doubao-seed-2-0-code-250526": ModelProfile(
+        name="doubao-seed-2-0-code-250526",
+        provider="volcengine",
+        reasoning=ReasoningLevel.ADVANCED,
+        context_window=256_000,
+        code_generation=True,
+        tool_calling=True,
+        chinese=True,
+        litellm_model="volcengine/doubao-seed-2-0-code-250526",
+    ),
 }
 
 AGENT_TYPE_DEFAULTS: dict[str, str] = {
     "pm": "doubao-seed-2-0-pro-260215",
     "architecture": "doubao-seed-2-0-pro-260215",
-    "frontend": "claude-sonnet-4-20250514",
-    "backend": "claude-sonnet-4-20250514",
-    "development": "claude-sonnet-4-20250514",
-    "qa": "deepseek-chat",
-    "devops": "deepseek-chat",
+    "frontend": "doubao-seed-2-0-pro-260215",
+    "backend": "doubao-seed-2-0-pro-260215",
+    "development": "doubao-seed-2-0-pro-260215",
+    "qa": "doubao-seed-2-0-pro-260215",
+    "devops": "doubao-seed-2-0-pro-260215",
     "default": "doubao-seed-2-0-pro-260215",
 }
 
 
 class ModelRouter:
     def __init__(self, available_models: list[str]) -> None:
-        self._profiles = {k: v for k, v in MODEL_REGISTRY.items() if k in available_models}
+        registry = dict(MODEL_REGISTRY)
+        # Dynamically register any models specified via env that aren't in the static registry
+        for model_name in available_models:
+            if model_name not in registry:
+                provider = "volcengine" if any(
+                    x in model_name for x in ["doubao", "seed"]
+                ) else "unknown"
+                registry[model_name] = ModelProfile(
+                    name=model_name,
+                    provider=provider,
+                    reasoning=ReasoningLevel.ADVANCED,
+                    context_window=128_000,
+                    code_generation=True,
+                    tool_calling=True,
+                    chinese=True,
+                    litellm_model=f"{provider}/{model_name}" if provider != "unknown" else model_name,
+                )
+        self._profiles = {k: v for k, v in registry.items() if k in available_models}
 
     def select(
         self,

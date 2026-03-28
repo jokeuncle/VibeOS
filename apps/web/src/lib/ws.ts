@@ -75,6 +75,25 @@ function handleWSEvent(event: Record<string, any>) {
     })
   }
 
+  // Directly patch agent status in store – no API round-trip, immediate UI update
+  if (event.type === 'agent:status' && event.workspaceId) {
+    store.updateAgentStatus(
+      event.workspaceId,
+      event.agentType,
+      event.status,
+      event.detail,
+    )
+  }
+
+  // Directly patch task status from workflow events broadcast via WS gateway
+  if (event.workspaceId === activeWsId) {
+    if (event.type === 'workflow:task_start' && event.task_id) {
+      store.patchTaskStatus(event.workspaceId, event.task_id, 'in_progress')
+    } else if (event.type === 'workflow:task_complete' && event.task_id) {
+      store.patchTaskStatus(event.workspaceId, event.task_id, 'completed')
+    }
+  }
+
   if (event.type?.startsWith('workflow:') && event.workspaceId === activeWsId) {
     if (!store.workflowRunning) {
       const prev = useWorkspaceStore.getState().workflowEvents
@@ -82,6 +101,7 @@ function handleWSEvent(event: Record<string, any>) {
     }
   }
 
+  // Debounced full refresh for all workspace-related events (tasks created, etc.)
   if (event.workspaceId && event.workspaceId === activeWsId) {
     if (refreshDebounce) clearTimeout(refreshDebounce)
     refreshDebounce = setTimeout(() => {

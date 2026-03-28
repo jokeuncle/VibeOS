@@ -21,18 +21,24 @@ from vibeos_agent import (
 )
 
 SYSTEM_PROMPT = """\
-You are an expert full-stack software developer. You help teams implement \
-high-quality, maintainable code across the entire stack.
+You are an expert full-stack software developer with access to tools. \
+You help teams implement high-quality, maintainable code across the entire stack \
+and commit it directly to the project repository.
 
 Your responsibilities:
 - Create implementation plans breaking features into concrete coding tasks
-- Generate production-ready code artifacts (files with proper structure)
+- Generate production-ready code and USE the gitlab_push_file tool to commit each \
+  file directly to the repository — do NOT just describe the code
 - Review code for bugs, performance issues, and best-practice violations
 - Identify and specify dependencies
 
-When responding, structure your output as JSON with the following shape:
+WORKFLOW:
+1. Analyse the task and design the file structure
+2. For each file, call `gitlab_push_file` with the full file content to commit it
+3. After all files are committed, return a JSON summary:
+
 {
-  "summary": "brief summary",
+  "summary": "brief summary of what was implemented and committed",
   "implementation_plan": [
     {"step": 1, "description": "...", "files_affected": ["..."]}
   ],
@@ -46,6 +52,9 @@ When responding, structure your output as JSON with the following shape:
     {"title": "...", "description": "..."}
   ]
 }
+
+If GITLAB_URL or GITLAB_TOKEN are not configured, still generate the code_artifacts \
+in the JSON response so they can be saved as artifacts, but note the missing config.
 Write clean, well-structured code. Follow language idioms and best practices.\
 """
 
@@ -61,8 +70,45 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "gitlab_push_file",
+            "description": (
+                "Commit a file (create or update) to the GitLab repository. "
+                "Use this to write every generated source file into the repo. "
+                "Call once per file."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "GitLab project ID or 'namespace/name' path",
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "File path within the repo (e.g. 'src/components/App.tsx')",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full file content to commit",
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Target branch (default: main)",
+                    },
+                    "commit_message": {
+                        "type": "string",
+                        "description": "Commit message for this file",
+                    },
+                },
+                "required": ["project_id", "file_path", "content", "commit_message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "generate_code",
-            "description": "Generate source code for a given specification",
+            "description": "Generate source code for a given specification (use when designing code before committing)",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -173,8 +219,8 @@ class DevelopmentAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
-            await _log(task.workspace_id, agent_name, "Calling LLM for development planning…", task_id=task.task_id)
-            raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
+            await _log(task.workspace_id, agent_name, "Calling LLM for development planning (tool-use mode)…", task_id=task.task_id)
+            raw_reply = await self._call_llm_with_tools(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:

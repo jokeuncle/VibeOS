@@ -190,9 +190,13 @@ const zh: Record<TranslationKey, string> = {
   'activity.title': '活动日志',
   'activity.task_created': '创建任务',
   'activity.task_updated': '更新任务',
+  'activity.task_deleted': '删除任务',
   'activity.phase_changed': '阶段变更',
+  'activity.phase_status_changed': '阶段状态变更',
   'activity.agent_action': 'Agent 操作',
   'activity.workspace_updated': '空间更新',
+  'activity.workspace_created': '创建空间',
+  'activity.artifact_created': '产出物生成',
   'activity.empty': '暂无活动',
 
   'dashboard.title': '仪表盘',

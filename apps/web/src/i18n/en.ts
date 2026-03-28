@@ -188,9 +188,13 @@ const en = {
   'activity.title': 'Activity',
   'activity.task_created': 'Task created',
   'activity.task_updated': 'Task updated',
+  'activity.task_deleted': 'Task deleted',
   'activity.phase_changed': 'Phase changed',
+  'activity.phase_status_changed': 'Phase status changed',
   'activity.agent_action': 'Agent action',
   'activity.workspace_updated': 'Workspace updated',
+  'activity.workspace_created': 'Workspace created',
+  'activity.artifact_created': 'Artifact created',
   'activity.empty': 'No activity yet',
 
   'dashboard.title': 'Dashboard',

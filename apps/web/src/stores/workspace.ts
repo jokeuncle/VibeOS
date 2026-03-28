@@ -57,6 +57,8 @@ interface WorkspaceState {
   sendNLPMessageStream: (input: string) => void
   sendAgentChatMessageStream: (agentType: string, input: string) => void
   appendExecutionLog: (workspaceId: string, entry: LogEntry) => void
+  updateAgentStatus: (workspaceId: string, agentType: string, status: import('../types').AgentStatus, detail?: string) => void
+  patchTaskStatus: (workspaceId: string, taskId: string, status: PhaseStatus) => void
 
   workflowRunning: boolean
   workflowEvents: WorkflowEvent[]
@@ -642,6 +644,31 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }))
   },
 
+  updateAgentStatus: (workspaceId, agentType, status, detail) => {
+    set((s) => ({
+      workspaces: patchWorkspace(s.workspaces, workspaceId, (w) => ({
+        ...w,
+        agents: w.agents.map((a) =>
+          a.type === agentType
+            ? { ...a, status, ...(detail !== undefined ? { currentTask: detail } : {}) }
+            : a
+        ),
+      })),
+    }))
+  },
+
+  patchTaskStatus: (workspaceId, taskId, status) => {
+    set((s) => ({
+      workspaces: patchWorkspace(s.workspaces, workspaceId, (w) => ({
+        ...w,
+        phases: w.phases.map((p) => ({
+          ...p,
+          tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
+        })),
+      })),
+    }))
+  },
+
   workflowRunning: false,
   workflowEvents: [],
 
@@ -657,6 +684,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           try {
             const data = JSON.parse(evt.data) as WorkflowEvent
             set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
+            // Real-time task status patch – no API round-trip needed
+            if (data.task_id) {
+              if (data.type === 'workflow:task_start') {
+                get().patchTaskStatus(wsId, data.task_id, 'in_progress')
+              } else if (data.type === 'workflow:task_complete') {
+                get().patchTaskStatus(wsId, data.task_id, 'completed')
+              }
+            }
           } catch { /* skip parse errors */ }
         }
       } catch (err) {
@@ -680,6 +715,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           try {
             const data = JSON.parse(evt.data) as WorkflowEvent
             set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
+            // Real-time task status patch – no API round-trip needed
+            if (data.task_id) {
+              if (data.type === 'workflow:task_start') {
+                get().patchTaskStatus(wsId, data.task_id, 'in_progress')
+              } else if (data.type === 'workflow:task_complete') {
+                get().patchTaskStatus(wsId, data.task_id, 'completed')
+              }
+            }
           } catch { /* skip parse errors */ }
         }
       } catch (err) {

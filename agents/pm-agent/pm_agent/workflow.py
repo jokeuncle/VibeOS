@@ -181,6 +181,7 @@ class WorkflowEngine:
             await self.ws_gw.publish_log(
                 workspace_id, "pm",
                 f"[{phase_type}] Executing task {i+1}/{len(pending)}: {task_title}",
+                task_id=task["id"],
             )
 
             try:
@@ -203,28 +204,48 @@ class WorkflowEngine:
                 },
             )
 
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"Dispatching to {agent_type.value} agent...",
+                task_id=task["id"],
+            )
+
             try:
                 result = await self.dispatcher.dispatch(agent_type, agent_task)
 
                 if isinstance(result, dict) and result.get("error"):
                     tasks_failed += 1
+                    err_msg = str(result["error"])
+                    await self.ws_gw.publish_log(
+                        workspace_id, "pm",
+                        f"Task error: {err_msg[:200]}",
+                        level="error",
+                        task_id=task["id"],
+                    )
                     err_evt = {
                         "type": "workflow:task_error",
                         "phase": phase_type,
                         "task_id": task["id"],
                         "task_title": task_title,
-                        "error": str(result["error"]),
+                        "error": err_msg,
                     }
                     yield err_evt
                     await self._broadcast(workspace_id, err_evt)
                 else:
                     tasks_succeeded += 1
+                    result_summary = str(result)[:200]
+                    await self.ws_gw.publish_log(
+                        workspace_id, "pm",
+                        f"Task completed: {result_summary}",
+                        level="success",
+                        task_id=task["id"],
+                    )
                     task_done_evt = {
                         "type": "workflow:task_complete",
                         "phase": phase_type,
                         "task_id": task["id"],
                         "task_title": task_title,
-                        "result_summary": str(result)[:200],
+                        "result_summary": result_summary,
                     }
                     yield task_done_evt
                     await self._broadcast(workspace_id, task_done_evt)

@@ -7,11 +7,13 @@ import type { TranslationKey } from '../i18n/en'
 const ICON_MAP: Record<string, { icon: typeof FileText; color: string }> = {
   task_created: { icon: FileText, color: 'text-accent bg-accent/10' },
   task_updated: { icon: RefreshCw, color: 'text-warning bg-warning/10' },
+  task_deleted: { icon: RefreshCw, color: 'text-danger bg-danger/10' },
   phase_changed: { icon: Zap, color: 'text-success bg-success/10' },
+  phase_status_changed: { icon: Zap, color: 'text-success bg-success/10' },
   agent_action: { icon: Bot, color: 'text-violet-400 bg-violet-500/10' },
   workspace_updated: { icon: Settings, color: 'text-text-tertiary bg-surface-3' },
   workspace_created: { icon: Settings, color: 'text-accent bg-accent/10' },
-  phase_status_changed: { icon: Zap, color: 'text-success bg-success/10' },
+  artifact_created: { icon: Bot, color: 'text-violet-400 bg-violet-500/10' },
 }
 
 const DEFAULT_ICON = { icon: Settings, color: 'text-text-tertiary bg-surface-3' }
