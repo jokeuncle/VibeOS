@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useWorkspaceStore } from './stores/workspace'
 import { useUIStore } from './stores/ui'
+import { connectWebSocket, disconnectWebSocket } from './lib/ws'
 import { useI18nStore } from './i18n'
 import TitleBar from './components/TitleBar'
 import StatusBar from './components/StatusBar'
@@ -23,6 +24,14 @@ export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
   const { toggleSidebar, setSettingsOpen, theme, addTab, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, settingsOpen } = useUIStore()
   const { locale } = useI18nStore()
+
+  const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
+
+  useEffect(() => {
+    fetchWorkspaces()
+    connectWebSocket()
+    return () => disconnectWebSocket()
+  }, [fetchWorkspaces])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)

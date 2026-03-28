@@ -4,13 +4,17 @@ import { useT } from '../i18n'
 import type { ActivityItem } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
-const ICON_MAP: Record<ActivityItem['type'], { icon: typeof FileText; color: string }> = {
+const ICON_MAP: Record<string, { icon: typeof FileText; color: string }> = {
   task_created: { icon: FileText, color: 'text-accent bg-accent/10' },
   task_updated: { icon: RefreshCw, color: 'text-warning bg-warning/10' },
   phase_changed: { icon: Zap, color: 'text-success bg-success/10' },
   agent_action: { icon: Bot, color: 'text-violet-400 bg-violet-500/10' },
   workspace_updated: { icon: Settings, color: 'text-text-tertiary bg-surface-3' },
+  workspace_created: { icon: Settings, color: 'text-accent bg-accent/10' },
+  phase_status_changed: { icon: Zap, color: 'text-success bg-success/10' },
 }
+
+const DEFAULT_ICON = { icon: Settings, color: 'text-text-tertiary bg-surface-3' }
 
 function timeAgo(iso: string, t: (k: TranslationKey) => string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -48,7 +52,7 @@ export default function ActivityLog({ activities }: { activities: ActivityItem[]
 
       <div className="divide-y divide-border-subtle max-h-[280px] overflow-y-auto">
         {activities.map((act, i) => {
-          const { icon: Icon, color } = ICON_MAP[act.type]
+          const { icon: Icon, color } = ICON_MAP[act.type] || DEFAULT_ICON
           const typeKey = `activity.${act.type}` as TranslationKey
           return (
             <motion.div

@@ -42,7 +42,7 @@ export interface Task {
 
 export interface ActivityItem {
   id: string
-  type: 'task_created' | 'task_updated' | 'phase_changed' | 'agent_action' | 'workspace_updated'
+  type: string
   description: string
   timestamp: string
   agentType?: AgentType
