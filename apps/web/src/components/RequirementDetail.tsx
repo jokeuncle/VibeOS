@@ -6,12 +6,11 @@ import { useState, useEffect, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
-import * as Select from '@radix-ui/react-select'
 import {
   Sparkles, RotateCcw, FileText, Palette, Blocks, Code2, FlaskConical,
   Rocket, Activity, Link2, AlertTriangle, Plus, X, Check, SkipForward,
   ChevronDown, ChevronRight, Network, Terminal, BookOpen,
-  TestTube2, PackageCheck, BarChart3, PenSquare, RefreshCw,
+  TestTube2, BarChart3, PenSquare, RefreshCw,
   Layers, MessageSquare, CheckCircle2, Circle, FileCode2,
   GitBranch, Users, Target, ShieldCheck, Server, Gauge, Bell, BookMarked,
   Milestone, ScrollText, Map, Columns3, Braces, Siren, TrendingUp,
@@ -19,7 +18,13 @@ import {
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import AgentTopology from './AgentTopology'
+import AgentLogStream from './AgentLogStream'
+import AgentTimeline from './AgentTimeline'
+import GanttChart from './GanttChart'
 import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
+import { TaskLinksAndAttachments, type TaskRefLink, type TaskLocalFile } from './TaskLinksAndAttachments'
+import FormSelect from './ui/FormSelect'
 import type { PhaseType, PhaseStatus, RequirementRelation, RelationType, AgentType, Task, Artifact } from '../types'
 import type { ReactNode } from 'react'
 import type { TranslationKey } from '../i18n/en'
@@ -304,9 +309,13 @@ function PhaseMatrixCard({ phaseType, tasks, artifacts, currentPhase, iteration,
 
 // ─── Task Drawer ──────────────────────────────────────────────────────────────────
 
-function TaskDrawer({ task, phase, artifacts, open, onClose, t }: {
+function TaskDrawer({ task, phase, artifacts, open, onClose, t, refLinks, onRefLinksChange, localFiles, onLocalFilesChange }: {
   task: Task | null; phase: PhaseType; artifacts: Artifact[]
   open: boolean; onClose: () => void; t: (k: any) => string
+  refLinks: TaskRefLink[]
+  onRefLinksChange: (links: TaskRefLink[]) => void
+  localFiles: TaskLocalFile[]
+  onLocalFilesChange: (files: TaskLocalFile[]) => void
 }) {
   if (!task) return null
 
@@ -362,7 +371,7 @@ function TaskDrawer({ task, phase, artifacts, open, onClose, t }: {
           </div>
 
           {/* ── Tabs ── */}
-          <Tabs.Root defaultValue="detail" className="flex-1 flex flex-col overflow-hidden">
+          <Tabs.Root key={task.id} defaultValue="detail" className="flex-1 flex flex-col overflow-hidden">
             <Tabs.List className="flex border-b border-border-subtle px-5 bg-surface-1/30 shrink-0">
               {([
                 { id: 'detail',    icon: <FileText className="w-3 h-3" />,      label: t('task.detail') },
@@ -412,6 +421,14 @@ function TaskDrawer({ task, phase, artifacts, open, onClose, t }: {
                     </div>
                   )}
                 </div>
+
+                <TaskLinksAndAttachments
+                  variant="compact"
+                  links={refLinks}
+                  onLinksChange={onRefLinksChange}
+                  files={localFiles}
+                  onFilesChange={onLocalFilesChange}
+                />
 
                 {/* Phase-specific hint card */}
                 <PhaseHintCard phase={phase} taskType={typeInfo.key} t={t} />
@@ -634,34 +651,6 @@ function SuggestedTasksEmpty({ phase, reqTitle, sendNLP, t }: {
   )
 }
 
-// ─── Radix Select ─────────────────────────────────────────────────────────────────
-
-function StyledSelect({ value, onValueChange, placeholder, children }: {
-  value: string; onValueChange: (v: string) => void; placeholder?: string; children: ReactNode
-}) {
-  return (
-    <Select.Root value={value} onValueChange={onValueChange}>
-      <Select.Trigger className="flex items-center gap-1.5 bg-surface-3 border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs text-text-primary cursor-pointer hover:border-border-default outline-none data-[state=open]:border-accent transition-colors w-full">
-        <Select.Value placeholder={placeholder} />
-        <Select.Icon className="ml-auto"><ChevronDown className="w-3 h-3 text-text-tertiary" /></Select.Icon>
-      </Select.Trigger>
-      <Select.Portal>
-        <Select.Content position="popper" sideOffset={4} className="bg-surface-2 border border-border-default rounded-lg shadow-xl z-[200] overflow-hidden min-w-[160px] max-w-[280px]">
-          <Select.Viewport className="p-1">{children}</Select.Viewport>
-        </Select.Content>
-      </Select.Portal>
-    </Select.Root>
-  )
-}
-
-function SelectItem({ value, children }: { value: string; children: ReactNode }) {
-  return (
-    <Select.Item value={value} className="flex items-center px-3 py-1.5 text-xs text-text-primary rounded cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[state=checked]:text-accent">
-      <Select.ItemText>{children}</Select.ItemText>
-    </Select.Item>
-  )
-}
-
 // ─── Main component ──────────────────────────────────────────────────────────────
 
 export default function RequirementDetail() {
@@ -678,6 +667,8 @@ export default function RequirementDetail() {
   const [newRelTarget, setNewRelTarget] = useState('')
   const [newRelType, setNewRelType] = useState<RelationType>('depends_on')
   const [drawerTask, setDrawerTask] = useState<Task | null>(null)
+  const [drawerTaskRefLinks, setDrawerTaskRefLinks] = useState<Record<string, TaskRefLink[]>>({})
+  const [drawerTaskLocalFiles, setDrawerTaskLocalFiles] = useState<Record<string, TaskLocalFile[]>>({})
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
 
@@ -686,6 +677,8 @@ export default function RequirementDetail() {
     setSelectedPhase(req.currentPhase)
     setDrawerTask(null)
     setDescExpanded(false)
+    setDrawerTaskRefLinks({})
+    setDrawerTaskLocalFiles({})
   }, [req?.id])
 
   useEffect(() => {
@@ -761,7 +754,24 @@ export default function RequirementDetail() {
 
   return (
     <div className="space-y-6">
-      <TaskDrawer task={drawerTask} phase={selectedPhase} artifacts={artifacts} open={drawerTask !== null} onClose={() => setDrawerTask(null)} t={t} />
+      <TaskDrawer
+        task={drawerTask}
+        phase={selectedPhase}
+        artifacts={artifacts}
+        open={drawerTask !== null}
+        onClose={() => setDrawerTask(null)}
+        t={t}
+        refLinks={drawerTask ? (drawerTaskRefLinks[drawerTask.id] ?? []) : []}
+        onRefLinksChange={(links) => {
+          if (!drawerTask) return
+          setDrawerTaskRefLinks((p) => ({ ...p, [drawerTask.id]: links }))
+        }}
+        localFiles={drawerTask ? (drawerTaskLocalFiles[drawerTask.id] ?? []) : []}
+        onLocalFilesChange={(files) => {
+          if (!drawerTask) return
+          setDrawerTaskLocalFiles((p) => ({ ...p, [drawerTask.id]: files }))
+        }}
+      />
 
       {/* ① Header — same typography + shell as Dashboard summary cards */}
       <motion.div
@@ -842,8 +852,8 @@ export default function RequirementDetail() {
         {showRelations && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
             <div className="rounded-xl border border-border-subtle bg-surface-1/30 p-5 space-y-3">
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-2">
-                <Link2 className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4 flex items-center gap-2 [&_svg]:w-3.5 [&_svg]:h-3.5">
+                <Link2 className="text-text-tertiary shrink-0" />
                 {t('phase.tab.relations')}
                 {relations.length > 0 && <span className="text-[10px] font-mono text-text-tertiary/60 font-normal normal-case">({relations.length})</span>}
               </h4>
@@ -864,16 +874,26 @@ export default function RequirementDetail() {
               {addingRelation ? (
                 <div className="space-y-2 p-3 rounded-lg bg-surface-2/40 border border-accent/25">
                   <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide">{t('requirement.relation.type')}</p>
-                  <StyledSelect value={newRelType} onValueChange={v => setNewRelType(v as RelationType)}>
-                    {RELATION_TYPES.map(rt => <SelectItem key={rt.value} value={rt.value}>{t(rt.labelKey as any)}</SelectItem>)}
-                  </StyledSelect>
+                  <FormSelect
+                    size="sm"
+                    value={newRelType}
+                    options={RELATION_TYPES.map((rt) => ({
+                      value: rt.value,
+                      label: t(rt.labelKey as TranslationKey),
+                    }))}
+                    onChange={(v) => setNewRelType(v as RelationType)}
+                  />
                   <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide mt-2">{t('view.requirements')}</p>
                   {otherReqs.length === 0 ? (
                     <div className="px-3 py-2 rounded-lg bg-surface-3 text-xs text-text-tertiary">{t('requirement.relation.noOther' as any)}</div>
                   ) : (
-                    <StyledSelect value={newRelTarget} onValueChange={setNewRelTarget} placeholder={t('requirement.relation.select')}>
-                      {otherReqs.map(r => <SelectItem key={r.id} value={r.id}>{r.title}</SelectItem>)}
-                    </StyledSelect>
+                    <FormSelect
+                      size="sm"
+                      value={newRelTarget}
+                      placeholder={t('requirement.relation.select')}
+                      options={otherReqs.map((r) => ({ value: r.id, label: r.title }))}
+                      onChange={setNewRelTarget}
+                    />
                   )}
                   <div className="flex gap-2 pt-1">
                     <button onClick={handleAddRelation} disabled={!newRelTarget || otherReqs.length === 0}
@@ -956,6 +976,63 @@ export default function RequirementDetail() {
           </div>
         </motion.div>
       </AnimatePresence>
+
+      {/* ④ Workspace agents & SDLC pipeline (per requirement context) */}
+      {workspace && (
+        <div className="space-y-6 pt-4 mt-2 border-t border-border-subtle/70">
+          <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-2">
+            <Network className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+            {t('requirement.detail.agentsSection' as TranslationKey)}
+          </h3>
+          <AgentTopology agents={workspace.agents} />
+          {workspace.phases.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="rounded-xl border border-border-subtle bg-surface-1/30 p-5"
+            >
+              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">
+                {t('dashboard.phaseProgress')}
+              </h4>
+              <div className="space-y-3">
+                {workspace.phases.map((p) => {
+                  const statusColor: Record<PhaseStatus, string> = {
+                    completed: 'bg-success',
+                    in_progress: 'bg-accent',
+                    pending: 'bg-surface-4',
+                  }
+                  return (
+                    <div key={p.id} className="flex items-center gap-3">
+                      <span className="text-xs text-text-secondary w-24 truncate">
+                        {t(`phase.${p.type}` as TranslationKey)}
+                      </span>
+                      <div className="flex-1 h-2 bg-surface-3 rounded-full overflow-hidden">
+                        <motion.div
+                          className={`h-full rounded-full ${statusColor[p.status]}`}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${p.progress}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-mono text-text-tertiary w-8 text-right">{p.progress}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </motion.div>
+          )}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <GanttChart phases={workspace.phases} startDate={workspace.createdAt} />
+          </motion.div>
+          <AgentTimeline agents={workspace.agents} />
+          <AgentLogStream agents={workspace.agents} />
+        </div>
+      )}
     </div>
   )
 }

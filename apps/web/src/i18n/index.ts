@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { create } from 'zustand'
 import en, { type TranslationKey } from './en'
 import zh from './zh'
@@ -37,5 +38,8 @@ export const useI18nStore = create<I18nState>((set) => ({
 
 export function useT() {
   const locale = useI18nStore((s) => s.locale)
-  return (key: TranslationKey): string => messages[locale][key] ?? key
+  return useCallback(
+    (key: TranslationKey): string => messages[locale][key] ?? key,
+    [locale],
+  )
 }

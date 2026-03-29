@@ -1,6 +1,6 @@
 import {
   PanelLeftClose, PanelLeftOpen, LayoutDashboard, FileStack,
-  Bot, Settings,
+  Settings, Library, Brain, Share2,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import * as Tooltip from '@radix-ui/react-tooltip'
@@ -9,12 +9,20 @@ import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 
-type SidebarSection = 'dashboard' | 'requirements' | 'agents' | 'settings'
+type SidebarSection =
+  | 'dashboard'
+  | 'requirements'
+  | 'knowledgeBase'
+  | 'projectMemory'
+  | 'techKnowledge'
+  | 'settings'
 
 const SECTIONS: { key: SidebarSection; icon: typeof LayoutDashboard; label: TranslationKey }[] = [
   { key: 'dashboard', icon: LayoutDashboard, label: 'sidebar.dashboard' },
   { key: 'requirements', icon: FileStack, label: 'sidebar.requirements' },
-  { key: 'agents', icon: Bot, label: 'sidebar.agents' },
+  { key: 'knowledgeBase', icon: Library, label: 'sidebar.knowledgeBase' },
+  { key: 'projectMemory', icon: Brain, label: 'sidebar.projectMemory' },
+  { key: 'techKnowledge', icon: Share2, label: 'sidebar.techKnowledge' },
   { key: 'settings', icon: Settings, label: 'sidebar.settings' },
 ]
 

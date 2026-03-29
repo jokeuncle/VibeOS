@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Home, Search, Plus, Settings, LayoutDashboard, FileStack, Bot,
+  Home, Search, Plus, Settings, LayoutDashboard, FileStack,
   Sparkles, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -79,13 +79,6 @@ export default function Dock() {
       label: t('sidebar.requirements'),
       action: () => setViewMode('requirements'),
       active: viewMode === 'requirements',
-    },
-    {
-      id: 'agents',
-      icon: <Bot className="w-5 h-5" />,
-      label: t('sidebar.agents'),
-      action: () => setViewMode('agents'),
-      active: viewMode === 'agents',
     },
     {
       id: 'search',

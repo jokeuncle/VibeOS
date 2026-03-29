@@ -46,6 +46,10 @@ VibeOS is an AI-native SDLC platform organized as a monorepo.
 ## Vite Proxy Rules
 
 - `/api/nlp`, `/api/workflow`, `/api/agents` → port 8040 (pm-agent)
+- `/api/feedback` → port 8040 (pm-agent)
+- `/svc/memory` → port 8050 (memory-service), path rewritten
+- `/svc/rag` → port 8060 (rag-pipeline), path rewritten
+- `/svc/knowledge` → port 8070 (knowledge-service), path rewritten
 - All other `/api/*` → port 8010 (workspace-svc)
 - `/ws` → ws://localhost:8020
 

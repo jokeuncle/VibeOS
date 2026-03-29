@@ -8,18 +8,22 @@ import type { TranslationKey } from '../i18n/en'
 import Sidebar from './Sidebar'
 import MessageThread from './MessageThread'
 import Dashboard from './Dashboard'
-import AgentTopology from './AgentTopology'
-import AgentLogStream from './AgentLogStream'
-import AgentTimeline from './AgentTimeline'
-import GanttChart from './GanttChart'
 import RequirementList from './RequirementList'
 import RequirementDetail from './RequirementDetail'
 import RequirementKanban from './RequirementKanban'
 import RequirementGraph from './RequirementGraph'
 import WorkspaceSettings from './WorkspaceSettings'
-import type { PhaseStatus } from '../types'
+import WorkspaceKnowledgeBase from './WorkspaceKnowledgeBase'
+import WorkspaceProjectMemory from './WorkspaceProjectMemory'
+import WorkspaceTechKnowledge from './WorkspaceTechKnowledge'
 
-type ViewMode = 'dashboard' | 'requirements' | 'agents' | 'settings'
+type ViewMode =
+  | 'dashboard'
+  | 'requirements'
+  | 'knowledgeBase'
+  | 'projectMemory'
+  | 'techKnowledge'
+  | 'settings'
 
 const REQ_SUB_VIEWS: { key: 'list' | 'kanban' | 'graph'; icon: typeof FileStack; labelKey: TranslationKey }[] = [
   { key: 'list', icon: FileStack, labelKey: 'reqSubView.list' },
@@ -31,7 +35,6 @@ function ViewContent() {
   const { activeRequirementId } = useWorkspaceStore()
   const workspace = useWorkspaceStore(s => s.workspaces.find(w => w.id === s.activeWorkspaceId))
   const { viewMode, reqSubView } = useUIStore()
-  const t = useT()
   const currentMode = (viewMode as ViewMode) || 'dashboard'
 
   if (!workspace) return null
@@ -47,64 +50,16 @@ function ViewContent() {
     return <RequirementList />
   }
 
-  if (currentMode === 'agents') {
-    const phases = workspace.phases
-    return (
-      <div className="space-y-6">
-        <AgentTopology agents={workspace.agents} />
+  if (currentMode === 'knowledgeBase') {
+    return <WorkspaceKnowledgeBase />
+  }
 
-        {/* Phase progress — agent-driven SDLC phases */}
-        {phases.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="rounded-xl border border-border-subtle bg-surface-1/30 p-5"
-          >
-            <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">
-              {t('dashboard.phaseProgress')}
-            </h4>
-            <div className="space-y-3">
-              {phases.map((p) => {
-                const statusColor: Record<PhaseStatus, string> = {
-                  completed: 'bg-success',
-                  in_progress: 'bg-accent',
-                  pending: 'bg-surface-4',
-                }
-                return (
-                  <div key={p.id} className="flex items-center gap-3">
-                    <span className="text-xs text-text-secondary w-24 truncate">
-                      {t(`phase.${p.type}` as TranslationKey)}
-                    </span>
-                    <div className="flex-1 h-2 bg-surface-3 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full ${statusColor[p.status]}`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${p.progress}%` }}
-                        transition={{ duration: 0.8, ease: 'easeOut' }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-mono text-text-tertiary w-8 text-right">{p.progress}%</span>
-                  </div>
-                )
-              })}
-            </div>
-          </motion.div>
-        )}
+  if (currentMode === 'projectMemory') {
+    return <WorkspaceProjectMemory />
+  }
 
-        {/* Gantt — phase timeline */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-        >
-          <GanttChart phases={phases} startDate={workspace.createdAt} />
-        </motion.div>
-
-        <AgentTimeline agents={workspace.agents} />
-        <AgentLogStream agents={workspace.agents} />
-      </div>
-    )
+  if (currentMode === 'techKnowledge') {
+    return <WorkspaceTechKnowledge />
   }
 
   if (currentMode === 'settings') {
@@ -135,7 +90,12 @@ export default function WorkspaceView() {
   const inReqDetail = currentViewMode === 'requirements' && !!activeRequirementId
   const showReqToolbar = currentViewMode === 'requirements' && !activeRequirementId
 
-  const maxW = inReqDetail ? 'max-w-5xl' : (reqSubView === 'kanban' || reqSubView === 'graph') ? 'max-w-4xl' : 'max-w-3xl'
+  const wideWorkspaceViews =
+    currentViewMode === 'requirements' ||
+    currentViewMode === 'knowledgeBase' ||
+    currentViewMode === 'projectMemory' ||
+    currentViewMode === 'techKnowledge'
+  const maxW = wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
 
   return (
     <div className="flex-1 flex overflow-hidden">

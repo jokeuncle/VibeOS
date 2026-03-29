@@ -6,6 +6,7 @@ import { useT } from '../i18n'
 import { workspaceApi } from '../lib/api'
 import type { Artifact, PhaseType } from '../types'
 import type { TranslationKey } from '../i18n/en'
+import FormSelect from './ui/FormSelect'
 
 const ICON_MAP: Record<string, typeof FileCode2> = {
   schema: Database,
@@ -235,6 +236,13 @@ export default function ArtifactPanel() {
   if (!activeWorkspaceId) return null
 
   const phases = workspace?.phases || []
+  const phaseFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: t('artifact.filterAll' as TranslationKey) },
+      ...phases.map((p) => ({ value: p.id, label: t(`phase.${p.type}` as TranslationKey) })),
+    ],
+    [phases, t],
+  )
 
   return (
     <div>
@@ -252,16 +260,15 @@ export default function ArtifactPanel() {
         </span>
         <div className="flex-1 h-px bg-border-subtle" />
         {artifacts.length > 0 && (
-          <select
+          <FormSelect
+            size="sm"
+            fullWidth={false}
             value={phaseFilter}
-            onChange={(e) => setPhaseFilter(e.target.value)}
-            className="text-[10px] px-2 py-1 rounded-md bg-surface-2 border border-border-subtle text-text-secondary outline-none cursor-pointer"
-          >
-            <option value="all">{t('artifact.filterAll' as TranslationKey)}</option>
-            {phases.map((p) => (
-              <option key={p.id} value={p.id}>{t(`phase.${p.type}` as TranslationKey)}</option>
-            ))}
-          </select>
+            options={phaseFilterOptions}
+            onChange={setPhaseFilter}
+            triggerClassName="min-w-[8rem] max-w-[10rem]"
+            aria-label={t('artifact.filterAll' as TranslationKey)}
+          />
         )}
       </div>
 

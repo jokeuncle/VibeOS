@@ -51,8 +51,22 @@ interface UIState {
   sidebarCollapsed: boolean
   toggleSidebar: () => void
 
-  viewMode: 'dashboard' | 'requirements' | 'agents' | 'settings'
-  setViewMode: (mode: 'dashboard' | 'requirements' | 'agents' | 'settings') => void
+  viewMode:
+    | 'dashboard'
+    | 'requirements'
+    | 'knowledgeBase'
+    | 'projectMemory'
+    | 'techKnowledge'
+    | 'settings'
+  setViewMode: (
+    mode:
+      | 'dashboard'
+      | 'requirements'
+      | 'knowledgeBase'
+      | 'projectMemory'
+      | 'techKnowledge'
+      | 'settings',
+  ) => void
 
   reqSubView: 'list' | 'kanban' | 'graph'
   setReqSubView: (sub: 'list' | 'kanban' | 'graph') => void

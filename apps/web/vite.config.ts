@@ -29,6 +29,22 @@ export default defineConfig({
         target: 'http://localhost:8040',
         changeOrigin: true,
       },
+      // Platform services (workspace-scoped UIs; avoid clashing with workspace-svc `/api/*`)
+      '/svc/memory': {
+        target: 'http://localhost:8050',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/svc\/memory/, ''),
+      },
+      '/svc/rag': {
+        target: 'http://localhost:8060',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/svc\/rag/, ''),
+      },
+      '/svc/knowledge': {
+        target: 'http://localhost:8070',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/svc\/knowledge/, ''),
+      },
       '/api': {
         target: 'http://localhost:8010',
         changeOrigin: true,

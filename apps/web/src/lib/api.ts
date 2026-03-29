@@ -560,4 +560,108 @@ export const feedbackApi = {
     }),
 }
 
+/** Proxied to platform/memory-service (8050). */
+const PLATFORM_MEMORY = '/svc/memory'
+/** Proxied to platform/rag-pipeline (8060). */
+const PLATFORM_RAG = '/svc/rag'
+/** Proxied to platform/knowledge-service (8070). */
+const PLATFORM_KNOWLEDGE = '/svc/knowledge'
+
+async function platformRequest<T>(url: string, opts?: RequestInit): Promise<T> {
+  const isJsonBody = typeof opts?.body === 'string'
+  const res = await fetch(url, {
+    headers: {
+      ...getAuthHeader(),
+      ...(isJsonBody ? { 'Content-Type': 'application/json' } : {}),
+      ...opts?.headers,
+    },
+    ...opts,
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`${res.status}: ${body.slice(0, 400)}`)
+  }
+  if (res.status === 204) return undefined as T
+  return res.json() as Promise<T>
+}
+
+export interface RagSearchHit {
+  text: string
+  score?: number
+  doc_id?: string
+  title?: string
+  doc_type?: string
+  workspace_id?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface KnowledgeDistillResponse {
+  workspace_id: string
+  target_access_level: string
+  extracted?: { patterns?: unknown[]; decisions?: unknown[]; lessons?: unknown[] }
+  stored_count?: number
+  items?: unknown[]
+}
+
+export const platformApi = {
+  memory: {
+    list: (workspaceId: string) =>
+      platformRequest<{ memories: Record<string, unknown>[] }>(
+        `${PLATFORM_MEMORY}/api/memory/all?${new URLSearchParams({ workspace_id: workspaceId })}`,
+      ),
+    add: (workspaceId: string, content: string, metadata: Record<string, unknown> = {}) =>
+      platformRequest<{ status: string }>(`${PLATFORM_MEMORY}/api/memory/add`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content,
+          workspace_id: workspaceId,
+          metadata: { layer: 'project', ...metadata },
+        }),
+      }),
+    delete: (memoryId: string) =>
+      platformRequest<{ status: string }>(
+        `${PLATFORM_MEMORY}/api/memory/${encodeURIComponent(memoryId)}`,
+        { method: 'DELETE' },
+      ),
+    preferences: (workspaceId: string) =>
+      platformRequest<{ workspace_id: string; preferences: unknown }>(
+        `${PLATFORM_MEMORY}/api/preferences/${encodeURIComponent(workspaceId)}`,
+      ),
+  },
+  rag: {
+    search: (workspaceId: string, query: string, topK = 8) =>
+      platformRequest<{ query: string; workspace_id: string; results: RagSearchHit[] }>(
+        `${PLATFORM_RAG}/api/search`,
+        { method: 'POST', body: JSON.stringify({ workspace_id: workspaceId, query, top_k: topK }) },
+      ),
+    indexDocuments: (
+      workspaceId: string,
+      documents: { title: string; content: string; doc_type?: string }[],
+    ) =>
+      platformRequest<Record<string, unknown>>(`${PLATFORM_RAG}/api/index/documents`, {
+        method: 'POST',
+        body: JSON.stringify({ workspace_id: workspaceId, documents }),
+      }),
+    listCollections: () =>
+      platformRequest<{ collections: { workspace_id: string; points_count: number }[] }>(
+        `${PLATFORM_RAG}/api/collections`,
+      ),
+  },
+  knowledge: {
+    search: (query: string, limit = 20) =>
+      platformRequest<{ results: Record<string, unknown>[]; count: number }>(
+        `${PLATFORM_KNOWLEDGE}/api/knowledge/search`,
+        { method: 'POST', body: JSON.stringify({ query, limit, access_level: 'enterprise' }) },
+      ),
+    distill: (workspaceId: string, targetAccessLevel: 'team' | 'bu' | 'enterprise' = 'team') =>
+      platformRequest<KnowledgeDistillResponse>(`${PLATFORM_KNOWLEDGE}/api/distill`, {
+        method: 'POST',
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          target_access_level: targetAccessLevel,
+        }),
+      }),
+  },
+}
+
 export { mapNLPResultToMessage, mapAgentChatToMessage }

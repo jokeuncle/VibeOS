@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { CheckCircle2, Circle, Loader2, Eye, Pencil, Paperclip, Upload, User, Send } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, Eye, Pencil, User, Send } from 'lucide-react'
 import { marked } from 'marked'
 import SlideOver from './ui/SlideOver'
 import DatePicker from './ui/DatePicker'
@@ -7,7 +7,8 @@ import AgentLogStream from './AgentLogStream'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
-import { LABEL_COLORS, type PhaseStatus, type TaskPriority, type LabelColor, type TaskComment, type TaskAttachment } from '../types'
+import { LABEL_COLORS, type PhaseStatus, type TaskPriority, type LabelColor, type TaskComment } from '../types'
+import { TaskLinksAndAttachments, type TaskRefLink, type TaskLocalFile } from './TaskLinksAndAttachments'
 import type { TranslationKey } from '../i18n/en'
 
 const STATUSES: PhaseStatus[] = ['pending', 'in_progress', 'completed']
@@ -59,11 +60,13 @@ export default function TaskDetail() {
   const [previewMode, setPreviewMode] = useState(false)
   const [commentsMap, setCommentsMap] = useState<Record<string, TaskComment[]>>({})
   const [commentText, setCommentText] = useState('')
-  const [attachmentsMap, setAttachmentsMap] = useState<Record<string, TaskAttachment[]>>({})
+  const [refLinksMap, setRefLinksMap] = useState<Record<string, TaskRefLink[]>>({})
+  const [localFilesMap, setLocalFilesMap] = useState<Record<string, TaskLocalFile[]>>({})
 
   const taskKey = taskDetailTaskId || ''
   const comments = commentsMap[taskKey] || []
-  const attachments = attachmentsMap[taskKey] || []
+  const refLinks = refLinksMap[taskKey] || []
+  const localFiles = localFilesMap[taskKey] || []
 
   useEffect(() => {
     if (task) {
@@ -262,43 +265,12 @@ export default function TaskDetail() {
             )}
           </div>
 
-          {/* Attachments */}
-          <div>
-            <label className="text-xs font-medium text-text-tertiary mb-1.5 flex items-center gap-1.5">
-              <Paperclip className="w-3 h-3" />
-              {t('attachment.title')}
-            </label>
-            {attachments.length > 0 && (
-              <div className="space-y-1 mb-2">
-                {attachments.map((a) => (
-                  <div key={a.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-border-subtle text-xs">
-                    <Paperclip className="w-3 h-3 text-text-tertiary" />
-                    <span className="text-text-primary flex-1 truncate">{a.name}</span>
-                    <span className="text-text-tertiary font-mono">{a.size}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={() => {
-                setAttachmentsMap((prev) => {
-                  const existing = prev[taskKey] || []
-                  return {
-                    ...prev,
-                    [taskKey]: [...existing, {
-                      id: `att-${Date.now()}`,
-                      name: `document-${existing.length + 1}.pdf`,
-                      size: `${Math.floor(Math.random() * 900 + 100)} KB`,
-                    }],
-                  }
-                })
-              }}
-              className="w-full py-3 border-2 border-dashed border-border-default rounded-lg text-xs text-text-tertiary hover:border-accent/30 hover:text-accent transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              {t('attachment.drop')}
-            </button>
-          </div>
+          <TaskLinksAndAttachments
+            links={refLinks}
+            onLinksChange={(next) => setRefLinksMap((p) => ({ ...p, [taskKey]: next }))}
+            files={localFiles}
+            onFilesChange={(next) => setLocalFilesMap((p) => ({ ...p, [taskKey]: next }))}
+          />
 
           {/* Comments */}
           <div>

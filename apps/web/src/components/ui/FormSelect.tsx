@@ -1,62 +1,165 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Check } from 'lucide-react'
 
-interface FormSelectProps {
+export interface FormSelectOption {
   value: string
-  options: { value: string; label: string }[]
-  placeholder?: string
-  onChange: (v: string) => void
+  label: string
 }
 
-export default function FormSelect({ value, options, placeholder, onChange }: FormSelectProps) {
+export interface FormSelectProps {
+  value: string
+  options: FormSelectOption[]
+  placeholder?: string
+  onChange: (v: string) => void
+  /** Compact for toolbars; default forms. */
+  size?: 'sm' | 'md'
+  disabled?: boolean
+  /** Default true. Set false for inline / toolbar picks. */
+  fullWidth?: boolean
+  className?: string
+  triggerClassName?: string
+  /** Renders as muted prefix before value (e.g. filter label). */
+  prefix?: ReactNode
+  id?: string
+  'aria-label'?: string
+}
+
+const SIZE = {
+  sm: {
+    trigger: 'px-2.5 py-1.5 text-[11px] gap-1.5 min-h-[32px]',
+    item: 'px-3 py-1.5 text-[11px]',
+    chevron: 'w-3 h-3',
+    check: 'w-3 h-3',
+  },
+  md: {
+    trigger: 'px-3 py-2 text-sm gap-2 min-h-[40px]',
+    item: 'px-3 py-2 text-sm',
+    chevron: 'w-3.5 h-3.5',
+    check: 'w-3.5 h-3.5',
+  },
+} as const
+
+export default function FormSelect({
+  value,
+  options,
+  placeholder,
+  onChange,
+  size = 'md',
+  disabled = false,
+  fullWidth: fullWidthProp,
+  className = '',
+  triggerClassName = '',
+  prefix,
+  id,
+  'aria-label': ariaLabel,
+}: FormSelectProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const selected = options.find((o) => o.value === value)
+  const sz = SIZE[size]
+  const fullWidth = fullWidthProp ?? prefix == null
 
   useEffect(() => {
     if (!open) return
-    function close(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
     }
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
   return (
-    <div className="relative" ref={ref}>
+    <div
+      ref={ref}
+      className={`relative ${fullWidth ? 'w-full' : 'inline-block align-middle'} ${className}`.trim()}
+    >
       <button
+        id={id}
         type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent/50 transition-colors"
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        className={`
+          flex items-center justify-between rounded-lg border transition-all outline-none
+          bg-surface-2/90 backdrop-blur-sm border-border-subtle
+          hover:border-border-default hover:bg-surface-2
+          focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0
+          shadow-sm
+          disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:border-border-subtle
+          ${disabled ? '' : 'cursor-pointer'}
+          ${fullWidth ? 'w-full' : 'w-max min-w-[7rem] max-w-[min(100vw-2rem,280px)]'}
+          ${sz.trigger}
+          ${open ? 'border-accent/50 ring-1 ring-accent/20' : ''}
+          ${triggerClassName}
+        `.trim().replace(/\s+/g, ' ')}
       >
-        <span className={selected ? 'text-text-primary' : 'text-text-quaternary'}>
-          {selected?.label ?? placeholder ?? ''}
-        </span>
-        <ChevronDown className={`w-3.5 h-3.5 text-text-tertiary transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.1 }}
-            className="absolute top-full mt-1 left-0 right-0 bg-surface-2 border border-border-subtle rounded-lg shadow-xl shadow-black/30 z-50 py-1 max-h-48 overflow-y-auto"
+        <span className="flex items-center gap-1.5 min-w-0 flex-1 text-left">
+          {prefix != null && prefix !== '' && (
+            <span className="text-text-tertiary shrink-0 font-normal">{prefix}:</span>
+          )}
+          <span
+            className={`truncate ${selected ? 'text-text-primary' : 'text-text-quaternary'} ${prefix ? 'font-medium' : ''}`}
           >
-            {options.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => { onChange(opt.value); setOpen(false) }}
-                className={`w-full text-left px-3 py-1.5 text-sm cursor-pointer transition-colors ${
-                  opt.value === value ? 'text-accent bg-accent/5' : 'text-text-secondary hover:bg-surface-3'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </motion.div>
+            {selected?.label ?? placeholder ?? '—'}
+          </span>
+        </span>
+        <ChevronDown
+          className={`shrink-0 text-text-tertiary transition-transform duration-200 ${sz.chevron} ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+
+      <AnimatePresence>
+        {open && !disabled && (
+          <>
+            <div
+              className="fixed inset-0 z-[140]"
+              aria-hidden
+              onClick={() => setOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+              role="listbox"
+              className={`
+                absolute z-[150] py-1.5 max-h-60 overflow-y-auto overflow-x-hidden
+                bg-surface-2/95 backdrop-blur-md border border-border-default rounded-xl
+                shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]
+                ${fullWidth ? 'left-0 right-0' : 'left-0 min-w-full'}
+              `.trim().replace(/\s+/g, ' ')}
+              style={{ top: 'calc(100% + 6px)' }}
+            >
+              {options.map((opt) => {
+                const isOn = opt.value === value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="option"
+                    aria-selected={isOn}
+                    onClick={() => {
+                      onChange(opt.value)
+                      setOpen(false)
+                    }}
+                    className={`
+                      w-full flex items-center justify-between gap-2 rounded-lg mx-1 max-w-[calc(100%-8px)]
+                      text-left transition-colors cursor-pointer outline-none
+                      ${sz.item}
+                      ${isOn ? 'bg-accent/12 text-accent' : 'text-text-secondary hover:bg-surface-3/90'}
+                    `.trim().replace(/\s+/g, ' ')}
+                  >
+                    <span className="truncate">{opt.label}</span>
+                    {isOn && <Check className={`shrink-0 text-accent ${sz.check}`} aria-hidden />}
+                  </button>
+                )
+              })}
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>

@@ -6,6 +6,7 @@ import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import { memberApi } from '../lib/api'
 import GitLabReposPanel from './GitLabReposPanel'
+import FormSelect from './ui/FormSelect'
 import type { WorkspaceMember } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -227,8 +228,8 @@ export default function WorkspaceSettings() {
         transition={{ delay: 0.12 }}
         className="rounded-xl border border-warning/25 bg-surface-1/30 p-6"
       >
-        <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
-          <RotateCcw className="w-3.5 h-3.5 text-warning shrink-0" />
+        <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-5 flex items-center gap-2 [&_svg]:w-3.5 [&_svg]:h-3.5">
+          <RotateCcw className="text-warning shrink-0" />
           {t('settings.resetPhases.title' as TranslationKey)}
         </h3>
         <p className="text-xs text-text-tertiary leading-relaxed mb-4 max-w-xl">
@@ -238,7 +239,7 @@ export default function WorkspaceSettings() {
           type="button"
           onClick={handleResetAllPhases}
           disabled={resettingPhases}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-warning/35 bg-warning/10 text-warning text-xs font-medium hover:bg-warning/15 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-warning/35 bg-warning/10 text-warning text-xs font-medium hover:bg-warning/15 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
         >
           <RotateCcw className={`w-3.5 h-3.5 shrink-0 ${resettingPhases ? 'animate-spin' : ''}`} />
           {t('settings.resetPhases.button' as TranslationKey)}
@@ -266,14 +267,17 @@ export default function WorkspaceSettings() {
             placeholder={t('member.emailPlaceholder')}
             className="flex-1 text-sm text-text-primary bg-surface-2 rounded-lg px-3 py-2 outline-none border border-border-subtle focus:border-accent/40 transition-colors"
           />
-          <select
+          <FormSelect
+            size="sm"
+            fullWidth={false}
             value={newRole}
-            onChange={e => setNewRole(e.target.value as 'editor' | 'viewer')}
-            className="text-xs text-text-secondary bg-surface-2 rounded-lg px-2 py-2 outline-none border border-border-subtle cursor-pointer"
-          >
-            <option value="editor">{t('settings.memberRole.editor' as TranslationKey)}</option>
-            <option value="viewer">{t('settings.memberRole.viewer' as TranslationKey)}</option>
-          </select>
+            options={[
+              { value: 'editor', label: t('settings.memberRole.editor' as TranslationKey) },
+              { value: 'viewer', label: t('settings.memberRole.viewer' as TranslationKey) },
+            ]}
+            onChange={(v) => setNewRole(v as 'editor' | 'viewer')}
+            triggerClassName="min-w-[5.5rem]"
+          />
           <button
             onClick={handleAddMember}
             disabled={addingMember || !newEmail.trim()}

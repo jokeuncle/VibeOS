@@ -106,6 +106,9 @@ VibeOS 是一个 AI 原生的软件开发生命周期平台，通过多 Agent �
 | Path Pattern | Target | Service |
 |-------------|--------|---------|
 | `/api/nlp`, `/api/workflow`, `/api/agents`, `/api/feedback` | `:8040` | pm-agent |
+| `/svc/memory` (rewritten) | `:8050` | memory-service |
+| `/svc/rag` (rewritten) | `:8060` | rag-pipeline |
+| `/svc/knowledge` (rewritten) | `:8070` | knowledge-service |
 | `/api/*` (all other) | `:8010` | workspace-svc |
 | `/ws` | `ws://:8020` | ws-gateway |
 
