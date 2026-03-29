@@ -91,6 +91,12 @@ export const workspaceApi = {
       body: JSON.stringify({ status }),
     }).then(unwrap),
 
+  /** All phases → pending; all tasks → pending; requirements → requirement phase */
+  resetWorkspacePhases: (wsId: string) =>
+    request<{ data: Workspace }>(`/api/workspaces/${wsId}/phases/reset`, { method: 'POST' })
+      .then(unwrap)
+      .then(normalizeWorkspace),
+
   reorderTasks: (wsId: string, phaseId: string, taskIds: string[]) =>
     request<void>(`/api/workspaces/${wsId}/phases/${phaseId}/tasks/reorder`, {
       method: 'PUT',

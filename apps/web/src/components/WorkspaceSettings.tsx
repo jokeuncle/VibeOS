@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Check, X, GitBranch, UserPlus, Trash2 } from 'lucide-react'
+import { Check, X, GitBranch, UserPlus, Trash2, RotateCcw } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
@@ -12,7 +12,7 @@ import type { TranslationKey } from '../i18n/en'
 const ROLES = ['owner', 'editor', 'viewer'] as const
 
 export default function WorkspaceSettings() {
-  const { activeWorkspaceId, workspaces, updateWorkspace } = useWorkspaceStore()
+  const { activeWorkspaceId, workspaces, updateWorkspace, resetWorkspacePhases } = useWorkspaceStore()
   const { addToast } = useUIStore()
   const t = useT()
 
@@ -29,6 +29,7 @@ export default function WorkspaceSettings() {
   const [newEmail, setNewEmail] = useState('')
   const [newRole, setNewRole] = useState<'editor' | 'viewer'>('editor')
   const [addingMember, setAddingMember] = useState(false)
+  const [resettingPhases, setResettingPhases] = useState(false)
 
   useEffect(() => {
     if (workspace) {
@@ -88,6 +89,20 @@ export default function WorkspaceSettings() {
       addToast({ type: 'success', message: t('settings.memberRemoved' as TranslationKey) })
     } catch {
       addToast({ type: 'error', message: t('error.requestFailed') })
+    }
+  }
+
+  async function handleResetAllPhases() {
+    if (!activeWorkspaceId) return
+    if (!window.confirm(t('settings.resetPhases.confirm' as TranslationKey))) return
+    setResettingPhases(true)
+    try {
+      await resetWorkspacePhases(activeWorkspaceId)
+      addToast({ type: 'success', message: t('settings.resetPhases.success' as TranslationKey) })
+    } catch {
+      addToast({ type: 'error', message: t('error.requestFailed') })
+    } finally {
+      setResettingPhases(false)
     }
   }
 
@@ -203,6 +218,31 @@ export default function WorkspaceSettings() {
             />
           )}
         </AnimatePresence>
+      </motion.section>
+
+      {/* Section: Reset phase pipeline */}
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        className="rounded-xl border border-warning/25 bg-surface-1/30 p-6"
+      >
+        <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
+          <RotateCcw className="w-3.5 h-3.5 text-warning shrink-0" />
+          {t('settings.resetPhases.title' as TranslationKey)}
+        </h3>
+        <p className="text-xs text-text-tertiary leading-relaxed mb-4 max-w-xl">
+          {t('settings.resetPhases.desc' as TranslationKey)}
+        </p>
+        <button
+          type="button"
+          onClick={handleResetAllPhases}
+          disabled={resettingPhases}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-warning/35 bg-warning/10 text-warning text-xs font-medium hover:bg-warning/15 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RotateCcw className={`w-3.5 h-3.5 shrink-0 ${resettingPhases ? 'animate-spin' : ''}`} />
+          {t('settings.resetPhases.button' as TranslationKey)}
+        </button>
       </motion.section>
 
       {/* Section: Members */}

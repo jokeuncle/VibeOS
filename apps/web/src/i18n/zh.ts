@@ -587,6 +587,13 @@ const zh: Record<TranslationKey, string> = {
   'settings.saved': '设置已保存',
   'settings.memberAdded': '成员已添加',
   'settings.memberRemoved': '成员已移除',
+  'settings.resetPhases.title': '阶段流水线',
+  'settings.resetPhases.desc':
+    '将所有工作区阶段设为「待开始」，所有任务设为「待办」并清除认领人，所有需求回到「需求分析」阶段。此操作无法撤销。',
+  'settings.resetPhases.button': '重置所有阶段与任务',
+  'settings.resetPhases.confirm':
+    '确定重置本工作区的全部阶段与任务？所有需求将回到第一阶段。',
+  'settings.resetPhases.success': '阶段与任务已重置',
 
   // 侧边栏
   'sidebar.expand': '展开侧边栏',

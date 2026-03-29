@@ -590,6 +590,13 @@ const en = {
   'settings.saved': 'Settings saved',
   'settings.memberAdded': 'Member added',
   'settings.memberRemoved': 'Member removed',
+  'settings.resetPhases.title': 'Phase pipeline',
+  'settings.resetPhases.desc':
+    'Sets every workspace phase to pending, resets all tasks to pending, clears assignees, and moves every requirement back to the Requirements phase. This cannot be undone.',
+  'settings.resetPhases.button': 'Reset all phases & tasks',
+  'settings.resetPhases.confirm':
+    'Reset every phase and task in this workspace? All requirements will return to the first phase.',
+  'settings.resetPhases.success': 'Phases and tasks have been reset',
 
   // Sidebar
   'sidebar.expand': 'Expand sidebar',

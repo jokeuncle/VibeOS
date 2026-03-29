@@ -28,6 +28,7 @@ type Store interface {
 	UpdatePhaseStatusCAS(ctx context.Context, id, fromStatus, toStatus string) (*models.Phase, error)
 	UpdatePhaseProgress(ctx context.Context, id string, progress float64) error
 	ListPhasesByWorkspace(ctx context.Context, workspaceID string) ([]models.Phase, error)
+	ResetWorkspacePhasePipeline(ctx context.Context, workspaceID string) error
 
 	CreateTask(ctx context.Context, task *models.Task) error
 	GetTask(ctx context.Context, id string) (*models.Task, error)
@@ -507,6 +508,51 @@ func (s *PostgresStore) UpdatePhaseProgress(ctx context.Context, id string, prog
 
 func (s *PostgresStore) ListPhasesByWorkspace(ctx context.Context, workspaceID string) ([]models.Phase, error) {
 	return s.queryPhases(ctx, []string{workspaceID})
+}
+
+// ResetWorkspacePhasePipeline sets every phase to pending, all tasks in the workspace to pending,
+// clears workspace current phase pointer, and restarts requirements at the requirement phase.
+func (s *PostgresStore) ResetWorkspacePhasePipeline(ctx context.Context, workspaceID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE tasks SET status = 'pending', assigned_agent = NULL, updated_at = NOW()
+		WHERE workspace_id = $1`, workspaceID); err != nil {
+		return fmt.Errorf("reset tasks: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE phases SET status = 'pending', progress = 0, updated_at = NOW()
+		WHERE workspace_id = $1`, workspaceID); err != nil {
+		return fmt.Errorf("reset phases: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE workspaces SET current_phase_id = NULL, progress = 0, updated_at = NOW()
+		WHERE id = $1`, workspaceID); err != nil {
+		return fmt.Errorf("reset workspace: %w", err)
+	}
+
+	reqStatus := string(models.RequirementInProgress)
+	reqPhase := string(models.PhaseRequirement)
+	if _, err := tx.Exec(ctx, `
+		UPDATE requirements SET status = $1, current_phase = $2, progress = 0, updated_at = NOW()
+		WHERE workspace_id = $3`, reqStatus, reqPhase, workspaceID); err != nil {
+		return fmt.Errorf("reset requirements: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 // ---------------------------------------------------------------------------

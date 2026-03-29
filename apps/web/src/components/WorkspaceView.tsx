@@ -243,9 +243,10 @@ export default function WorkspaceView() {
             </motion.div>
           )}
 
-          <ViewContent />
-
-          <MessageThread />
+          <div className="space-y-6">
+            <ViewContent />
+            <MessageThread />
+          </div>
           <div className="h-20" />
         </div>
       </motion.main>

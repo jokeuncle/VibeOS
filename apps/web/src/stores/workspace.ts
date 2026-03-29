@@ -152,6 +152,7 @@ interface WorkspaceState {
   deleteRequirement: (wsId: string, reqId: string) => void
   runRequirement: (reqId: string, phaseType?: string, userMessage?: string) => void
   resetRequirementPhase: (reqId: string, phaseType: string) => void
+  resetWorkspacePhases: (wsId: string) => Promise<void>
   loadRequirementDetail: (wsId: string, reqId: string) => void
 
   // Chat cursor pagination
@@ -1150,6 +1151,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to reset requirement phase:', e)
+    }
+  },
+
+  resetWorkspacePhases: async (wsId) => {
+    try {
+      await workspaceApi.resetWorkspacePhases(wsId)
+      await get().refreshActiveWorkspace()
+      const reqId = get().activeRequirementId
+      if (reqId) get().loadRequirementDetail(wsId, reqId)
+    } catch (e) {
+      console.error('Failed to reset workspace phases:', e)
+      throw e
     }
   },
 

@@ -104,6 +104,7 @@ func main() {
 
 			r.Get("/activities", wsHandler.ListActivities)
 
+			r.Post("/phases/reset", wsHandler.ResetPhasesPipeline)
 			r.Patch("/phases/{phaseId}/status", phaseHandler.UpdateStatus)
 
 			r.Post("/phases/{phaseId}/tasks", taskHandler.Create)

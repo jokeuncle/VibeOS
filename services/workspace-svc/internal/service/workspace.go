@@ -207,6 +207,26 @@ func (s *Service) UpdatePhaseStatus(ctx context.Context, wsID, phaseID, status s
 	return updated, nil
 }
 
+// ResetWorkspacePhasePipeline sets all phases to pending, all workspace tasks to pending,
+// clears the workspace current-phase pointer, and moves every requirement back to the requirement phase.
+func (s *Service) ResetWorkspacePhasePipeline(ctx context.Context, wsID string) error {
+	if _, err := s.store.GetWorkspace(ctx, wsID); err != nil {
+		return err
+	}
+	if err := s.store.ResetWorkspacePhasePipeline(ctx, wsID); err != nil {
+		return err
+	}
+	if err := s.recalculateWorkspaceProgress(ctx, wsID); err != nil {
+		s.log.Error("recalculate workspace progress after pipeline reset", "error", err)
+	}
+	s.logActivity(ctx, wsID, "workspace_phases_reset",
+		"All phase statuses and tasks reset to pending", nil)
+	s.publishEvent(ctx, wsID, models.WSEventPhaseUpdate, map[string]string{
+		"workspaceId": wsID, "reset": "all",
+	})
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Task operations
 // ---------------------------------------------------------------------------

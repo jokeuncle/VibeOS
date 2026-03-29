@@ -106,6 +106,26 @@ func (h *WorkspaceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.APIResponse[*models.Workspace]{Data: ws})
 }
 
+func (h *WorkspaceHandler) ResetPhasesPipeline(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "wsId")
+	if err := h.svc.ResetWorkspacePhasePipeline(r.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "workspace not found")
+			return
+		}
+		h.log.Error("reset workspace phases failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	ws, err := h.svc.GetWorkspace(r.Context(), id)
+	if err != nil {
+		h.log.Error("get workspace after reset failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[*models.Workspace]{Data: ws})
+}
+
 func (h *WorkspaceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "wsId")
 	if err := h.svc.DeleteWorkspace(r.Context(), id); err != nil {
