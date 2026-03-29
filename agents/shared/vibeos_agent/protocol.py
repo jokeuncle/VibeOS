@@ -814,6 +814,162 @@ class BaseAgent(ABC):
                     return content
         return ""
 
+    async def _call_llm_with_tools_stream(
+        self,
+        user_message: str,
+        *,
+        workspace_id: str,
+        extra_messages: list[dict[str, Any]] | None = None,
+        enrich_context: bool = True,
+        max_iterations: int = 5,
+        repo_context: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        """Like ``_call_llm_with_tools`` but yields content deltas for the final
+        text response.  Tool-call iterations use streaming to detect tool_calls vs
+        text, but only yield deltas on the final (text) iteration.
+        Falls back to ``_call_llm_stream`` when no tools are registered.
+        """
+        tool_schemas = self._get_tool_schemas()
+        if not tool_schemas:
+            self._tool_results = []
+            async for delta in self._call_llm_stream(
+                user_message,
+                workspace_id=workspace_id,
+                extra_messages=extra_messages,
+                enrich_context=enrich_context,
+                repo_context=repo_context,
+            ):
+                yield delta
+            return
+
+        self._tool_results = []
+
+        enriched_system = self.system_prompt
+        if enrich_context:
+            enriched_system = await self._build_enriched_prompt(
+                workspace_id, user_message, repo_context=repo_context
+            )
+
+        history = await self.session.get_history(workspace_id, self.agent_type)
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": enriched_system}
+        ]
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+        if extra_messages:
+            messages.extend(extra_messages)
+        messages.append({"role": "user", "content": user_message})
+
+        full_reply = ""
+
+        for iteration in range(max_iterations):
+            content_parts: list[str] = []
+            tool_calls_acc: list[dict[str, Any]] = []
+
+            async for chunk in self.llm.chat_stream(messages, tools=tool_schemas):
+                choice = chunk.get("choices", [{}])[0]
+                delta = choice.get("delta", {})
+
+                if delta.get("tool_calls"):
+                    for tc in delta["tool_calls"]:
+                        idx = tc.get("index", 0)
+                        while len(tool_calls_acc) <= idx:
+                            tool_calls_acc.append({
+                                "id": "", "type": "function",
+                                "function": {"name": "", "arguments": ""},
+                            })
+                        if tc.get("id"):
+                            tool_calls_acc[idx]["id"] = tc["id"]
+                        fn = tc.get("function", {})
+                        if fn.get("name"):
+                            tool_calls_acc[idx]["function"]["name"] = fn["name"]
+                        if fn.get("arguments"):
+                            tool_calls_acc[idx]["function"]["arguments"] += fn["arguments"]
+
+                content = delta.get("content", "") or ""
+                if content:
+                    content_parts.append(content)
+                    if not tool_calls_acc:
+                        full_reply += content
+                        yield content
+
+            if tool_calls_acc:
+                buffered_content = "".join(content_parts) if content_parts else None
+
+                assistant_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": buffered_content,
+                    "tool_calls": tool_calls_acc,
+                }
+                messages.append(assistant_msg)
+
+                for tc in tool_calls_acc:
+                    fn = tc.get("function", {})
+                    tool_name = fn.get("name", "")
+                    raw_args = fn.get("arguments", "{}")
+                    tc_id = tc.get("id", "")
+
+                    if isinstance(raw_args, str):
+                        try:
+                            parsed_args = json.loads(raw_args) if raw_args else {}
+                        except json.JSONDecodeError:
+                            parsed_args = {}
+                    else:
+                        parsed_args = raw_args
+
+                    parsed_args["_workspace_id"] = workspace_id
+                    if hasattr(self, "_current_task_context") and self._current_task_context:
+                        parsed_args.setdefault("_context", self._current_task_context)
+
+                    logger.info(
+                        "Tool call [%s] %s(%s)",
+                        _enum_val(self.agent_type), tool_name, list(parsed_args.keys()),
+                    )
+
+                    try:
+                        await self.ws.publish_log(
+                            workspace_id, _enum_val(self.agent_type),
+                            f"Calling tool: {tool_name}",
+                            level="info",
+                        )
+                    except Exception:
+                        pass
+
+                    tool_result = await self.tool_registry.execute(tool_name, parsed_args)
+
+                    is_error = any(
+                        marker in tool_result.lower()
+                        for marker in ("error:", "failed:", "exception:", "traceback")
+                    )
+                    self._tool_results.append({
+                        "tool": tool_name, "ok": not is_error, "result": tool_result[:500],
+                    })
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": tool_result,
+                    })
+                continue
+
+            # No tool calls – final text response already yielded above.
+            # Yield any remaining buffered content that arrived alongside tool_calls.
+            joined = "".join(content_parts)
+            remaining = joined[len(full_reply):]
+            if remaining:
+                full_reply += remaining
+                yield remaining
+            break
+
+        try:
+            await self.memory.add_memory(
+                f"User asked: {user_message}\nAgent replied: {full_reply[:500]}",
+                workspace_id=workspace_id,
+                agent_type=_enum_val(self.agent_type),
+            )
+        except Exception:
+            pass
+
     async def _build_enriched_prompt(
         self,
         workspace_id: str,

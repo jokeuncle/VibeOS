@@ -124,7 +124,9 @@ class DesignAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__()
         from vibeos_agent.tools.workspace_tools import create_workspace_tools
+        from vibeos_agent.tools.delegation_tools import create_delegation_tools
         self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "design"))
+        self.tool_registry.register_many(create_delegation_tools("design"))
 
     capabilities = [
         CapabilityContract(
@@ -152,8 +154,10 @@ class DesignAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
+            self._current_task_context = task.context
+
             await _log(task.workspace_id, agent_name, "Calling LLM for design analysis…", task_id=task.task_id)
-            raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
+            raw_reply = await self._call_llm_with_tools(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:

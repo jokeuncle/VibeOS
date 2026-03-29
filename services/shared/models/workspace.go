@@ -2,6 +2,10 @@ package models
 
 import "time"
 
+func TimeNow() time.Time {
+	return time.Now().UTC()
+}
+
 type PhaseType string
 
 const (
@@ -198,6 +202,32 @@ type ActivitySummary struct {
 	TimeRangeTo   time.Time `json:"timeRangeTo" db:"time_range_to"`
 	ActivityCount int       `json:"activityCount" db:"activity_count"`
 	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+}
+
+// ---------------------------------------------------------------------------
+// Feedback & trust models
+// ---------------------------------------------------------------------------
+
+type FeedbackSignal struct {
+	ID             string    `json:"id" db:"id"`
+	WorkspaceID    string    `json:"workspaceId" db:"workspace_id"`
+	AgentType      string    `json:"agentType" db:"agent_type"`
+	ActionType     string    `json:"actionType" db:"action_type"`
+	OriginalOutput string    `json:"originalOutput,omitempty" db:"original_output"`
+	ModifiedOutput string    `json:"modifiedOutput,omitempty" db:"modified_output"`
+	Context        string    `json:"context,omitempty" db:"context"`
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+}
+
+type TrustScore struct {
+	ID         string    `json:"id" db:"id"`
+	Model      string    `json:"model" db:"model"`
+	AgentType  string    `json:"agentType" db:"agent_type"`
+	TotalCalls int       `json:"totalCalls" db:"total_calls"`
+	Approvals  int       `json:"approvals" db:"approvals"`
+	Rejections int       `json:"rejections" db:"rejections"`
+	Score      float64   `json:"score" db:"score"`
+	UpdatedAt  time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // ---------------------------------------------------------------------------

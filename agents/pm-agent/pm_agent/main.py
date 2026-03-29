@@ -580,6 +580,33 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
             pass
 
 
+async def _yield_text_as_deltas(
+    text: str, chunk_size: int = 6,
+) -> AsyncGenerator[str, None]:
+    """Break *text* into small chunks and yield them as SSE delta events.
+
+    This turns a pre-computed response into a gradual stream so the UI renders
+    it progressively instead of dumping everything at once.
+    """
+    import asyncio
+
+    i = 0
+    while i < len(text):
+        end = min(i + chunk_size, len(text))
+        # Extend to the next word boundary to avoid mid-word splits
+        if end < len(text) and text[end] not in (" ", "\n", "\t", "，", "。", "、", "；"):
+            space = text.find(" ", end)
+            newline = text.find("\n", end)
+            candidates = [c for c in (space, newline) if c != -1]
+            if candidates and min(candidates) - i < chunk_size * 3:
+                end = min(candidates) + 1
+        chunk = text[i:end]
+        if chunk:
+            yield f"data: {json.dumps({'delta': chunk})}\n\n"
+            await asyncio.sleep(0.012)
+        i = end
+
+
 @app.post("/api/nlp/stream")
 async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
     """SSE streaming NLP: parse intent then forward agent streaming response."""
@@ -623,7 +650,17 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                     parsed, req, llm, ws, ws_client, workflow, dispatcher,
                 )
                 summary = result.get("summary", parsed.summary)
-                yield f"data: {json.dumps({'summary': summary})}\n\n"
+                async for evt in _yield_text_as_deltas(summary):
+                    yield evt
+
+                payload_extras: dict[str, Any] = {}
+                if result.get("created_tasks"):
+                    payload_extras["created_tasks"] = result["created_tasks"]
+                if result.get("artifacts"):
+                    payload_extras["artifacts"] = result["artifacts"]
+                if payload_extras:
+                    yield f"data: {json.dumps({'payload': payload_extras})}\n\n"
+
                 yield "data: [DONE]\n\n"
                 return
 
@@ -641,7 +678,27 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             )
 
             async for chunk in dispatcher.dispatch_stream(parsed.target_agent, task):
-                yield f"data: {json.dumps(chunk)}\n\n"
+                chunk_type = chunk.get("type", "")
+
+                if chunk_type == "result":
+                    payload = chunk.get("payload", {})
+                    summary_text = payload.get("summary", "") or chunk.get("summary", "")
+                    if summary_text:
+                        async for evt in _yield_text_as_deltas(summary_text):
+                            yield evt
+
+                    rich_payload: dict[str, Any] = {}
+                    for key in ("artifacts", "code_artifacts", "created_tasks"):
+                        if payload.get(key):
+                            rich_payload[key] = payload[key]
+                    if rich_payload:
+                        yield f"data: {json.dumps({'payload': rich_payload})}\n\n"
+                elif chunk.get("delta"):
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                elif chunk.get("error"):
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                else:
+                    yield f"data: {json.dumps(chunk)}\n\n"
 
             yield "data: [DONE]\n\n"
         except Exception as exc:
@@ -788,8 +845,11 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
 
     Forwards to memory-service which converts it into preference memory,
     enabling Hindsight-style reflect operations that improve future outputs.
+    Also stores the signal in workspace-svc for trust score tracking.
     """
     memory: MemoryClient = app.state.memory
+    ws_client: WorkspaceClient = app.state.ws_client
+
     try:
         result = await memory.record_feedback(
             workspace_id=req.workspace_id,
@@ -798,9 +858,24 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
             context=req.context or {},
             original_output=req.original_output,
         )
-        return {"status": "ok", "result": result}
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
+
+    try:
+        import json as _json
+        await ws_client._http.post(
+            f"/api/workspaces/{req.workspace_id}/feedback",
+            json={
+                "agentType": req.agent_type,
+                "actionType": req.action_type,
+                "originalOutput": req.original_output[:1000] if req.original_output else "",
+                "context": _json.dumps(req.context or {}),
+            },
+        )
+    except Exception:
+        pass
+
+    return {"status": "ok", "result": result}
 
 
 @app.get("/health")

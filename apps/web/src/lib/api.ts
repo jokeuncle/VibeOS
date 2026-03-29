@@ -139,8 +139,48 @@ export const workspaceApi = {
   listConversationSummaries: (wsId: string) =>
     request<{ data: any[] }>(`/api/workspaces/${wsId}/summaries/conversations`).then(unwrap),
 
+  createConversationSummary: (wsId: string, body: {
+    summary: string; keyDecisions: string; messageCount: number;
+    sessionId?: string; agentType?: string
+  }) =>
+    request<{ data: any }>(`/api/workspaces/${wsId}/summaries/conversations`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
   listActivitySummaries: (wsId: string) =>
     request<{ data: any[] }>(`/api/workspaces/${wsId}/summaries/activities`).then(unwrap),
+
+  createActivitySummary: (wsId: string, body: {
+    summary: string; keyEvents: string; activityCount: number
+  }) =>
+    request<{ data: any }>(`/api/workspaces/${wsId}/summaries/activities`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  // Agent status
+  listAgents: (wsId: string) =>
+    request<{ data: any[] }>(`/api/workspaces/${wsId}/agents`).then(unwrap),
+
+  updateAgent: (wsId: string, agentId: string, updates: { status?: string; currentTask?: string }) =>
+    request<{ data: any }>(`/api/workspaces/${wsId}/agents/${agentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }).then(unwrap),
+
+  // Feedback signals
+  createFeedbackSignal: (wsId: string, body: {
+    agentType: string; actionType: string;
+    originalOutput?: string; context?: string
+  }) =>
+    request<{ data: any }>(`/api/workspaces/${wsId}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  listFeedbackSignals: (wsId: string, limit = 50) =>
+    request<{ data: any[] }>(`/api/workspaces/${wsId}/feedback?limit=${limit}`).then(unwrap),
 
   // GitLab repo bindings
   listRepos: (wsId: string) =>

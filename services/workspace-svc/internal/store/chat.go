@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -261,6 +262,151 @@ func (s *PostgresStore) ListActivitySummaries(ctx context.Context, workspaceID s
 	}
 	if out == nil {
 		out = []models.ActivitySummary{}
+	}
+	return out, nil
+}
+
+// =========================================================================
+// Agent status updates
+// =========================================================================
+
+func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID string, req models.UpdateAgentReq) (*models.Agent, error) {
+	var sets []string
+	var args []any
+	idx := 1
+
+	if req.Status != nil {
+		sets = append(sets, fmt.Sprintf("status = $%d", idx))
+		args = append(args, *req.Status)
+		idx++
+	}
+	if req.CurrentTask != nil {
+		if *req.CurrentTask == "" {
+			sets = append(sets, "current_task = NULL")
+		} else {
+			sets = append(sets, fmt.Sprintf("current_task = $%d", idx))
+			args = append(args, *req.CurrentTask)
+			idx++
+		}
+	}
+	if len(sets) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	sets = append(sets, "updated_at = NOW()")
+	query := fmt.Sprintf(
+		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING id, workspace_id, type, name, status, current_task, avatar, created_at, updated_at",
+		strings.Join(sets, ", "), idx, idx+1,
+	)
+	args = append(args, id, workspaceID)
+
+	var a models.Agent
+	err := s.pool.QueryRow(ctx, query, args...).Scan(
+		&a.ID, &a.WorkspaceID, &a.Type, &a.Name, &a.Status,
+		&a.CurrentTask, &a.Avatar, &a.CreatedAt, &a.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &a, nil
+}
+
+// =========================================================================
+// Feedback signals & trust scores
+// =========================================================================
+
+func (s *PostgresStore) CreateFeedbackSignal(ctx context.Context, signal *models.FeedbackSignal) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO feedback_signals (id, workspace_id, agent_type, action_type, original_output, modified_output, context)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		signal.ID, signal.WorkspaceID, signal.AgentType, signal.ActionType,
+		signal.OriginalOutput, signal.ModifiedOutput, signal.Context,
+	)
+	return err
+}
+
+func (s *PostgresStore) ListFeedbackSignals(ctx context.Context, workspaceID string, limit int) ([]models.FeedbackSignal, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, workspace_id, agent_type, action_type, original_output, modified_output, context, created_at
+		 FROM feedback_signals WHERE workspace_id = $1
+		 ORDER BY created_at DESC LIMIT $2`, workspaceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.FeedbackSignal
+	for rows.Next() {
+		var f models.FeedbackSignal
+		if err := rows.Scan(&f.ID, &f.WorkspaceID, &f.AgentType, &f.ActionType,
+			&f.OriginalOutput, &f.ModifiedOutput, &f.Context, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	if out == nil {
+		out = []models.FeedbackSignal{}
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpsertTrustScore(ctx context.Context, agentType, actionType string) error {
+	approvalDelta := 0
+	rejectionDelta := 0
+	if actionType == "approve" {
+		approvalDelta = 1
+	} else if actionType == "reject" {
+		rejectionDelta = 1
+	}
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO trust_scores (model, agent_type, total_calls, approvals, rejections, score)
+		 VALUES ('default', $1, 1, $2, $3,
+		   CASE WHEN $2 = 1 THEN 1.0 ELSE 0.0 END)
+		 ON CONFLICT (model, agent_type) DO UPDATE SET
+		   total_calls = trust_scores.total_calls + 1,
+		   approvals = trust_scores.approvals + $2,
+		   rejections = trust_scores.rejections + $3,
+		   score = CASE WHEN (trust_scores.total_calls + 1) > 0
+		     THEN (trust_scores.approvals + $2)::float / (trust_scores.total_calls + 1)::float
+		     ELSE 0.5 END,
+		   updated_at = NOW()`,
+		agentType, approvalDelta, rejectionDelta,
+	)
+	return err
+}
+
+func (s *PostgresStore) GetTrustScores(ctx context.Context, agentType string) ([]models.TrustScore, error) {
+	var query string
+	var args []any
+	if agentType != "" {
+		query = `SELECT id, model, agent_type, total_calls, approvals, rejections, score, updated_at
+		         FROM trust_scores WHERE agent_type = $1 ORDER BY updated_at DESC`
+		args = []any{agentType}
+	} else {
+		query = `SELECT id, model, agent_type, total_calls, approvals, rejections, score, updated_at
+		         FROM trust_scores ORDER BY agent_type, updated_at DESC`
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.TrustScore
+	for rows.Next() {
+		var t models.TrustScore
+		if err := rows.Scan(&t.ID, &t.Model, &t.AgentType, &t.TotalCalls,
+			&t.Approvals, &t.Rejections, &t.Score, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	if out == nil {
+		out = []models.TrustScore{}
 	}
 	return out, nil
 }

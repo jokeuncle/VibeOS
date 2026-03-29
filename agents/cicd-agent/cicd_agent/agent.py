@@ -146,8 +146,10 @@ class CicdAgent(BaseAgent):
         super().__init__()
         from vibeos_agent.tools.workspace_tools import create_workspace_tools
         from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
+        from vibeos_agent.tools.delegation_tools import create_delegation_tools
         self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "cicd"))
         self.tool_registry.register_many(create_gitlab_tools())
+        self.tool_registry.register_many(create_delegation_tools("cicd"))
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
@@ -168,8 +170,16 @@ class CicdAgent(BaseAgent):
                 f"Context: {json.dumps(task.context)}"
             )
 
-            await _log(task.workspace_id, agent_name, "Calling LLM for CI/CD pipeline design…", task_id=task.task_id)
-            raw_reply = await self._call_llm(prompt, workspace_id=task.workspace_id)
+            self._current_task_context = task.context
+
+            repo_context = {k: v for k, v in (task.context or {}).items() if k.startswith("gitlab_")}
+
+            await _log(task.workspace_id, agent_name, "Calling LLM for CI/CD pipeline design (tool-use mode)…", task_id=task.task_id)
+            raw_reply = await self._call_llm_with_tools(
+                prompt,
+                workspace_id=task.workspace_id,
+                repo_context=repo_context or None,
+            )
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
             try:
@@ -219,7 +229,7 @@ class CicdAgent(BaseAgent):
             )
 
             phase_id = await self.workspace_svc.find_phase_by_type(
-                task.workspace_id, "cicd"
+                task.workspace_id, "deployment"
             )
 
             created_tasks: list[dict[str, Any]] = []

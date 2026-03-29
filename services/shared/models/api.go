@@ -122,6 +122,36 @@ type ArchiveWorkspaceReq struct {
 	Status string `json:"status"` // active | archived
 }
 
+// Agent status update
+type UpdateAgentReq struct {
+	Status      *string `json:"status,omitempty"`      // idle | running | waiting | error
+	CurrentTask *string `json:"currentTask,omitempty"`
+}
+
+// Feedback signal (stored for preference learning)
+type CreateFeedbackSignalReq struct {
+	AgentType      string `json:"agentType"`
+	ActionType     string `json:"actionType"` // approve | reject | edit
+	OriginalOutput string `json:"originalOutput,omitempty"`
+	ModifiedOutput string `json:"modifiedOutput,omitempty"`
+	Context        string `json:"context,omitempty"` // JSON string
+}
+
+// Summary creation
+type CreateConversationSummaryReq struct {
+	Summary      string `json:"summary"`
+	KeyDecisions string `json:"keyDecisions"`
+	SessionID    string `json:"sessionId,omitempty"`
+	AgentType    string `json:"agentType,omitempty"`
+	MessageCount int    `json:"messageCount"`
+}
+
+type CreateActivitySummaryReq struct {
+	Summary       string `json:"summary"`
+	KeyEvents     string `json:"keyEvents"`
+	ActivityCount int    `json:"activityCount"`
+}
+
 type APIResponse[T any] struct {
 	Data  T      `json:"data"`
 	Error string `json:"error,omitempty"`

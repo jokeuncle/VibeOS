@@ -347,6 +347,120 @@ func (s *Service) GetArtifact(ctx context.Context, wsID, id string) (*models.Art
 }
 
 // ---------------------------------------------------------------------------
+// Agent operations
+// ---------------------------------------------------------------------------
+
+func (s *Service) ListAgents(ctx context.Context, wsID string) ([]models.Agent, error) {
+	return s.store.ListAgentsByWorkspace(ctx, wsID)
+}
+
+func (s *Service) UpdateAgent(ctx context.Context, wsID, agentID string, req models.UpdateAgentReq) (*models.Agent, error) {
+	agent, err := s.store.UpdateAgent(ctx, agentID, wsID, req)
+	if err != nil {
+		return nil, err
+	}
+	s.publishEvent(ctx, wsID, models.WSEventAgentStatus, agent)
+	return agent, nil
+}
+
+// ---------------------------------------------------------------------------
+// Feedback & trust operations
+// ---------------------------------------------------------------------------
+
+func (s *Service) CreateFeedbackSignal(ctx context.Context, wsID string, req models.CreateFeedbackSignalReq) (*models.FeedbackSignal, error) {
+	signal := &models.FeedbackSignal{
+		ID:             uuid.New().String(),
+		WorkspaceID:    wsID,
+		AgentType:      req.AgentType,
+		ActionType:     req.ActionType,
+		OriginalOutput: req.OriginalOutput,
+		ModifiedOutput: req.ModifiedOutput,
+		Context:        req.Context,
+	}
+	if err := s.store.CreateFeedbackSignal(ctx, signal); err != nil {
+		return nil, fmt.Errorf("create feedback signal: %w", err)
+	}
+
+	if err := s.store.UpsertTrustScore(ctx, req.AgentType, req.ActionType); err != nil {
+		s.log.Error("failed to upsert trust score", "error", err)
+	}
+
+	s.logActivity(ctx, wsID, "feedback_recorded",
+		fmt.Sprintf("%s %s output from %s", req.ActionType, "agent", req.AgentType),
+		nil)
+
+	return signal, nil
+}
+
+func (s *Service) ListFeedbackSignals(ctx context.Context, wsID string, limit int) ([]models.FeedbackSignal, error) {
+	return s.store.ListFeedbackSignals(ctx, wsID, limit)
+}
+
+func (s *Service) GetTrustScores(ctx context.Context, agentType string) ([]models.TrustScore, error) {
+	return s.store.GetTrustScores(ctx, agentType)
+}
+
+// ---------------------------------------------------------------------------
+// Summary creation
+// ---------------------------------------------------------------------------
+
+func (s *Service) CreateConversationSummary(ctx context.Context, wsID string, req models.CreateConversationSummaryReq) (*models.ConversationSummary, error) {
+	now := models.TimeNow()
+	cs := &models.ConversationSummary{
+		ID:            uuid.New().String(),
+		WorkspaceID:   wsID,
+		Summary:       req.Summary,
+		KeyDecisions:  ensureJSONArray(req.KeyDecisions),
+		TimeRangeFrom: now,
+		TimeRangeTo:   now,
+		MessageCount:  req.MessageCount,
+	}
+	if req.SessionID != "" {
+		cs.SessionID = &req.SessionID
+	}
+	if req.AgentType != "" {
+		cs.AgentType = &req.AgentType
+	}
+	if err := s.store.SaveConversationSummary(ctx, cs); err != nil {
+		return nil, fmt.Errorf("create conversation summary: %w", err)
+	}
+	return cs, nil
+}
+
+func (s *Service) CreateActivitySummary(ctx context.Context, wsID string, req models.CreateActivitySummaryReq) (*models.ActivitySummary, error) {
+	now := models.TimeNow()
+	as := &models.ActivitySummary{
+		ID:            uuid.New().String(),
+		WorkspaceID:   wsID,
+		Summary:       req.Summary,
+		KeyEvents:     ensureJSONArray(req.KeyEvents),
+		TimeRangeFrom: now,
+		TimeRangeTo:   now,
+		ActivityCount: req.ActivityCount,
+	}
+	if err := s.store.SaveActivitySummary(ctx, as); err != nil {
+		return nil, fmt.Errorf("create activity summary: %w", err)
+	}
+	return as, nil
+}
+
+// ensureJSONArray wraps a plain string as a single-element JSON array.
+// If the input is already valid JSON (array or object), it's returned as-is.
+func ensureJSONArray(s string) string {
+	if s == "" {
+		return "[]"
+	}
+	trimmed := s
+	if len(trimmed) > 0 && (trimmed[0] == '[' || trimmed[0] == '{') {
+		if json.Valid([]byte(trimmed)) {
+			return trimmed
+		}
+	}
+	b, _ := json.Marshal([]string{s})
+	return string(b)
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 

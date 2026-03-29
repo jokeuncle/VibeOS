@@ -69,6 +69,9 @@ func main() {
 	authHandler := handler.NewAuthHandler(svc, logger)
 	memberHandler := handler.NewMemberHandler(svc, logger)
 	chatHandler := handler.NewChatHandler(st, logger)
+	agentHandler := handler.NewAgentHandler(svc, logger)
+	feedbackHandler := handler.NewFeedbackHandler(svc, logger)
+	summaryHandler := handler.NewSummaryHandler(svc, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -135,9 +138,22 @@ func main() {
 
 			// AI-generated summaries (conversation + activity)
 			r.Get("/summaries/conversations", chatHandler.ListConversationSummaries)
+			r.Post("/summaries/conversations", summaryHandler.CreateConversationSummary)
 			r.Get("/summaries/activities", chatHandler.ListActivitySummaries)
+			r.Post("/summaries/activities", summaryHandler.CreateActivitySummary)
+
+			// Agent status
+			r.Get("/agents", agentHandler.List)
+			r.Patch("/agents/{agentId}", agentHandler.Update)
+
+			// Feedback signals
+			r.Post("/feedback", feedbackHandler.Create)
+			r.Get("/feedback", feedbackHandler.List)
 		})
 	})
+
+	// Trust scores (cross-workspace)
+	r.Get("/api/trust-scores", feedbackHandler.TrustScores)
 
 	// GitLab credentials (admin-level, not per-workspace)
 	r.Route("/api/gitlab/credentials", func(r chi.Router) {

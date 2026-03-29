@@ -4,7 +4,7 @@ import { Bot, User, ChevronDown, CheckCircle2, Circle, Loader2, Play, Code2, Thu
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import { feedbackApi } from '../lib/api'
+import { feedbackApi, workspaceApi } from '../lib/api'
 import type { Message, RichBlock, RichAction, PhaseStatus, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -205,13 +205,21 @@ function FeedbackButtons({ msg }: { msg: Message }) {
       if (voted || !activeWorkspaceId) return
       setVoted(action)
       try {
-        await feedbackApi.send({
-          workspace_id: activeWorkspaceId,
-          message_id: msg.id,
-          agent_type: msg.agentType || '',
-          action_type: action,
-          original_output: msg.content?.slice(0, 500) || '',
-        })
+        await Promise.allSettled([
+          feedbackApi.send({
+            workspace_id: activeWorkspaceId,
+            message_id: msg.id,
+            agent_type: msg.agentType || '',
+            action_type: action,
+            original_output: msg.content?.slice(0, 500) || '',
+          }),
+          workspaceApi.createFeedbackSignal(activeWorkspaceId, {
+            agentType: msg.agentType || '',
+            actionType: action,
+            originalOutput: msg.content?.slice(0, 1000) || '',
+            context: JSON.stringify({ message_id: msg.id }),
+          }),
+        ])
         addToast({ type: 'success', message: t('feedback.thanks' as TranslationKey) })
       } catch {
         setVoted(null)
@@ -254,7 +262,17 @@ function FeedbackButtons({ msg }: { msg: Message }) {
   )
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function TypingIndicator() {
+  return (
+    <div className="flex items-center gap-1.5 py-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }} />
+    </div>
+  )
+}
+
+function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
   const t = useT()
   if (msg.role === 'system') return <SystemMessage msg={msg} />
 
@@ -262,6 +280,7 @@ function MessageBubble({ msg }: { msg: Message }) {
   const agentLabel = msg.agentType
     ? t(`agent.name.${msg.agentType}` as TranslationKey)
     : t('conversation.agent')
+  const showTyping = isStreaming && isAgent && !msg.content
 
   return (
     <motion.div
@@ -283,8 +302,9 @@ function MessageBubble({ msg }: { msg: Message }) {
             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
+        {showTyping && <TypingIndicator />}
         {msg.content && (
-          <p className="text-xs text-text-primary/90 leading-relaxed">{msg.content}</p>
+          <p className="text-xs text-text-primary/90 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
         )}
         {msg.richBlocks && msg.richBlocks.length > 0 && (
           <div className="space-y-2 mt-1">
@@ -293,7 +313,7 @@ function MessageBubble({ msg }: { msg: Message }) {
             ))}
           </div>
         )}
-        {isAgent && msg.content && (
+        {isAgent && msg.content && !isStreaming && (
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
             <FeedbackButtons msg={msg} />
           </div>
@@ -326,7 +346,7 @@ function groupIntoSessions(messages: Message[]): Session[] {
 }
 
 export default function MessageThread() {
-  const { messages, messagesHasMore, loadOlderMessages } = useWorkspaceStore()
+  const { messages, messagesHasMore, loadOlderMessages, nlpLoading } = useWorkspaceStore()
   const t = useT()
   const bottomRef = useRef<HTMLDivElement>(null)
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(new Set())
@@ -335,6 +355,7 @@ export default function MessageThread() {
 
   const sessions = groupIntoSessions(messages)
   const lastMsgContent = messages[messages.length - 1]?.content
+  const lastMsgId = messages[messages.length - 1]?.id
 
   useEffect(() => {
     if (isLoadingOlderRef.current) {
@@ -428,7 +449,11 @@ export default function MessageThread() {
                   >
                     <div className="p-4 space-y-4">
                       {session.messages.map((msg) => (
-                        <MessageBubble key={msg.id} msg={msg} />
+                        <MessageBubble
+                          key={msg.id}
+                          msg={msg}
+                          isStreaming={nlpLoading && msg.id === lastMsgId}
+                        />
                       ))}
                     </div>
                   </motion.div>
