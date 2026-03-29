@@ -416,6 +416,47 @@ const en = {
   'statusbar.version': 'VibeOS v0.1.0',
   'conversation.loading': 'Loading…',
   'rich.actionModify': 'Preparing modifications…',
+
+  'activity.feedback_submitted': 'Feedback submitted',
+  'activity.feedback_received': 'Feedback received',
+  'activity.agent_delegated': 'Agent delegated',
+  'activity.summary_created': 'Summary generated',
+
+  'summary.title': 'Summaries',
+  'summary.conversations': 'Conversation Summaries',
+  'summary.activities': 'Activity Summaries',
+  'summary.empty': 'No summaries yet',
+  'summary.keyDecisions': 'Key decisions',
+  'summary.keyEvents': 'Key events',
+  'summary.messageCount': '{count} messages',
+  'summary.activityCount': '{count} activities',
+  'summary.generate': 'Generate summary',
+  'summary.generating': 'Generating…',
+
+  'artifact.copy': 'Copy',
+  'artifact.copied': 'Copied',
+  'artifact.filterAll': 'All phases',
+  'artifact.loading': 'Loading…',
+  'artifact.diagram': 'Diagram',
+
+  'notification.agentCompleted': '{agent} completed a task',
+  'notification.phaseCompleted': 'Phase {phase} completed',
+  'notification.workflowStarted': 'Project workflow started',
+  'notification.workflowCompleted': 'Project workflow completed',
+  'notification.taskError': 'Task failed: {task}',
+  'notification.feedbackRecorded': 'Feedback recorded',
+
+  'search.placeholder': 'Search messages…',
+  'search.noResults': 'No messages match your search',
+
+  'template.ecommerce': 'E-Commerce',
+  'template.ecommerceDesc': 'Online store platform',
+  'template.saas': 'SaaS Platform',
+  'template.saasDesc': 'Multi-tenant SaaS application',
+  'template.dataplatform': 'Data Platform',
+  'template.dataplatformDesc': 'Data pipeline & analytics',
+  'template.microservice': 'Microservices',
+  'template.microserviceDesc': 'Distributed microservice system',
 } as const
 
 export type TranslationKey = keyof typeof en

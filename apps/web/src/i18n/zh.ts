@@ -418,6 +418,47 @@ const zh: Record<TranslationKey, string> = {
   'statusbar.version': 'VibeOS v0.1.0',
   'conversation.loading': '加载中…',
   'rich.actionModify': '正在准备修改…',
+
+  'activity.feedback_submitted': '反馈已提交',
+  'activity.feedback_received': '收到反馈',
+  'activity.agent_delegated': 'Agent 委派',
+  'activity.summary_created': '摘要已生成',
+
+  'summary.title': '摘要',
+  'summary.conversations': '对话摘要',
+  'summary.activities': '活动摘要',
+  'summary.empty': '暂无摘要',
+  'summary.keyDecisions': '关键决策',
+  'summary.keyEvents': '关键事件',
+  'summary.messageCount': '{count} 条消息',
+  'summary.activityCount': '{count} 个活动',
+  'summary.generate': '生成摘要',
+  'summary.generating': '生成中…',
+
+  'artifact.copy': '复制',
+  'artifact.copied': '已复制',
+  'artifact.filterAll': '所有阶段',
+  'artifact.loading': '加载中…',
+  'artifact.diagram': '图表',
+
+  'notification.agentCompleted': '{agent} 完成了任务',
+  'notification.phaseCompleted': '{phase} 阶段已完成',
+  'notification.workflowStarted': '项目工作流已启动',
+  'notification.workflowCompleted': '项目工作流已完成',
+  'notification.taskError': '任务失败：{task}',
+  'notification.feedbackRecorded': '反馈已记录',
+
+  'search.placeholder': '搜索消息…',
+  'search.noResults': '没有匹配的消息',
+
+  'template.ecommerce': '电商平台',
+  'template.ecommerceDesc': '在线商城系统',
+  'template.saas': 'SaaS 平台',
+  'template.saasDesc': '多租户 SaaS 应用',
+  'template.dataplatform': '数据平台',
+  'template.dataplatformDesc': '数据管道与分析系统',
+  'template.microservice': '微服务架构',
+  'template.microserviceDesc': '分布式微服务系统',
 }
 
 export default zh

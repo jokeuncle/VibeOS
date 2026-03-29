@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useT } from '../i18n'
+import { useWorkspaceStore, type AgentStatusEvent } from '../stores/workspace'
 import type { Agent, AgentType } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -30,13 +31,6 @@ const STATUS_COLOR: Record<string, string> = {
   error: '#ef4444',
 }
 
-const STATUS_GLOW: Record<string, string> = {
-  idle: 'rgba(100,116,139,0.2)',
-  running: 'rgba(99,102,241,0.3)',
-  waiting: 'rgba(245,158,11,0.3)',
-  error: 'rgba(239,68,68,0.3)',
-}
-
 const ALL_AGENTS: AgentType[] = ['pm', 'requirement', 'design', 'architecture', 'development', 'testing', 'cicd', 'monitoring']
 
 function getNodePositions(cx: number, cy: number, radius: number): Record<AgentType, { x: number; y: number }> {
@@ -56,9 +50,36 @@ function getNodePositions(cx: number, cy: number, radius: number): Record<AgentT
   return positions as Record<AgentType, { x: number; y: number }>
 }
 
+function detectActiveEdges(agents: Agent[], history: AgentStatusEvent[]): Set<string> {
+  const active = new Set<string>()
+  const runningAgents = agents.filter((a) => a.status === 'running').map((a) => a.type)
+
+  if (runningAgents.length === 0) return active
+
+  for (const agent of runningAgents) {
+    for (const edge of PIPELINE_EDGES) {
+      if (edge.from === agent || edge.to === agent) {
+        const other = edge.from === agent ? edge.to : edge.from
+        const otherAgent = agents.find((a) => a.type === other)
+        if (otherAgent && (otherAgent.status === 'running' || otherAgent.status === 'waiting')) {
+          active.add(`${edge.from}-${edge.to}`)
+        }
+      }
+    }
+  }
+
+  return active
+}
+
 export default function AgentTopology({ agents }: { agents: Agent[] }) {
   const t = useT()
   const [hoveredAgent, setHoveredAgent] = useState<AgentType | null>(null)
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const agentStatusHistory = useWorkspaceStore((s) => s.agentStatusHistory)
+
+  const history = activeWorkspaceId ? agentStatusHistory[activeWorkspaceId] || [] : []
+
+  const activeEdges = useMemo(() => detectActiveEdges(agents, history), [agents, history])
 
   const W = 560
   const H = 420
@@ -100,8 +121,18 @@ export default function AgentTopology({ agents }: { agents: Agent[] }) {
           <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" fill="var(--color-text-tertiary)">
             <polygon points="0 0, 8 3, 0 6" opacity="0.4" />
           </marker>
+          <marker id="arrowhead-active" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" fill="#6366f1">
+            <polygon points="0 0, 8 3, 0 6" opacity="0.8" />
+          </marker>
           <filter id="glow">
             <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="edge-glow">
+            <feGaussianBlur stdDeviation="2" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -123,19 +154,35 @@ export default function AgentTopology({ agents }: { agents: Agent[] }) {
           const ex = to.x - (dx / dist) * (nodeR + 8)
           const ey = to.y - (dy / dist) * (nodeR + 8)
           const highlighted = isHighlighted(edge.from) && isHighlighted(edge.to)
+          const isActive = activeEdges.has(`${edge.from}-${edge.to}`)
 
           return (
-            <motion.line
-              key={i}
-              x1={sx} y1={sy} x2={ex} y2={ey}
-              stroke="var(--color-text-tertiary)"
-              strokeWidth={highlighted ? 1.5 : 0.5}
-              strokeDasharray={edge.from === 'monitoring' ? '4 4' : undefined}
-              markerEnd="url(#arrowhead)"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: highlighted ? 0.5 : 0.12 }}
-              transition={{ duration: 0.3 }}
-            />
+            <g key={i}>
+              <motion.line
+                x1={sx} y1={sy} x2={ex} y2={ey}
+                stroke={isActive ? '#6366f1' : 'var(--color-text-tertiary)'}
+                strokeWidth={isActive ? 2.5 : highlighted ? 1.5 : 0.5}
+                strokeDasharray={edge.from === 'monitoring' ? '4 4' : undefined}
+                markerEnd={isActive ? 'url(#arrowhead-active)' : 'url(#arrowhead)'}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: isActive ? 0.8 : highlighted ? 0.5 : 0.12 }}
+                transition={{ duration: 0.3 }}
+                filter={isActive ? 'url(#edge-glow)' : undefined}
+              />
+              {isActive && (
+                <motion.circle
+                  r={3}
+                  fill="#6366f1"
+                  initial={{ opacity: 0 }}
+                  animate={{
+                    opacity: [0, 1, 0],
+                    cx: [sx, ex],
+                    cy: [sy, ey],
+                  }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                />
+              )}
+            </g>
           )
         })}
 
@@ -144,10 +191,10 @@ export default function AgentTopology({ agents }: { agents: Agent[] }) {
           const pos = positions[type]
           const status = getStatus(type)
           const color = STATUS_COLOR[status]
-          const glow = STATUS_GLOW[status]
           const highlighted = isHighlighted(type)
           const isPM = type === 'pm'
           const nodeR = isPM ? 32 : 26
+          const currentTask = agentMap.get(type)?.currentTask
 
           return (
             <g
@@ -205,6 +252,20 @@ export default function AgentTopology({ agents }: { agents: Agent[] }) {
               >
                 {t(`agent.name.${type}` as TranslationKey)}
               </text>
+
+              {/* Current task tooltip on hover */}
+              {hoveredAgent === type && currentTask && (
+                <foreignObject
+                  x={pos.x - 60}
+                  y={pos.y + nodeR + 8}
+                  width={120}
+                  height={32}
+                >
+                  <div className="px-2 py-1 rounded bg-surface-3 border border-border-subtle text-center">
+                    <span className="text-[8px] text-text-tertiary line-clamp-2">{currentTask}</span>
+                  </div>
+                </foreignObject>
+              )}
             </g>
           )
         })}

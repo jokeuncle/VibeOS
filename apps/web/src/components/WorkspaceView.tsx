@@ -16,6 +16,7 @@ import AgentLogStream from './AgentLogStream'
 import AgentTimeline from './AgentTimeline'
 import WorkflowControls from './WorkflowControls'
 import ArtifactPanel from './ArtifactPanel'
+import SummaryPanel from './SummaryPanel'
 import FilterToolbar, { type FilterState } from './FilterToolbar'
 import GitLabReposPanel from './GitLabReposPanel'
 import type { TranslationKey } from '../i18n/en'
@@ -389,6 +390,11 @@ export default function WorkspaceView() {
           {/* Artifacts */}
           <div className="mb-8">
             <ArtifactPanel />
+          </div>
+
+          {/* Summaries */}
+          <div className="mb-8">
+            <SummaryPanel />
           </div>
 
           {/* Activity Log */}

@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bot, User, ChevronDown, CheckCircle2, Circle, Loader2, Play, Code2, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Bot, User, ChevronDown, CheckCircle2, Circle, Loader2, Play, Code2, ThumbsUp, ThumbsDown, Search, X } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -50,10 +50,15 @@ function RichBlockRenderer({ block }: { block: RichBlock }) {
   const { addTask, activeWorkspaceId, workspaces } = useWorkspaceStore()
   const t = useT()
 
+  const { sendNLPMessageStream } = useWorkspaceStore()
+
   function handleAction(action: RichAction) {
     const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
     switch (action.id) {
       case 'approve':
+        if (block.taskTitle && activeWorkspaceId) {
+          sendNLPMessageStream(`approve and proceed with: ${block.taskTitle}`)
+        }
         addToast({ type: 'success', message: t('rich.actionApproved') })
         break
       case 'cancel':
@@ -61,21 +66,30 @@ function RichBlockRenderer({ block }: { block: RichBlock }) {
         break
       case 'confirm':
         if (block.taskTitle && activeWorkspaceId && workspace) {
-          const firstPhase = workspace.phases[0]
-          if (firstPhase) addTask(activeWorkspaceId, firstPhase.id, block.taskTitle)
+          const matchPhase = workspace.phases.find((p) => p.status !== 'completed') || workspace.phases[0]
+          if (matchPhase) addTask(activeWorkspaceId, matchPhase.id, block.taskTitle)
         }
         addToast({ type: 'success', message: t('rich.actionConfirmed') })
         break
       case 'apply':
+        if (activeWorkspaceId && block.description) {
+          sendNLPMessageStream(`apply the following changes: ${block.description}`)
+        }
         addToast({ type: 'success', message: t('rich.actionApplied') })
         break
       case 'dismiss':
         addToast({ type: 'info', message: t('rich.actionDismissed') })
         break
       case 'proceed':
+        if (activeWorkspaceId) {
+          sendNLPMessageStream('proceed to the next phase')
+        }
         addToast({ type: 'info', message: t('rich.actionProceeding') })
         break
       case 'detail':
+        if (activeWorkspaceId && block.title) {
+          sendNLPMessageStream(`provide detailed analysis for: ${block.title}`)
+        }
         addToast({ type: 'info', message: t('rich.actionDetail') })
         break
       case 'modify':
@@ -262,6 +276,128 @@ function FeedbackButtons({ msg }: { msg: Message }) {
   )
 }
 
+function MarkdownContent({ text }: { text: string }) {
+  const parts = useMemo(() => {
+    const result: { type: 'text' | 'code'; content: string; lang?: string }[] = []
+    const codeBlockRe = /```(\w*)\n([\s\S]*?)```/g
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+
+    while ((match = codeBlockRe.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        result.push({ type: 'text', content: text.slice(lastIndex, match.index) })
+      }
+      result.push({ type: 'code', content: match[2], lang: match[1] || undefined })
+      lastIndex = match.index + match[0].length
+    }
+    if (lastIndex < text.length) {
+      result.push({ type: 'text', content: text.slice(lastIndex) })
+    }
+    return result
+  }, [text])
+
+  return (
+    <div className="text-xs text-text-primary/90 leading-relaxed space-y-2">
+      {parts.map((part, i) => {
+        if (part.type === 'code') {
+          return (
+            <div key={i} className="rounded-lg border border-border-subtle overflow-hidden">
+              {part.lang && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-surface-3 border-b border-border-subtle">
+                  <Code2 className="w-3 h-3 text-text-tertiary" />
+                  <span className="text-[10px] font-mono text-text-tertiary">{part.lang}</span>
+                </div>
+              )}
+              <pre className="p-3 bg-surface-2/50 overflow-x-auto">
+                <code className="text-[11px] font-mono text-text-primary leading-relaxed whitespace-pre">{part.content}</code>
+              </pre>
+            </div>
+          )
+        }
+        return <InlineMarkdown key={i} text={part.content} />
+      })}
+    </div>
+  )
+}
+
+function InlineMarkdown({ text }: { text: string }) {
+  const lines = text.split('\n')
+  const elements: React.ReactNode[] = []
+  let listItems: string[] = []
+  let listStart = 0
+
+  function flushList() {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul key={`list-${listStart}`} className="list-disc list-inside space-y-0.5 pl-1">
+          {listItems.map((item, j) => (
+            <li key={j}><InlineText text={item} /></li>
+          ))}
+        </ul>
+      )
+      listItems = []
+    }
+  }
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trimStart()
+    if (trimmed.startsWith('### ')) {
+      flushList()
+      elements.push(<h4 key={i} className="text-xs font-bold text-text-primary mt-3 mb-1">{trimmed.slice(4)}</h4>)
+    } else if (trimmed.startsWith('## ')) {
+      flushList()
+      elements.push(<h3 key={i} className="text-sm font-bold text-text-primary mt-3 mb-1">{trimmed.slice(3)}</h3>)
+    } else if (trimmed.startsWith('# ')) {
+      flushList()
+      elements.push(<h2 key={i} className="text-base font-bold text-text-primary mt-3 mb-1">{trimmed.slice(2)}</h2>)
+    } else if (/^[-*]\s/.test(trimmed)) {
+      if (listItems.length === 0) listStart = i
+      listItems.push(trimmed.slice(2))
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      if (listItems.length === 0) listStart = i
+      listItems.push(trimmed.replace(/^\d+\.\s/, ''))
+    } else {
+      flushList()
+      if (trimmed === '') {
+        if (i > 0 && i < lines.length - 1) elements.push(<div key={i} className="h-2" />)
+      } else {
+        elements.push(<p key={i} className="whitespace-pre-wrap"><InlineText text={line} /></p>)
+      }
+    }
+  })
+  flushList()
+
+  return <>{elements}</>
+}
+
+function InlineText({ text }: { text: string }) {
+  const parts: React.ReactNode[] = []
+  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let key = 0
+
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    if (match[2]) {
+      parts.push(<strong key={key++} className="font-semibold">{match[2]}</strong>)
+    } else if (match[3]) {
+      parts.push(<em key={key++} className="italic">{match[3]}</em>)
+    } else if (match[4]) {
+      parts.push(<code key={key++} className="px-1 py-0.5 rounded bg-surface-3 font-mono text-[11px] text-accent">{match[4]}</code>)
+    } else if (match[5] && match[6]) {
+      parts.push(<a key={key++} href={match[6]} target="_blank" rel="noreferrer" className="text-accent hover:underline">{match[5]}</a>)
+    }
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+  return <>{parts}</>
+}
+
 function TypingIndicator() {
   return (
     <div className="flex items-center gap-1.5 py-1">
@@ -304,7 +440,7 @@ function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boole
         </div>
         {showTyping && <TypingIndicator />}
         {msg.content && (
-          <p className="text-xs text-text-primary/90 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+          isAgent ? <MarkdownContent text={msg.content} /> : <p className="text-xs text-text-primary/90 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
         )}
         {msg.richBlocks && msg.richBlocks.length > 0 && (
           <div className="space-y-2 mt-1">
@@ -352,8 +488,17 @@ export default function MessageThread() {
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(new Set())
   const [loadingOlder, setLoadingOlder] = useState(false)
   const isLoadingOlderRef = useRef(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
 
-  const sessions = groupIntoSessions(messages)
+  const filteredMessages = useMemo(() => {
+    if (!searchQuery.trim()) return messages
+    const q = searchQuery.toLowerCase()
+    return messages.filter((m) => m.content?.toLowerCase().includes(q))
+  }, [messages, searchQuery])
+
+  const displayMessages = searchOpen && searchQuery.trim() ? filteredMessages : messages
+  const sessions = groupIntoSessions(displayMessages)
   const lastMsgContent = messages[messages.length - 1]?.content
   const lastMsgId = messages[messages.length - 1]?.id
 
@@ -386,7 +531,33 @@ export default function MessageThread() {
       <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
         <Bot className="w-3.5 h-3.5 text-text-tertiary" />
         <span className="text-xs font-medium text-text-secondary">{t('conversation.title')}</span>
-        <span className="text-[10px] font-mono text-text-tertiary ml-auto">{messages.length}</span>
+        <div className="flex-1" />
+        {searchOpen ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('search.placeholder' as TranslationKey)}
+              className="w-40 px-2 py-1 text-[11px] rounded-md bg-surface-2 border border-border-default text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40"
+            />
+            <button
+              onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+              className="p-1 rounded-md text-text-tertiary hover:text-text-secondary hover:bg-surface-3 cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="p-1 rounded-md text-text-tertiary hover:text-text-secondary hover:bg-surface-3 cursor-pointer"
+          >
+            <Search className="w-3.5 h-3.5" />
+          </button>
+        )}
+        <span className="text-[10px] font-mono text-text-tertiary">{displayMessages.length}</span>
       </div>
 
       <div className="max-h-[500px] overflow-y-auto">
@@ -415,6 +586,11 @@ export default function MessageThread() {
                 t('conversation.loadOlder' as TranslationKey)
               )}
             </button>
+          </div>
+        )}
+        {searchOpen && searchQuery.trim() && filteredMessages.length === 0 && (
+          <div className="py-8 text-center text-xs text-text-tertiary">
+            {t('search.noResults' as TranslationKey)}
           </div>
         )}
         {sessions.map((session, si) => {

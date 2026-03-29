@@ -22,11 +22,7 @@ export interface ConfirmDialogState {
   onConfirm: () => void
 }
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  { id: 'n1', title: 'Arch Agent completed database schema design', description: 'User Points System', time: '2026-03-27T14:20:00Z', read: false, workspaceId: 'ws-1' },
-  { id: 'n2', title: 'Requirements phase completed', description: 'User Points System', time: '2026-03-27T12:00:00Z', read: false, workspaceId: 'ws-1' },
-  { id: 'n3', title: 'New workspace created', description: 'Payment Gateway', time: '2026-03-25T09:00:00Z', read: true, workspaceId: 'ws-2' },
-]
+// No mock data — notifications are generated from real WebSocket events
 
 interface UIState {
   toasts: Toast[]
@@ -64,6 +60,7 @@ interface UIState {
   setSplitSecondaryView: (mode: 'list' | 'board' | 'dashboard' | 'agents') => void
 
   notifications: Notification[]
+  addNotification: (n: Omit<Notification, 'id' | 'read'>) => void
   markNotificationRead: (id: string) => void
   markAllRead: () => void
 
@@ -140,7 +137,14 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleSplitMode: () => set((s) => ({ splitMode: !s.splitMode })),
   setSplitSecondaryView: (mode) => set({ splitSecondaryView: mode }),
 
-  notifications: MOCK_NOTIFICATIONS,
+  notifications: [],
+  addNotification: (n) =>
+    set((s) => ({
+      notifications: [
+        { ...n, id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, read: false },
+        ...s.notifications,
+      ].slice(0, 50),
+    })),
   markNotificationRead: (id) =>
     set((s) => ({
       notifications: s.notifications.map((n) =>

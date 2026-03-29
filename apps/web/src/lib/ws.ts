@@ -1,4 +1,5 @@
 import { useWorkspaceStore } from '../stores/workspace'
+import { useUIStore } from '../stores/ui'
 
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -131,6 +132,47 @@ function handleWSEvent(event: Record<string, any>) {
         useWorkspaceStore.setState({ workflowEvents: [...prev, event as any] })
       }
     }
+  }
+
+  // Generate real notifications from meaningful events
+  const addNotification = useUIStore.getState().addNotification
+  const wsId = event.workspaceId || undefined
+
+  if (event.type === 'workflow:phase_complete' && event.phase) {
+    addNotification({
+      title: `${event.phase} phase completed`,
+      description: event.tasks_executed ? `${event.tasks_executed} tasks executed` : '',
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+    })
+  } else if (event.type === 'workflow:project_complete') {
+    addNotification({
+      title: 'Project workflow completed',
+      description: event.success ? 'All phases finished successfully' : 'Completed with issues',
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+    })
+  } else if (event.type === 'workflow:project_start') {
+    addNotification({
+      title: 'Project workflow started',
+      description: event.phases?.join(' → ') || '',
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+    })
+  } else if (event.type === 'workflow:task_error' && event.task_title) {
+    addNotification({
+      title: `Task failed: ${event.task_title}`,
+      description: event.error || '',
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+    })
+  } else if (event.type === 'agent:status' && event.status === 'error' && event.detail) {
+    addNotification({
+      title: `Agent error: ${event.agentType || 'unknown'}`,
+      description: event.detail,
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+    })
   }
 
   // Debounced full refresh for structural events (tasks created, phases changed).

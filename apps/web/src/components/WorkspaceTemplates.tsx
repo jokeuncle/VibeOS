@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, FileText, Globe, Smartphone, Server } from 'lucide-react'
+import { X, FileText, Globe, Smartphone, Server, ShoppingCart, Cloud, Database, GitBranch } from 'lucide-react'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
@@ -30,6 +30,10 @@ const TEMPLATES: { id: string; icon: typeof FileText; nameKey: TranslationKey; d
   { id: 'webapp', icon: Globe, nameKey: 'template.webapp', descKey: 'template.webappDesc', defaultName: 'Web Application', defaultDesc: 'Full-stack web application' },
   { id: 'mobile', icon: Smartphone, nameKey: 'template.mobile', descKey: 'template.mobileDesc', defaultName: 'Mobile App', defaultDesc: 'iOS / Android application' },
   { id: 'api', icon: Server, nameKey: 'template.api', descKey: 'template.apiDesc', defaultName: 'API Service', defaultDesc: 'Backend API / microservice' },
+  { id: 'ecommerce', icon: ShoppingCart, nameKey: 'template.ecommerce' as TranslationKey, descKey: 'template.ecommerceDesc' as TranslationKey, defaultName: 'E-Commerce Platform', defaultDesc: 'Online store with product catalog, cart, checkout' },
+  { id: 'saas', icon: Cloud, nameKey: 'template.saas' as TranslationKey, descKey: 'template.saasDesc' as TranslationKey, defaultName: 'SaaS Platform', defaultDesc: 'Multi-tenant SaaS with auth, billing, dashboards' },
+  { id: 'dataplatform', icon: Database, nameKey: 'template.dataplatform' as TranslationKey, descKey: 'template.dataplatformDesc' as TranslationKey, defaultName: 'Data Platform', defaultDesc: 'Data pipeline, ETL, analytics dashboard' },
+  { id: 'microservice', icon: GitBranch, nameKey: 'template.microservice' as TranslationKey, descKey: 'template.microserviceDesc' as TranslationKey, defaultName: 'Microservices', defaultDesc: 'Distributed microservice architecture' },
 ]
 
 export default function WorkspaceTemplates() {
@@ -99,7 +103,7 @@ export default function WorkspaceTemplates() {
                 <label className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-2 block">
                   {t('template.templates')}
                 </label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto">
                   {TEMPLATES.map((tpl) => {
                     const Icon = tpl.icon
                     const isActive = selectedTemplate === tpl.id

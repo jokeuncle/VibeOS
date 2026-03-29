@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { FileText, RefreshCw, Zap, Bot, Settings } from 'lucide-react'
+import { FileText, RefreshCw, Zap, Bot, Settings, ThumbsUp, GitMerge, FileBarChart } from 'lucide-react'
 import { useT } from '../i18n'
 import type { ActivityItem } from '../types'
 import type { TranslationKey } from '../i18n/en'
@@ -14,6 +14,10 @@ const ICON_MAP: Record<string, { icon: typeof FileText; color: string }> = {
   workspace_updated: { icon: Settings, color: 'text-text-tertiary bg-surface-3' },
   workspace_created: { icon: Settings, color: 'text-accent bg-accent/10' },
   artifact_created: { icon: Bot, color: 'text-violet-400 bg-violet-500/10' },
+  feedback_submitted: { icon: ThumbsUp, color: 'text-success bg-success/10' },
+  feedback_received: { icon: ThumbsUp, color: 'text-success bg-success/10' },
+  agent_delegated: { icon: GitMerge, color: 'text-cyan-400 bg-cyan-500/10' },
+  summary_created: { icon: FileBarChart, color: 'text-amber-400 bg-amber-500/10' },
 }
 
 const DEFAULT_ICON = { icon: Settings, color: 'text-text-tertiary bg-surface-3' }
