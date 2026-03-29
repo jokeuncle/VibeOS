@@ -72,6 +72,7 @@ func main() {
 	agentHandler := handler.NewAgentHandler(svc, logger)
 	feedbackHandler := handler.NewFeedbackHandler(svc, logger)
 	summaryHandler := handler.NewSummaryHandler(svc, logger)
+	reqHandler := handler.NewRequirementHandler(svc, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -114,6 +115,7 @@ func main() {
 
 			r.Get("/artifacts", artifactHandler.ListByWorkspace)
 			r.Post("/artifacts", artifactHandler.Create)
+			r.Put("/artifacts", artifactHandler.Upsert)
 			r.Get("/artifacts/meta", chatHandler.ListArtifactsMeta)
 			r.Get("/artifacts/{artifactId}", artifactHandler.Get)
 			r.Get("/phases/{phaseId}/artifacts", artifactHandler.ListByPhase)
@@ -150,6 +152,21 @@ func main() {
 			// Feedback signals
 			r.Post("/feedback", feedbackHandler.Create)
 			r.Get("/feedback", feedbackHandler.List)
+
+			// Requirements
+			r.Route("/requirements", func(r chi.Router) {
+				r.Get("/", reqHandler.List)
+				r.Post("/", reqHandler.Create)
+				r.Route("/{reqId}", func(r chi.Router) {
+					r.Get("/", reqHandler.Get)
+					r.Patch("/", reqHandler.Update)
+					r.Delete("/", reqHandler.Delete)
+					r.Post("/phases/{phaseType}/reset", reqHandler.ResetPhase)
+					r.Post("/relations", reqHandler.AddRelation)
+					r.Delete("/relations/{relationId}", reqHandler.RemoveRelation)
+					r.Get("/related-artifacts", reqHandler.GetRelatedArtifacts)
+				})
+			})
 		})
 	})
 

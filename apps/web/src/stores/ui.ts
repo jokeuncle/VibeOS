@@ -51,13 +51,13 @@ interface UIState {
   sidebarCollapsed: boolean
   toggleSidebar: () => void
 
-  viewMode: 'list' | 'board' | 'dashboard' | 'agents'
-  setViewMode: (mode: 'list' | 'board' | 'dashboard' | 'agents') => void
+  viewMode: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements'
+  setViewMode: (mode: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements') => void
 
   splitMode: boolean
-  splitSecondaryView: 'list' | 'board' | 'dashboard' | 'agents'
+  splitSecondaryView: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements'
   toggleSplitMode: () => void
-  setSplitSecondaryView: (mode: 'list' | 'board' | 'dashboard' | 'agents') => void
+  setSplitSecondaryView: (mode: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements') => void
 
   notifications: Notification[]
   addNotification: (n: Omit<Notification, 'id' | 'read'>) => void

@@ -210,6 +210,100 @@ class WorkspaceClient:
             )
             return []
 
+    # ------------------------------------------------------------------
+    # Requirement APIs
+    # ------------------------------------------------------------------
+
+    async def create_requirement(
+        self, workspace_id: str, title: str, description: str = "", priority: str | None = None
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"title": title, "description": description}
+        if priority:
+            body["priority"] = priority
+        resp = await self._http.post(f"/api/workspaces/{workspace_id}/requirements", json=body)
+        resp.raise_for_status()
+        return resp.json().get("data", {})
+
+    async def get_requirement(self, workspace_id: str, requirement_id: str) -> dict[str, Any]:
+        resp = await self._http.get(f"/api/workspaces/{workspace_id}/requirements/{requirement_id}")
+        resp.raise_for_status()
+        return resp.json().get("data", {})
+
+    async def list_requirements(self, workspace_id: str) -> list[dict[str, Any]]:
+        resp = await self._http.get(f"/api/workspaces/{workspace_id}/requirements")
+        resp.raise_for_status()
+        return resp.json().get("data", [])
+
+    async def update_requirement(self, workspace_id: str, requirement_id: str, **updates: Any) -> dict[str, Any]:
+        resp = await self._http.patch(
+            f"/api/workspaces/{workspace_id}/requirements/{requirement_id}", json=updates
+        )
+        resp.raise_for_status()
+        return resp.json().get("data", {})
+
+    async def reset_requirement_phase(self, workspace_id: str, requirement_id: str, phase_type: str) -> None:
+        resp = await self._http.post(
+            f"/api/workspaces/{workspace_id}/requirements/{requirement_id}/phases/{phase_type}/reset"
+        )
+        resp.raise_for_status()
+
+    async def add_requirement_relation(
+        self, workspace_id: str, requirement_id: str, target_id: str, relation_type: str, description: str = ""
+    ) -> dict[str, Any]:
+        resp = await self._http.post(
+            f"/api/workspaces/{workspace_id}/requirements/{requirement_id}/relations",
+            json={"targetId": target_id, "relationType": relation_type, "description": description},
+        )
+        resp.raise_for_status()
+        return resp.json().get("data", {})
+
+    async def remove_requirement_relation(
+        self, workspace_id: str, requirement_id: str, relation_id: str
+    ) -> None:
+        resp = await self._http.delete(
+            f"/api/workspaces/{workspace_id}/requirements/{requirement_id}/relations/{relation_id}"
+        )
+        resp.raise_for_status()
+
+    async def get_related_artifacts(
+        self, workspace_id: str, requirement_id: str
+    ) -> dict[str, list[dict[str, Any]]]:
+        resp = await self._http.get(
+            f"/api/workspaces/{workspace_id}/requirements/{requirement_id}/related-artifacts"
+        )
+        resp.raise_for_status()
+        return resp.json().get("data", {})
+
+    async def upsert_artifact(
+        self,
+        workspace_id: str,
+        *,
+        agent_type: str,
+        artifact_type: str,
+        title: str,
+        content: str,
+        phase_id: str | None = None,
+        task_id: str | None = None,
+        requirement_id: str | None = None,
+        metadata: str = "{}",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "agentType": agent_type,
+            "type": artifact_type,
+            "title": title,
+            "content": content,
+            "metadata": metadata,
+        }
+        if phase_id:
+            body["phaseId"] = phase_id
+        if task_id:
+            body["taskId"] = task_id
+        if requirement_id:
+            body["requirementId"] = requirement_id
+        resp = await self._http.put(f"/api/workspaces/{workspace_id}/artifacts", json=body)
+        resp.raise_for_status()
+        return resp.json().get("data", {})
+
     async def close(self) -> None:
         await self._http.aclose()
 
@@ -1163,6 +1257,37 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             return ""
         return "## Upstream Artifacts\n\n" + "\n\n---\n\n".join(sections)
 
+    async def _fetch_related_requirement_context(self, workspace_id: str, requirement_id: str) -> str:
+        """Load artifacts from related requirements based on relationship type."""
+        try:
+            related = await self.workspace_svc.get_related_artifacts(workspace_id, requirement_id)
+        except Exception:
+            return ""
+
+        TRUNCATION = {
+            "depends_on": 3000, "parent_of": 2000, "related_to": 1500,
+            "evolves_from": 5000, "conflicts_with": 2000,
+        }
+        LABELS = {
+            "depends_on": "Dependency", "parent_of": "Parent Requirement",
+            "related_to": "Related Requirement", "evolves_from": "Previous Version",
+            "conflicts_with": "Conflicting Requirement",
+        }
+
+        sections: list[str] = []
+        for rel_type, artifacts in related.items():
+            limit = TRUNCATION.get(rel_type, 2000)
+            label = LABELS.get(rel_type, rel_type)
+            for art in artifacts[:5]:
+                content = art.get("content", "")[:limit]
+                title = art.get("title", "untitled")
+                art_type = art.get("type", "unknown")
+                sections.append(f"### [{label}] {title} ({art_type})\n{content}")
+
+        if not sections:
+            return ""
+        return "## Related Requirements Context\n\n" + "\n\n---\n\n".join(sections)
+
     async def _save_artifact(
         self,
         workspace_id: str,
@@ -1200,6 +1325,40 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             )
         except Exception:
             pass
+
+    async def _upsert_artifact(
+        self,
+        workspace_id: str,
+        *,
+        artifact_type: str,
+        title: str,
+        content: str,
+        phase_id: str | None = None,
+        task_id: str | None = None,
+        requirement_id: str | None = None,
+        metadata: str = "{}",
+    ) -> dict[str, Any]:
+        """Upsert an artifact (update if same task_id+type exists, else insert)."""
+        result = await self.workspace_svc.upsert_artifact(
+            workspace_id,
+            agent_type=_enum_val(self.agent_type),
+            artifact_type=artifact_type,
+            title=title,
+            content=content,
+            phase_id=phase_id,
+            task_id=task_id,
+            requirement_id=requirement_id,
+            metadata=metadata,
+        )
+        if self.rag and content and len(content) > 100:
+            try:
+                await self.rag.index_documents(
+                    workspace_id,
+                    [{"title": title, "content": content[:8000], "doc_type": artifact_type}],
+                )
+            except Exception:
+                pass
+        return result
 
     async def close(self) -> None:
         await self.workspace_svc.close()

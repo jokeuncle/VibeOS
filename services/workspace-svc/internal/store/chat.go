@@ -119,7 +119,7 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 
 func (s *PostgresStore) ListArtifactMetaByWorkspace(ctx context.Context, workspaceID string) ([]models.ArtifactMeta, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, workspace_id, phase_id, task_id, agent_type, type, title,
+		`SELECT id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title,
 		        COALESCE(content_size, octet_length(content)) AS content_size,
 		        metadata, version, created_at, updated_at
 		 FROM artifacts WHERE workspace_id = $1
@@ -133,7 +133,7 @@ func (s *PostgresStore) ListArtifactMetaByWorkspace(ctx context.Context, workspa
 	var out []models.ArtifactMeta
 	for rows.Next() {
 		var a models.ArtifactMeta
-		if err := rows.Scan(&a.ID, &a.WorkspaceID, &a.PhaseID, &a.TaskID,
+		if err := rows.Scan(&a.ID, &a.WorkspaceID, &a.PhaseID, &a.TaskID, &a.RequirementID,
 			&a.AgentType, &a.Type, &a.Title, &a.ContentSize,
 			&a.Metadata, &a.Version, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err

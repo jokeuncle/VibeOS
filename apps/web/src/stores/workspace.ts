@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   Workspace, Message, PhaseStatus, WorkspaceColor,
   ActivityItem, AgentType, Task, TaskPriority, LabelColor, WorkspaceRepo,
+  Requirement,
 } from '../types'
 import {
   workspaceApi, workflowApi, agentApi, mapNLPResultToMessage, mapAgentChatToMessage,
@@ -141,6 +142,16 @@ interface WorkspaceState {
   // Workspace lifecycle
   archiveWorkspace: (wsId: string) => void
   unarchiveWorkspace: (wsId: string) => void
+
+  // Requirements
+  activeRequirementId: string | null
+  requirementDetail: Requirement | null
+  setActiveRequirement: (id: string | null) => void
+  createRequirement: (wsId: string, title: string, description: string) => void
+  deleteRequirement: (wsId: string, reqId: string) => void
+  runRequirement: (reqId: string, phaseType?: string, userMessage?: string) => void
+  resetRequirementPhase: (reqId: string, phaseType: string) => void
+  loadRequirementDetail: (wsId: string, reqId: string) => void
 
   // Chat cursor pagination
   loadOlderMessages: () => void
@@ -413,6 +424,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       agents: [],
       activities: [],
       repos: [],
+      requirements: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -578,6 +590,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       agents: [],
       activities: [],
       repos: [],
+      requirements: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -1038,6 +1051,99 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({ ...w, status: 'active' })),
       }))
     }).catch((err) => console.error('Failed to unarchive workspace:', err))
+  },
+
+  // ---- Requirements ----
+  activeRequirementId: null,
+  requirementDetail: null,
+
+  setActiveRequirement: (id) => {
+    set({ activeRequirementId: id, requirementDetail: null })
+    if (id) {
+      const wsId = get().activeWorkspaceId
+      if (wsId) get().loadRequirementDetail(wsId, id)
+    }
+  },
+
+  loadRequirementDetail: async (wsId, reqId) => {
+    try {
+      const detail = await workspaceApi.getRequirement(wsId, reqId)
+      set({ requirementDetail: detail })
+    } catch (e) {
+      console.error('Failed to load requirement detail:', e)
+    }
+  },
+
+  createRequirement: async (wsId, title, description) => {
+    try {
+      await workspaceApi.createRequirement(wsId, { title, description })
+      get().refreshActiveWorkspace()
+    } catch (e) {
+      console.error('Failed to create requirement:', e)
+    }
+  },
+
+  deleteRequirement: async (wsId, reqId) => {
+    try {
+      await workspaceApi.deleteRequirement(wsId, reqId)
+      if (get().activeRequirementId === reqId) {
+        set({ activeRequirementId: null, requirementDetail: null })
+      }
+      get().refreshActiveWorkspace()
+    } catch (e) {
+      console.error('Failed to delete requirement:', e)
+    }
+  },
+
+  runRequirement: (reqId, phaseType, userMessage) => {
+    const wsId = get().activeWorkspaceId
+    if (!wsId || get().workflowRunning) return
+
+    set({ workflowRunning: true, workflowEvents: [] })
+
+    ;(async () => {
+      try {
+        for await (const evt of workflowApi.runRequirement(wsId, reqId, phaseType, userMessage)) {
+          try {
+            const data = JSON.parse(evt.data) as WorkflowEvent
+            set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
+            if (data.task_id) {
+              if (data.type === 'workflow:task_start') {
+                get().patchTaskStatus(wsId, data.task_id, 'in_progress')
+              } else if (data.type === 'workflow:task_complete') {
+                get().patchTaskStatus(wsId, data.task_id, 'completed')
+              } else if (data.type === 'workflow:task_error') {
+                get().patchTaskStatus(wsId, data.task_id, 'pending')
+              }
+            }
+            const sysMsg = workflowEventToMessage(data)
+            if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
+          } catch { /* skip parse errors */ }
+        }
+      } catch (err) {
+        console.error('runRequirement error:', err)
+      } finally {
+        set({ workflowRunning: false })
+        get().refreshActiveWorkspace()
+        if (get().activeRequirementId === reqId) {
+          get().loadRequirementDetail(wsId, reqId)
+        }
+      }
+    })()
+  },
+
+  resetRequirementPhase: async (reqId, phaseType) => {
+    const wsId = get().activeWorkspaceId
+    if (!wsId) return
+    try {
+      await workspaceApi.resetRequirementPhase(wsId, reqId, phaseType)
+      get().refreshActiveWorkspace()
+      if (get().activeRequirementId === reqId) {
+        get().loadRequirementDetail(wsId, reqId)
+      }
+    } catch (e) {
+      console.error('Failed to reset requirement phase:', e)
+    }
   },
 
   // ---- Chat cursor pagination ----

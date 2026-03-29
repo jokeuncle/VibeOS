@@ -479,6 +479,13 @@ async def _handle_run_project(
     }
 
 
+async def _handle_create_requirement(
+    workspace_id: str, summary: str, user_message: str, ws_client: WorkspaceClient
+) -> dict[str, Any]:
+    req = await ws_client.create_requirement(workspace_id, title=summary, description=user_message)
+    return {"handled_by": "pm", "action": "create_requirement", "requirement": req}
+
+
 async def _execute_pm_intent(
     parsed: ParsedIntent,
     req: NLPRequest,
@@ -492,6 +499,10 @@ async def _execute_pm_intent(
     if parsed.intent == "create_task":
         return await _handle_create_task(
             req.workspace_id, req.message, parsed.summary, llm, ws_client, ws,
+        )
+    if parsed.intent == "create_requirement":
+        return await _handle_create_requirement(
+            req.workspace_id, parsed.summary, req.message, ws_client,
         )
     if parsed.intent == "query_progress":
         return await _handle_query_progress(req.workspace_id, llm, ws_client)
@@ -826,6 +837,31 @@ async def handle_run_project(req: RunProjectRequest) -> StreamingResponse:
         try:
             async for event in workflow.run_project(
                 req.workspace_id, req.user_message, start_phase=req.start_phase
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+class RunRequirementRequest(BaseModel):
+    workspace_id: str
+    requirement_id: str
+    phase_type: str | None = None
+    user_message: str = ""
+
+
+@app.post("/api/workflow/run-requirement")
+async def handle_run_requirement(req: RunRequirementRequest) -> StreamingResponse:
+    """SSE: execute all pending tasks for a requirement in a specific phase."""
+    workflow: WorkflowEngine = app.state.workflow
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        try:
+            async for event in workflow.run_requirement(
+                req.workspace_id, req.requirement_id, req.user_message, req.phase_type
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:

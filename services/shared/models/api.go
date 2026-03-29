@@ -31,13 +31,36 @@ type UpdateTaskReq struct {
 }
 
 type CreateArtifactReq struct {
-	PhaseID   *string `json:"phaseId,omitempty"`
-	TaskID    *string `json:"taskId,omitempty"`
-	AgentType string  `json:"agentType"`
-	Type      string  `json:"type"`
-	Title     string  `json:"title"`
-	Content   string  `json:"content"`
-	Metadata  string  `json:"metadata,omitempty"`
+	PhaseID       *string `json:"phaseId,omitempty"`
+	TaskID        *string `json:"taskId,omitempty"`
+	RequirementID *string `json:"requirementId,omitempty"`
+	AgentType     string  `json:"agentType"`
+	Type          string  `json:"type"`
+	Title         string  `json:"title"`
+	Content       string  `json:"content"`
+	Metadata      string  `json:"metadata,omitempty"`
+}
+
+type CreateRequirementReq struct {
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Priority    *string `json:"priority,omitempty"`
+	Iteration   string  `json:"iteration,omitempty"`
+}
+
+type UpdateRequirementReq struct {
+	Title        *string `json:"title,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	Status       *string `json:"status,omitempty"`
+	CurrentPhase *string `json:"currentPhase,omitempty"`
+	Priority     *string `json:"priority,omitempty"`
+	Iteration    *string `json:"iteration,omitempty"`
+}
+
+type CreateRequirementRelationReq struct {
+	TargetID     string `json:"targetId"`
+	RelationType string `json:"relationType"`
+	Description  string `json:"description,omitempty"`
 }
 
 type UpdatePhaseStatusReq struct {
@@ -189,4 +212,6 @@ const (
 	WSEventTaskUpdate   = "task_update"
 	WSEventPhaseUpdate  = "phase_update"
 	WSEventNotification = "notification"
+
+	WSEventRequirementUpdate = "requirement_update"
 )

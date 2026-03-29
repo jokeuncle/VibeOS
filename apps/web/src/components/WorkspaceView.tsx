@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useId } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { List, LayoutGrid, BarChart3, Bot, Check, X, Plus, MessageCircle, Sparkles, Columns2, GitBranch } from 'lucide-react'
+import { List, LayoutGrid, BarChart3, Bot, Check, X, Plus, MessageCircle, Sparkles, Columns2, GitBranch, FileStack } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -19,6 +19,8 @@ import ArtifactPanel from './ArtifactPanel'
 import SummaryPanel from './SummaryPanel'
 import FilterToolbar, { type FilterState } from './FilterToolbar'
 import GitLabReposPanel from './GitLabReposPanel'
+import RequirementList from './RequirementList'
+import RequirementDetail from './RequirementDetail'
 import type { TranslationKey } from '../i18n/en'
 import type { Phase, TaskPriority, Agent } from '../types'
 
@@ -49,13 +51,14 @@ function ProgressRing({ progress }: { progress: number }) {
   )
 }
 
-type ViewMode = 'list' | 'board' | 'dashboard' | 'agents'
+type ViewMode = 'list' | 'board' | 'dashboard' | 'agents' | 'requirements'
 
 const VIEW_MODES: { mode: ViewMode; Icon: typeof List; label: string }[] = [
   { mode: 'list', Icon: List, label: 'view.list' },
   { mode: 'board', Icon: LayoutGrid, label: 'view.board' },
   { mode: 'dashboard', Icon: BarChart3, label: 'view.dashboard' },
   { mode: 'agents', Icon: Bot, label: 'view.agents' },
+  { mode: 'requirements', Icon: FileStack, label: 'view.requirements' },
 ]
 
 const PRIORITY_ORDER: Record<string, number> = { p0: 0, p1: 1, p2: 2, p3: 3 }
@@ -86,7 +89,11 @@ function ViewContent({ mode, workspace, displayedPhases, filter, onFilterChange 
   onFilterChange: (f: FilterState) => void
 }) {
   const filteredPhases = useMemo(() => applyFilter(displayedPhases, filter), [displayedPhases, filter])
+  const activeRequirementId = useWorkspaceStore((s) => s.activeRequirementId)
 
+  if (mode === 'requirements') {
+    return activeRequirementId ? <RequirementDetail /> : <RequirementList />
+  }
   if (mode === 'agents') {
     return (
       <div className="space-y-4 mb-8">
@@ -269,11 +276,13 @@ export default function WorkspaceView() {
           {/* View toggle */}
           <div className="flex items-center gap-2 mb-4">
             <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-              {currentViewMode === 'dashboard'
-                ? t('view.dashboard')
-                : currentViewMode === 'agents'
-                  ? t('view.agents')
-                  : activePhaseId ? t('phase.phaseDetail') : t('phase.allPhases')}
+              {currentViewMode === 'requirements'
+                ? t('view.requirements')
+                : currentViewMode === 'dashboard'
+                  ? t('view.dashboard')
+                  : currentViewMode === 'agents'
+                    ? t('view.agents')
+                    : activePhaseId ? t('phase.phaseDetail') : t('phase.allPhases')}
             </span>
             <div className="flex-1 h-px bg-border-subtle" />
             <button

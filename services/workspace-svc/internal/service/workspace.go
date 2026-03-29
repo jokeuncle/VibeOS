@@ -58,6 +58,18 @@ var defaultAgents = []struct {
 	{models.AgentPM, "Project Manager", "📌"},
 }
 
+var requirementAnalysisTasks = []struct {
+	Title       string
+	Description string
+}{
+	{"Requirement Clarification", "Clarify raw requirements, resolve ambiguities, and confirm scope boundaries"},
+	{"Stakeholder & User Role Analysis", "Identify stakeholders, define user personas, goals, and pain points"},
+	{"User Story Decomposition", "Break requirements into actionable user stories with priority levels"},
+	{"Acceptance Criteria Definition", "Define Given/When/Then acceptance criteria for each user story"},
+	{"Non-functional Requirements & Constraints", "Identify NFRs (performance, security, scalability) and technical/business constraints"},
+	{"PRD Document Generation", "Generate comprehensive Product Requirements Document from all prior analysis"},
+}
+
 // ---------------------------------------------------------------------------
 // Workspace operations
 // ---------------------------------------------------------------------------
@@ -326,16 +338,17 @@ func (s *Service) CreateArtifact(ctx context.Context, wsID string, req models.Cr
 		metadata = "{}"
 	}
 	artifact := &models.Artifact{
-		ID:          uuid.New().String(),
-		WorkspaceID: wsID,
-		PhaseID:     req.PhaseID,
-		TaskID:      req.TaskID,
-		AgentType:   models.AgentType(req.AgentType),
-		Type:        req.Type,
-		Title:       req.Title,
-		Content:     req.Content,
-		Metadata:    metadata,
-		Version:     1,
+		ID:            uuid.New().String(),
+		WorkspaceID:   wsID,
+		PhaseID:       req.PhaseID,
+		TaskID:        req.TaskID,
+		RequirementID: req.RequirementID,
+		AgentType:     models.AgentType(req.AgentType),
+		Type:          req.Type,
+		Title:         req.Title,
+		Content:       req.Content,
+		Metadata:      metadata,
+		Version:       1,
 	}
 
 	if err := s.store.CreateArtifact(ctx, artifact); err != nil {
@@ -414,6 +427,188 @@ func (s *Service) ListFeedbackSignals(ctx context.Context, wsID string, limit in
 
 func (s *Service) GetTrustScores(ctx context.Context, agentType string) ([]models.TrustScore, error) {
 	return s.store.GetTrustScores(ctx, agentType)
+}
+
+// ---------------------------------------------------------------------------
+// Requirement operations
+// ---------------------------------------------------------------------------
+
+func (s *Service) CreateRequirement(ctx context.Context, wsID string, req models.CreateRequirementReq) (*models.Requirement, error) {
+	r := &models.Requirement{
+		ID:           uuid.New().String(),
+		WorkspaceID:  wsID,
+		Title:        req.Title,
+		Description:  req.Description,
+		Status:       models.RequirementDraft,
+		CurrentPhase: string(models.PhaseRequirement),
+		Iteration:    req.Iteration,
+	}
+	if req.Priority != nil {
+		p := models.TaskPriority(*req.Priority)
+		r.Priority = &p
+	}
+
+	if err := s.store.CreateRequirement(ctx, r); err != nil {
+		return nil, fmt.Errorf("create requirement: %w", err)
+	}
+
+	phases, err := s.store.ListPhasesByWorkspace(ctx, wsID)
+	if err != nil {
+		return nil, fmt.Errorf("list phases: %w", err)
+	}
+	var reqPhaseID string
+	for _, p := range phases {
+		if p.Type == models.PhaseRequirement {
+			reqPhaseID = p.ID
+			break
+		}
+	}
+
+	if reqPhaseID != "" {
+		for i, at := range requirementAnalysisTasks {
+			task := &models.Task{
+				ID:            uuid.New().String(),
+				PhaseID:       reqPhaseID,
+				WorkspaceID:   wsID,
+				RequirementID: &r.ID,
+				Title:         at.Title,
+				Description:   at.Description,
+				Status:        models.StatusPending,
+				Labels:        []string{},
+				SortOrder:     i,
+			}
+			if err := s.store.CreateTask(ctx, task); err != nil {
+				s.log.Error("failed to create requirement analysis task", "error", err, "title", at.Title)
+			}
+		}
+	}
+
+	s.logActivity(ctx, wsID, "requirement_created", r.Title, nil)
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, r)
+
+	return s.store.GetRequirement(ctx, r.ID, wsID)
+}
+
+func (s *Service) GetRequirement(ctx context.Context, wsID, reqID string) (*models.Requirement, error) {
+	return s.store.GetRequirement(ctx, reqID, wsID)
+}
+
+func (s *Service) ListRequirements(ctx context.Context, wsID string) ([]models.Requirement, error) {
+	return s.store.ListRequirements(ctx, wsID)
+}
+
+func (s *Service) UpdateRequirement(ctx context.Context, wsID, reqID string, req models.UpdateRequirementReq) (*models.Requirement, error) {
+	r, err := s.store.UpdateRequirement(ctx, reqID, wsID, req)
+	if err != nil {
+		return nil, err
+	}
+	s.logActivity(ctx, wsID, "requirement_updated", r.Title, nil)
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, r)
+	return r, nil
+}
+
+func (s *Service) DeleteRequirement(ctx context.Context, wsID, reqID string) error {
+	if err := s.store.DeleteRequirement(ctx, reqID, wsID); err != nil {
+		return err
+	}
+	s.logActivity(ctx, wsID, "requirement_deleted", reqID, nil)
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, map[string]string{"id": reqID, "deleted": "true"})
+	return nil
+}
+
+func (s *Service) CreateRequirementRelation(ctx context.Context, wsID, reqID string, req models.CreateRequirementRelationReq) (*models.RequirementRelation, error) {
+	rel := &models.RequirementRelation{
+		ID:           uuid.New().String(),
+		WorkspaceID:  wsID,
+		SourceID:     reqID,
+		TargetID:     req.TargetID,
+		RelationType: models.RelationType(req.RelationType),
+		Description:  req.Description,
+	}
+	if err := s.store.CreateRequirementRelation(ctx, rel); err != nil {
+		return nil, fmt.Errorf("create requirement relation: %w", err)
+	}
+	s.logActivity(ctx, wsID, "requirement_relation_created",
+		fmt.Sprintf("%s → %s (%s)", reqID, req.TargetID, req.RelationType), nil)
+	return rel, nil
+}
+
+func (s *Service) DeleteRequirementRelation(ctx context.Context, wsID, reqID, relID string) error {
+	return s.store.DeleteRequirementRelation(ctx, relID, wsID)
+}
+
+func (s *Service) GetRelatedRequirementArtifacts(ctx context.Context, wsID, reqID string) (map[string][]models.Artifact, error) {
+	return s.store.GetRelatedRequirementArtifacts(ctx, reqID, wsID)
+}
+
+func (s *Service) ResetRequirementPhase(ctx context.Context, wsID, reqID, phaseType string) error {
+	phases, err := s.store.ListPhasesByWorkspace(ctx, wsID)
+	if err != nil {
+		return fmt.Errorf("list phases: %w", err)
+	}
+	var phaseID string
+	for _, p := range phases {
+		if string(p.Type) == phaseType {
+			phaseID = p.ID
+			break
+		}
+	}
+	if phaseID == "" {
+		return fmt.Errorf("phase type %q not found", phaseType)
+	}
+
+	if err := s.store.ResetRequirementPhaseTasks(ctx, reqID, phaseID); err != nil {
+		return err
+	}
+
+	statusInProgress := string(models.RequirementInProgress)
+	if _, err := s.store.UpdateRequirement(ctx, reqID, wsID, models.UpdateRequirementReq{
+		Status: &statusInProgress,
+	}); err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.log.Error("failed to reset requirement status", "error", err)
+	}
+
+	if err := s.recalculatePhaseProgress(ctx, phaseID); err != nil {
+		s.log.Error("failed to recalculate phase progress after reset", "error", err)
+	}
+
+	s.logActivity(ctx, wsID, "requirement_phase_reset",
+		fmt.Sprintf("Reset %s phase for requirement %s", phaseType, reqID), nil)
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, map[string]string{
+		"id": reqID, "phaseReset": phaseType,
+	})
+	return nil
+}
+
+func (s *Service) UpsertArtifact(ctx context.Context, wsID string, req models.CreateArtifactReq) (*models.Artifact, error) {
+	metadata := req.Metadata
+	if metadata == "" {
+		metadata = "{}"
+	}
+	artifact := &models.Artifact{
+		ID:            uuid.New().String(),
+		WorkspaceID:   wsID,
+		PhaseID:       req.PhaseID,
+		TaskID:        req.TaskID,
+		RequirementID: req.RequirementID,
+		AgentType:     models.AgentType(req.AgentType),
+		Type:          req.Type,
+		Title:         req.Title,
+		Content:       req.Content,
+		Metadata:      metadata,
+		Version:       1,
+	}
+
+	if err := s.store.UpsertArtifact(ctx, artifact); err != nil {
+		return nil, fmt.Errorf("upsert artifact: %w", err)
+	}
+
+	agentType := models.AgentType(req.AgentType)
+	s.logActivity(ctx, wsID, "artifact_upserted",
+		fmt.Sprintf("%s [%s] v%d", artifact.Title, artifact.Type, artifact.Version), &agentType)
+	s.publishEvent(ctx, wsID, "artifact_created", artifact)
+
+	return artifact, nil
 }
 
 // ---------------------------------------------------------------------------

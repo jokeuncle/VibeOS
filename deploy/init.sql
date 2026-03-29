@@ -29,11 +29,45 @@ CREATE TABLE phases (
 
 CREATE INDEX idx_phases_workspace ON phases(workspace_id);
 
+-- Requirements: primary work units that flow through phase pipelines
+CREATE TABLE requirements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    title VARCHAR(512) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status VARCHAR(32) NOT NULL DEFAULT 'draft',
+    current_phase VARCHAR(32) NOT NULL DEFAULT 'requirement',
+    priority VARCHAR(8),
+    iteration VARCHAR(64) NOT NULL DEFAULT '',
+    progress REAL NOT NULL DEFAULT 0,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_requirements_workspace ON requirements(workspace_id);
+
+-- Requirement relationships (dependency graph)
+CREATE TABLE requirement_relations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    source_id UUID NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+    target_id UUID NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+    relation_type VARCHAR(32) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(source_id, target_id, relation_type)
+);
+
+CREATE INDEX idx_req_relations_source ON requirement_relations(source_id);
+CREATE INDEX idx_req_relations_target ON requirement_relations(target_id);
+
 -- Tasks
 CREATE TABLE tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     phase_id UUID NOT NULL REFERENCES phases(id) ON DELETE CASCADE,
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
     title VARCHAR(512) NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     status VARCHAR(32) NOT NULL DEFAULT 'pending',
@@ -48,6 +82,7 @@ CREATE TABLE tasks (
 
 CREATE INDEX idx_tasks_phase ON tasks(phase_id);
 CREATE INDEX idx_tasks_workspace ON tasks(workspace_id);
+CREATE INDEX idx_tasks_requirement ON tasks(requirement_id);
 
 -- Activities (Event Sourcing)
 CREATE TABLE activities (
@@ -121,6 +156,7 @@ CREATE TABLE artifacts (
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     phase_id UUID REFERENCES phases(id) ON DELETE SET NULL,
     task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
     agent_type VARCHAR(32) NOT NULL,
     type VARCHAR(64) NOT NULL,
     title VARCHAR(512) NOT NULL,
@@ -134,6 +170,8 @@ CREATE TABLE artifacts (
 CREATE INDEX idx_artifacts_workspace ON artifacts(workspace_id);
 CREATE INDEX idx_artifacts_phase ON artifacts(phase_id);
 CREATE INDEX idx_artifacts_task ON artifacts(task_id);
+CREATE INDEX idx_artifacts_requirement ON artifacts(requirement_id);
+CREATE UNIQUE INDEX idx_artifacts_upsert ON artifacts(workspace_id, task_id, type) WHERE task_id IS NOT NULL;
 
 -- ===================================================================
 -- GitLab Integration

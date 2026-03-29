@@ -12,6 +12,7 @@ from vibeos_agent import AgentType, LLMGatewayClient
 
 INTENT_TYPES: list[str] = [
     "create_task",
+    "create_requirement",
     "query_progress",
     "execute_task",
     "execute_phase",
@@ -30,6 +31,7 @@ INTENT_TYPES: list[str] = [
 
 _AGENT_MAP: dict[str, AgentType] = {
     "create_task": AgentType.PM,
+    "create_requirement": AgentType.PM,
     "query_progress": AgentType.PM,
     "execute_task": AgentType.PM,
     "execute_phase": AgentType.PM,
@@ -52,6 +54,7 @@ CLASSIFICATION_PROMPT = (
     f"is one of: {', '.join(INTENT_TYPES)}.\n"
     "Intent guide:\n"
     "- create_task: user wants to create a single task\n"
+    "- create_requirement: user wants to create a new requirement or feature request for the project\n"
     "- execute_task: user wants to run/execute a specific task\n"
     "- execute_phase: user wants to run all tasks in a specific phase\n"
     "- run_project: user wants to run the entire project lifecycle end-to-end\n"

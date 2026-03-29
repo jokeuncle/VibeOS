@@ -1,6 +1,6 @@
 import {
   FileText, Palette, Blocks, Code2, FlaskConical, Rocket, Activity,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, FileStack,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -43,7 +43,7 @@ function MiniProgress({ completed, total }: { completed: number; total: number }
 
 export default function Sidebar() {
   const { activeWorkspaceId, activePhaseId, workspaces, setActivePhase } = useWorkspaceStore()
-  const { sidebarCollapsed, toggleSidebar } = useUIStore()
+  const { sidebarCollapsed, toggleSidebar, viewMode, setViewMode } = useUIStore()
   const t = useT()
 
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -66,6 +66,29 @@ export default function Sidebar() {
           <PanelLeftClose className="w-4 h-4" />
         )}
       </button>
+
+      {/* Requirements shortcut */}
+      <button
+        onClick={() => {
+          setActivePhase(null)
+          setViewMode('requirements')
+        }}
+        className={`w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors ${
+          viewMode === 'requirements'
+            ? 'bg-accent/15 text-accent'
+            : 'text-text-tertiary hover:text-text-primary hover:bg-surface-3'
+        }`}
+        title={t('view.requirements')}
+      >
+        <FileStack className="w-[18px] h-[18px]" />
+        {!sidebarCollapsed && (
+          <span className="text-[10px] font-medium">
+            {workspace.requirements?.length || 0}
+          </span>
+        )}
+      </button>
+
+      <div className="w-8 mx-auto border-t border-border-subtle my-1" />
 
       {workspace.phases.map((phase, index) => {
         const isActive = activePhaseId === phase.id

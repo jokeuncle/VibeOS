@@ -57,6 +57,55 @@ const (
 	PriorityP3 TaskPriority = "p3"
 )
 
+type RequirementStatus string
+
+const (
+	RequirementDraft      RequirementStatus = "draft"
+	RequirementInProgress RequirementStatus = "in_progress"
+	RequirementCompleted  RequirementStatus = "completed"
+)
+
+type RelationType string
+
+const (
+	RelDependsOn    RelationType = "depends_on"
+	RelParentOf     RelationType = "parent_of"
+	RelRelatedTo    RelationType = "related_to"
+	RelEvolvesFrom  RelationType = "evolves_from"
+	RelConflictsWith RelationType = "conflicts_with"
+)
+
+type Requirement struct {
+	ID           string            `json:"id" db:"id"`
+	WorkspaceID  string            `json:"workspaceId" db:"workspace_id"`
+	Title        string            `json:"title" db:"title"`
+	Description  string            `json:"description" db:"description"`
+	Status       RequirementStatus `json:"status" db:"status"`
+	CurrentPhase string            `json:"currentPhase" db:"current_phase"`
+	Priority     *TaskPriority     `json:"priority,omitempty" db:"priority"`
+	Iteration    string            `json:"iteration" db:"iteration"`
+	Progress     float64           `json:"progress" db:"progress"`
+	SortOrder    int               `json:"sortOrder" db:"sort_order"`
+	TaskCount    int               `json:"taskCount" db:"task_count"`
+	DoneCount    int               `json:"doneCount" db:"done_count"`
+	Tasks        []Task            `json:"tasks,omitempty"`
+	Artifacts    []Artifact        `json:"artifacts,omitempty"`
+	Relations    []RequirementRelation `json:"relations,omitempty"`
+	CreatedAt    time.Time         `json:"createdAt" db:"created_at"`
+	UpdatedAt    time.Time         `json:"updatedAt" db:"updated_at"`
+}
+
+type RequirementRelation struct {
+	ID           string       `json:"id" db:"id"`
+	WorkspaceID  string       `json:"workspaceId" db:"workspace_id"`
+	SourceID     string       `json:"sourceId" db:"source_id"`
+	TargetID     string       `json:"targetId" db:"target_id"`
+	RelationType RelationType `json:"relationType" db:"relation_type"`
+	Description  string       `json:"description" db:"description"`
+	TargetTitle  string       `json:"targetTitle" db:"target_title"`
+	CreatedAt    time.Time    `json:"createdAt" db:"created_at"`
+}
+
 type Workspace struct {
 	ID             string          `json:"id" db:"id"`
 	Name           string          `json:"name" db:"name"`
@@ -69,6 +118,7 @@ type Workspace struct {
 	Agents         []Agent         `json:"agents"`
 	Activities     []Activity      `json:"activities"`
 	Repos          []WorkspaceRepo `json:"repos"`
+	Requirements   []Requirement   `json:"requirements"`
 	CreatedAt      time.Time       `json:"createdAt" db:"created_at"`
 	UpdatedAt      time.Time       `json:"updatedAt" db:"updated_at"`
 }
@@ -91,6 +141,7 @@ type Task struct {
 	ID            string        `json:"id" db:"id"`
 	PhaseID       string        `json:"phaseId" db:"phase_id"`
 	WorkspaceID   string        `json:"workspaceId" db:"workspace_id"`
+	RequirementID *string       `json:"requirementId,omitempty" db:"requirement_id"`
 	Title         string        `json:"title" db:"title"`
 	Description   string        `json:"description" db:"description"`
 	Status        PhaseStatus   `json:"status" db:"status"`
@@ -116,18 +167,19 @@ type Agent struct {
 }
 
 type Artifact struct {
-	ID          string    `json:"id" db:"id"`
-	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
-	PhaseID     *string   `json:"phaseId,omitempty" db:"phase_id"`
-	TaskID      *string   `json:"taskId,omitempty" db:"task_id"`
-	AgentType   AgentType `json:"agentType" db:"agent_type"`
-	Type        string    `json:"type" db:"type"`
-	Title       string    `json:"title" db:"title"`
-	Content     string    `json:"content" db:"content"`
-	Metadata    string    `json:"metadata" db:"metadata"`
-	Version     int       `json:"version" db:"version"`
-	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+	ID            string    `json:"id" db:"id"`
+	WorkspaceID   string    `json:"workspaceId" db:"workspace_id"`
+	PhaseID       *string   `json:"phaseId,omitempty" db:"phase_id"`
+	TaskID        *string   `json:"taskId,omitempty" db:"task_id"`
+	RequirementID *string   `json:"requirementId,omitempty" db:"requirement_id"`
+	AgentType     AgentType `json:"agentType" db:"agent_type"`
+	Type          string    `json:"type" db:"type"`
+	Title         string    `json:"title" db:"title"`
+	Content       string    `json:"content" db:"content"`
+	Metadata      string    `json:"metadata" db:"metadata"`
+	Version       int       `json:"version" db:"version"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 type Activity struct {
@@ -178,18 +230,19 @@ type ConversationSummary struct {
 // ArtifactMeta is a lightweight projection of Artifact without the content field,
 // used for listing to avoid transferring large payloads.
 type ArtifactMeta struct {
-	ID          string    `json:"id" db:"id"`
-	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
-	PhaseID     *string   `json:"phaseId,omitempty" db:"phase_id"`
-	TaskID      *string   `json:"taskId,omitempty" db:"task_id"`
-	AgentType   AgentType `json:"agentType" db:"agent_type"`
-	Type        string    `json:"type" db:"type"`
-	Title       string    `json:"title" db:"title"`
-	ContentSize int       `json:"contentSize" db:"content_size"`
-	Metadata    string    `json:"metadata" db:"metadata"`
-	Version     int       `json:"version" db:"version"`
-	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+	ID            string    `json:"id" db:"id"`
+	WorkspaceID   string    `json:"workspaceId" db:"workspace_id"`
+	PhaseID       *string   `json:"phaseId,omitempty" db:"phase_id"`
+	TaskID        *string   `json:"taskId,omitempty" db:"task_id"`
+	RequirementID *string   `json:"requirementId,omitempty" db:"requirement_id"`
+	AgentType     AgentType `json:"agentType" db:"agent_type"`
+	Type          string    `json:"type" db:"type"`
+	Title         string    `json:"title" db:"title"`
+	ContentSize   int       `json:"contentSize" db:"content_size"`
+	Metadata      string    `json:"metadata" db:"metadata"`
+	Version       int       `json:"version" db:"version"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // ActivitySummary is an AI-generated roll-up of activities for a time window.

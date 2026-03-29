@@ -219,6 +219,246 @@ class WorkflowEngine:
             level="warn",
         )
 
+    async def run_requirement(
+        self,
+        workspace_id: str,
+        requirement_id: str,
+        user_message: str = "",
+        phase_type: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Execute all pending tasks for a requirement in a specific phase."""
+        lock = self._get_lock(workspace_id)
+        if lock.locked():
+            yield {"type": "workflow:phase_skip", "phase": phase_type or "?", "reason": "busy"}
+            return
+
+        async with lock:
+            self._active_runs[workspace_id] = f"requirement:{requirement_id}"
+            try:
+                async for evt in self._run_requirement_inner(
+                    workspace_id, requirement_id, user_message, phase_type
+                ):
+                    yield evt
+            finally:
+                self._active_runs.pop(workspace_id, None)
+                try:
+                    await self.ws_gw.publish_agent_status(workspace_id, "pm", AgentStatus.IDLE)
+                except Exception:
+                    pass
+
+    async def _run_requirement_inner(
+        self,
+        workspace_id: str,
+        requirement_id: str,
+        user_message: str,
+        phase_type: str | None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        req = await self.ws_client.get_requirement(workspace_id, requirement_id)
+        if not req:
+            yield {"type": "workflow:task_error", "error": "requirement not found"}
+            return
+
+        phase_type = phase_type or req.get("currentPhase", "requirement")
+        req_title = req.get("title", "Untitled")
+
+        start_evt = {
+            "type": "workflow:phase_start",
+            "phase": phase_type,
+            "requirement_id": requirement_id,
+            "requirement_title": req_title,
+        }
+        yield start_evt
+        await self._broadcast(workspace_id, start_evt)
+
+        await self.ws_gw.publish_agent_status(
+            workspace_id, "pm", AgentStatus.RUNNING, detail=f"Requirement: {req_title}"
+        )
+
+        phase_id = await self.ws_client.find_phase_by_type(workspace_id, phase_type)
+        if not phase_id:
+            skip_evt = {"type": "workflow:phase_skip", "phase": phase_type, "reason": "not found"}
+            yield skip_evt
+            await self._broadcast(workspace_id, skip_evt)
+            return
+
+        all_tasks = req.get("tasks", [])
+        pending = [t for t in all_tasks if t.get("phaseId") == phase_id and t.get("status") != "completed"]
+
+        if not pending:
+            skip_evt = {"type": "workflow:phase_skip", "phase": phase_type, "reason": "no pending tasks"}
+            yield skip_evt
+            await self._broadcast(workspace_id, skip_evt)
+            return
+
+        try:
+            await self.ws_client.update_requirement(workspace_id, requirement_id, status="in_progress")
+        except Exception:
+            pass
+
+        try:
+            await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
+        except Exception:
+            pass
+
+        related_artifacts: dict[str, Any] = {}
+        try:
+            related_artifacts = await self.ws_client.get_related_artifacts(workspace_id, requirement_id)
+        except Exception:
+            pass
+
+        for rel in req.get("relations", []):
+            if rel.get("relationType") == "depends_on":
+                try:
+                    dep_req = await self.ws_client.get_requirement(workspace_id, rel["targetId"])
+                    if dep_req and dep_req.get("status") != "completed":
+                        warn_evt = {
+                            "type": "workflow:warning",
+                            "message": f"Dependency '{dep_req.get('title', '?')}' is not completed yet",
+                        }
+                        yield warn_evt
+                        await self._broadcast(workspace_id, warn_evt)
+                except Exception:
+                    pass
+
+        agent_type = _agent_for_phase(phase_type)
+        tasks_succeeded = 0
+        tasks_failed = 0
+        phase_artifacts: list[dict[str, Any]] = []
+
+        for i, task in enumerate(pending):
+            task_title = task.get("title", "Untitled")
+            task_start_evt = {
+                "type": "workflow:task_start",
+                "phase": phase_type,
+                "task_id": task["id"],
+                "task_title": task_title,
+                "index": i,
+                "total": len(pending),
+                "requirement_id": requirement_id,
+            }
+            yield task_start_evt
+            await self._broadcast(workspace_id, task_start_evt)
+
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"[{phase_type}] Executing task {i+1}/{len(pending)}: {task_title}",
+                task_id=task["id"],
+            )
+
+            claimed = await self.ws_client.claim_task(workspace_id, task["id"], agent=agent_type.value)
+            if claimed is None:
+                continue
+
+            agent_task = AgentTask(
+                task_id=task["id"],
+                workspace_id=workspace_id,
+                intent=f"execute_{phase_type}",
+                description=task_title,
+                user_message=user_message or task.get("description", ""),
+                context={
+                    "task_title": task_title,
+                    "task_description": task.get("description", ""),
+                    "phase_type": phase_type,
+                    "requirement_id": requirement_id,
+                    "requirement_description": req.get("description", ""),
+                    "phase_artifacts": phase_artifacts,
+                    "related_artifacts": related_artifacts,
+                },
+            )
+
+            try:
+                result = await self.dispatcher.dispatch(agent_type, agent_task)
+
+                if isinstance(result, dict) and result.get("error"):
+                    tasks_failed += 1
+                    err_evt = {
+                        "type": "workflow:task_error",
+                        "phase": phase_type,
+                        "task_id": task["id"],
+                        "task_title": task_title,
+                        "error": str(result["error"]),
+                        "requirement_id": requirement_id,
+                    }
+                    yield err_evt
+                    await self._broadcast(workspace_id, err_evt)
+                else:
+                    tasks_succeeded += 1
+                    await self.ws_client.complete_task(workspace_id, task["id"])
+
+                    try:
+                        arts = await self.ws_client.list_artifacts(workspace_id, phase_id=phase_id)
+                        phase_artifacts = [
+                            {"title": a["title"], "type": a["type"], "content": a.get("content", "")[:3000]}
+                            for a in arts
+                            if a.get("requirementId") == requirement_id
+                        ]
+                    except Exception:
+                        pass
+
+                    result_summary = str(result)[:200]
+                    complete_evt = {
+                        "type": "workflow:task_complete",
+                        "phase": phase_type,
+                        "task_id": task["id"],
+                        "task_title": task_title,
+                        "result_summary": result_summary,
+                        "requirement_id": requirement_id,
+                    }
+                    yield complete_evt
+                    await self._broadcast(workspace_id, complete_evt)
+
+                    if result and isinstance(result, dict):
+                        content = result.get("summary", str(result))
+                        if len(content) > 100:
+                            asyncio.create_task(
+                                _auto_index_to_rag(workspace_id, f"[{req_title}] {task_title}", content)
+                            )
+
+            except Exception as exc:
+                tasks_failed += 1
+                err_evt = {
+                    "type": "workflow:task_error",
+                    "phase": phase_type,
+                    "task_id": task["id"],
+                    "task_title": task_title,
+                    "error": str(exc)[:200],
+                    "requirement_id": requirement_id,
+                }
+                yield err_evt
+                await self._broadcast(workspace_id, err_evt)
+
+        total = len(pending)
+        progress = tasks_succeeded / total if total > 0 else 0
+        req_status = "completed" if tasks_failed == 0 else "in_progress"
+        try:
+            await self.ws_client.update_requirement(
+                workspace_id, requirement_id,
+                status=req_status,
+                progress=progress,
+            )
+        except Exception:
+            pass
+
+        phase_complete_evt = {
+            "type": "workflow:phase_complete",
+            "phase": phase_type,
+            "tasks_executed": tasks_succeeded,
+            "tasks_total": total,
+            "tasks_failed": tasks_failed,
+            "requirement_id": requirement_id,
+        }
+        yield phase_complete_evt
+        await self._broadcast(workspace_id, phase_complete_evt)
+
+        if tasks_failed == 0:
+            asyncio.create_task(_trigger_distill(workspace_id))
+            asyncio.create_task(
+                _store_org_memory(
+                    workspace_id,
+                    f"Requirement '{req_title}' phase '{phase_type}' completed with {tasks_succeeded} tasks.",
+                )
+            )
+
     async def run_task(
         self,
         workspace_id: str,

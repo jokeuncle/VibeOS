@@ -1,4 +1,4 @@
-import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo, User, WorkspaceMember } from '../types'
+import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo, User, WorkspaceMember, Requirement, RequirementRelation } from '../types'
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('vibeos_token')
@@ -36,6 +36,7 @@ function normalizeWorkspace(ws: Workspace): Workspace {
       progress: scaleProgress(p.progress),
     })),
     repos: ws.repos ?? [],
+    requirements: ws.requirements ?? [],
   }
 }
 
@@ -224,6 +225,47 @@ export const workspaceApi = {
       `/api/workspaces/${wsId}/repos/${repoId}/test`,
       { method: 'POST' }
     ),
+
+  listRequirements: async (wsId: string) => {
+    const res = await request<{ data: Requirement[] }>(`/api/workspaces/${wsId}/requirements`)
+    return unwrap<Requirement[]>(res)
+  },
+  createRequirement: async (wsId: string, data: { title: string; description: string; priority?: string }) => {
+    const res = await request<{ data: Requirement }>(`/api/workspaces/${wsId}/requirements`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+    return unwrap<Requirement>(res)
+  },
+  getRequirement: async (wsId: string, reqId: string) => {
+    const res = await request<{ data: Requirement }>(`/api/workspaces/${wsId}/requirements/${reqId}`)
+    return unwrap<Requirement>(res)
+  },
+  updateRequirement: async (wsId: string, reqId: string, data: Partial<{ title: string; description: string; status: string; currentPhase: string; priority: string; iteration: string }>) => {
+    const res = await request<{ data: Requirement }>(`/api/workspaces/${wsId}/requirements/${reqId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+    return unwrap<Requirement>(res)
+  },
+  deleteRequirement: async (wsId: string, reqId: string) => {
+    await request<void>(`/api/workspaces/${wsId}/requirements/${reqId}`, { method: 'DELETE' })
+  },
+  resetRequirementPhase: async (wsId: string, reqId: string, phaseType: string) => {
+    await request<void>(`/api/workspaces/${wsId}/requirements/${reqId}/phases/${phaseType}/reset`, {
+      method: 'POST',
+    })
+  },
+  addRequirementRelation: async (wsId: string, reqId: string, data: { targetId: string; relationType: string; description?: string }) => {
+    const res = await request<{ data: RequirementRelation }>(`/api/workspaces/${wsId}/requirements/${reqId}/relations`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+    return unwrap<RequirementRelation>(res)
+  },
+  removeRequirementRelation: async (wsId: string, reqId: string, relationId: string) => {
+    await request<void>(`/api/workspaces/${wsId}/requirements/${reqId}/relations/${relationId}`, { method: 'DELETE' })
+  },
 }
 
 export const gitlabCredentialApi = {
@@ -260,6 +302,14 @@ export const workflowApi = {
       workspace_id: workspaceId,
       user_message: userMessage,
       start_phase: startPhase,
+    }),
+
+  runRequirement: (wsId: string, reqId: string, phaseType?: string, userMessage?: string) =>
+    streamSSE('/api/workflow/run-requirement', {
+      workspace_id: wsId,
+      requirement_id: reqId,
+      phase_type: phaseType,
+      user_message: userMessage || '',
     }),
 }
 

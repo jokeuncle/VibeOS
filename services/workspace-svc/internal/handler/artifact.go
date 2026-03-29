@@ -77,6 +77,37 @@ func (h *ArtifactHandler) ListByPhase(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.APIResponse[[]models.Artifact]{Data: artifacts})
 }
 
+func (h *ArtifactHandler) Upsert(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "wsId")
+
+	var req models.CreateArtifactReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Title == "" || req.Type == "" || req.AgentType == "" {
+		writeError(w, http.StatusBadRequest, "title, type, and agentType are required")
+		return
+	}
+	validAgents := map[string]bool{
+		"requirement": true, "design": true, "architecture": true,
+		"development": true, "testing": true, "cicd": true,
+		"monitoring": true, "pm": true,
+	}
+	if !validAgents[req.AgentType] {
+		writeError(w, http.StatusBadRequest, "invalid agentType")
+		return
+	}
+
+	artifact, err := h.svc.UpsertArtifact(r.Context(), wsID, req)
+	if err != nil {
+		h.log.Error("upsert artifact failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[*models.Artifact]{Data: artifact})
+}
+
 func (h *ArtifactHandler) Get(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
 	id := chi.URLParam(r, "artifactId")

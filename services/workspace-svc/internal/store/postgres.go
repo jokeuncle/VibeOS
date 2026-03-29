@@ -97,6 +97,24 @@ type Store interface {
 	ListConversationSummaries(ctx context.Context, workspaceID string) ([]models.ConversationSummary, error)
 	SaveActivitySummary(ctx context.Context, s *models.ActivitySummary) error
 	ListActivitySummaries(ctx context.Context, workspaceID string) ([]models.ActivitySummary, error)
+
+	// Requirements
+	CreateRequirement(ctx context.Context, req *models.Requirement) error
+	GetRequirement(ctx context.Context, id, wsID string) (*models.Requirement, error)
+	ListRequirements(ctx context.Context, wsID string) ([]models.Requirement, error)
+	UpdateRequirement(ctx context.Context, id, wsID string, req models.UpdateRequirementReq) (*models.Requirement, error)
+	DeleteRequirement(ctx context.Context, id, wsID string) error
+
+	// Requirement relations
+	CreateRequirementRelation(ctx context.Context, rel *models.RequirementRelation) error
+	DeleteRequirementRelation(ctx context.Context, id, wsID string) error
+	GetRelatedRequirementArtifacts(ctx context.Context, reqID, wsID string) (map[string][]models.Artifact, error)
+
+	// Requirement phase tasks
+	ResetRequirementPhaseTasks(ctx context.Context, reqID, phaseID string) error
+
+	// Artifact upsert
+	UpsertArtifact(ctx context.Context, art *models.Artifact) error
 }
 
 type PostgresStore struct {
@@ -128,6 +146,7 @@ func scanWorkspace(s rowScanner) (*models.Workspace, error) {
 	ws.Agents = []models.Agent{}
 	ws.Activities = []models.Activity{}
 	ws.Repos = []models.WorkspaceRepo{}
+	ws.Requirements = []models.Requirement{}
 	return &ws, nil
 }
 
@@ -147,13 +166,13 @@ func scanPhase(s rowScanner) (*models.Phase, error) {
 	return &p, nil
 }
 
-const taskCols = `id, phase_id, workspace_id, title, description, status, priority, labels, due_date, assigned_agent, sort_order, created_at, updated_at`
+const taskCols = `id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, sort_order, created_at, updated_at`
 
 func scanTask(s rowScanner) (*models.Task, error) {
 	var t models.Task
 	var status string
 	var priority, assignedAgent *string
-	err := s.Scan(&t.ID, &t.PhaseID, &t.WorkspaceID, &t.Title, &t.Description,
+	err := s.Scan(&t.ID, &t.PhaseID, &t.WorkspaceID, &t.RequirementID, &t.Title, &t.Description,
 		&status, &priority, &t.Labels, &t.DueDate, &assignedAgent,
 		&t.SortOrder, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
@@ -322,6 +341,12 @@ func (s *PostgresStore) GetWorkspace(ctx context.Context, id string) (*models.Wo
 		return nil, err
 	}
 	ws.Repos = repos
+
+	requirements, err := s.ListRequirements(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	ws.Requirements = requirements
 
 	return ws, nil
 }
@@ -499,11 +524,11 @@ func (s *PostgresStore) CreateTask(ctx context.Context, task *models.Task) error
 		assignedAgent = &v
 	}
 	return s.pool.QueryRow(ctx, `
-		INSERT INTO tasks (id, phase_id, workspace_id, title, description, status, priority, labels, due_date, assigned_agent, sort_order)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+		INSERT INTO tasks (id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, sort_order)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
 			COALESCE((SELECT MAX(sort_order) FROM tasks WHERE phase_id = $2), -1) + 1)
 		RETURNING sort_order, created_at, updated_at`,
-		task.ID, task.PhaseID, task.WorkspaceID, task.Title, task.Description,
+		task.ID, task.PhaseID, task.WorkspaceID, task.RequirementID, task.Title, task.Description,
 		string(task.Status), priority, task.Labels, task.DueDate, assignedAgent,
 	).Scan(&task.SortOrder, &task.CreatedAt, &task.UpdatedAt)
 }
@@ -788,11 +813,11 @@ func (s *PostgresStore) queryRecentActivities(ctx context.Context, wsIDs []strin
 // Artifact operations
 // ---------------------------------------------------------------------------
 
-const artifactCols = `id, workspace_id, phase_id, task_id, agent_type, type, title, content, metadata, version, created_at, updated_at`
+const artifactCols = `id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title, content, metadata, version, created_at, updated_at`
 
 func scanArtifact(s rowScanner) (*models.Artifact, error) {
 	var a models.Artifact
-	err := s.Scan(&a.ID, &a.WorkspaceID, &a.PhaseID, &a.TaskID,
+	err := s.Scan(&a.ID, &a.WorkspaceID, &a.PhaseID, &a.TaskID, &a.RequirementID,
 		&a.AgentType, &a.Type, &a.Title, &a.Content, &a.Metadata,
 		&a.Version, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
@@ -803,10 +828,10 @@ func scanArtifact(s rowScanner) (*models.Artifact, error) {
 
 func (s *PostgresStore) CreateArtifact(ctx context.Context, artifact *models.Artifact) error {
 	return s.pool.QueryRow(ctx, `
-		INSERT INTO artifacts (id, workspace_id, phase_id, task_id, agent_type, type, title, content, metadata, version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO artifacts (id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title, content, metadata, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING created_at, updated_at`,
-		artifact.ID, artifact.WorkspaceID, artifact.PhaseID, artifact.TaskID,
+		artifact.ID, artifact.WorkspaceID, artifact.PhaseID, artifact.TaskID, artifact.RequirementID,
 		string(artifact.AgentType), artifact.Type, artifact.Title, artifact.Content,
 		artifact.Metadata, artifact.Version,
 	).Scan(&artifact.CreatedAt, &artifact.UpdatedAt)
@@ -1132,6 +1157,339 @@ func (s *PostgresStore) GetMemberByUserAndWorkspace(ctx context.Context, userID,
 		return nil, err
 	}
 	return &m, nil
+}
+
+// ---------------------------------------------------------------------------
+// Requirement operations
+// ---------------------------------------------------------------------------
+
+const requirementCols = `id, workspace_id, title, description, status, current_phase, priority, iteration, progress, sort_order, created_at, updated_at`
+
+func scanRequirement(sc rowScanner) (*models.Requirement, error) {
+	var r models.Requirement
+	var status string
+	var priority *string
+	err := sc.Scan(&r.ID, &r.WorkspaceID, &r.Title, &r.Description,
+		&status, &r.CurrentPhase, &priority, &r.Iteration, &r.Progress,
+		&r.SortOrder, &r.CreatedAt, &r.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	r.Status = models.RequirementStatus(status)
+	if priority != nil {
+		p := models.TaskPriority(*priority)
+		r.Priority = &p
+	}
+	r.Tasks = []models.Task{}
+	r.Artifacts = []models.Artifact{}
+	r.Relations = []models.RequirementRelation{}
+	return &r, nil
+}
+
+func (s *PostgresStore) CreateRequirement(ctx context.Context, req *models.Requirement) error {
+	var priority *string
+	if req.Priority != nil {
+		v := string(*req.Priority)
+		priority = &v
+	}
+	return s.pool.QueryRow(ctx, `
+		INSERT INTO requirements (id, workspace_id, title, description, status, current_phase, priority, iteration, sort_order)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+			COALESCE((SELECT MAX(sort_order) FROM requirements WHERE workspace_id = $2), -1) + 1)
+		RETURNING sort_order, created_at, updated_at`,
+		req.ID, req.WorkspaceID, req.Title, req.Description,
+		string(req.Status), req.CurrentPhase, priority, req.Iteration,
+	).Scan(&req.SortOrder, &req.CreatedAt, &req.UpdatedAt)
+}
+
+func (s *PostgresStore) GetRequirement(ctx context.Context, id, wsID string) (*models.Requirement, error) {
+	r, err := scanRequirement(s.pool.QueryRow(ctx,
+		`SELECT `+requirementCols+` FROM requirements WHERE id = $1 AND workspace_id = $2`, id, wsID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("query requirement: %w", err)
+	}
+
+	taskRows, err := s.pool.Query(ctx,
+		`SELECT `+taskCols+` FROM tasks WHERE requirement_id = $1 ORDER BY sort_order`, id)
+	if err != nil {
+		return nil, fmt.Errorf("query requirement tasks: %w", err)
+	}
+	defer taskRows.Close()
+	for taskRows.Next() {
+		t, err := scanTask(taskRows)
+		if err != nil {
+			return nil, fmt.Errorf("scan requirement task: %w", err)
+		}
+		r.Tasks = append(r.Tasks, *t)
+	}
+
+	artRows, err := s.pool.Query(ctx,
+		`SELECT `+artifactCols+` FROM artifacts WHERE requirement_id = $1 ORDER BY created_at DESC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("query requirement artifacts: %w", err)
+	}
+	defer artRows.Close()
+	for artRows.Next() {
+		a, err := scanArtifact(artRows)
+		if err != nil {
+			return nil, fmt.Errorf("scan requirement artifact: %w", err)
+		}
+		r.Artifacts = append(r.Artifacts, *a)
+	}
+
+	relRows, err := s.pool.Query(ctx, `
+		SELECT rr.id, rr.workspace_id, rr.source_id, rr.target_id, rr.relation_type,
+		       rr.description, r2.title AS target_title, rr.created_at
+		FROM requirement_relations rr
+		JOIN requirements r2 ON (CASE WHEN rr.source_id = $1 THEN rr.target_id ELSE rr.source_id END) = r2.id
+		WHERE rr.source_id = $1 OR rr.target_id = $1`, id)
+	if err != nil {
+		return nil, fmt.Errorf("query requirement relations: %w", err)
+	}
+	defer relRows.Close()
+	for relRows.Next() {
+		var rel models.RequirementRelation
+		var relType string
+		if err := relRows.Scan(&rel.ID, &rel.WorkspaceID, &rel.SourceID, &rel.TargetID,
+			&relType, &rel.Description, &rel.TargetTitle, &rel.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan requirement relation: %w", err)
+		}
+		rel.RelationType = models.RelationType(relType)
+		r.Relations = append(r.Relations, rel)
+	}
+
+	r.TaskCount = len(r.Tasks)
+	for _, t := range r.Tasks {
+		if t.Status == models.StatusCompleted {
+			r.DoneCount++
+		}
+	}
+
+	return r, nil
+}
+
+func (s *PostgresStore) ListRequirements(ctx context.Context, wsID string) ([]models.Requirement, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id, r.workspace_id, r.title, r.description, r.status, r.current_phase,
+		       r.priority, r.iteration, r.progress, r.sort_order, r.created_at, r.updated_at,
+		       (SELECT COUNT(*) FROM tasks WHERE requirement_id = r.id) AS task_count,
+		       (SELECT COUNT(*) FROM tasks WHERE requirement_id = r.id AND status = 'completed') AS done_count
+		FROM requirements r WHERE r.workspace_id = $1 ORDER BY r.sort_order`, wsID)
+	if err != nil {
+		return nil, fmt.Errorf("query requirements: %w", err)
+	}
+	defer rows.Close()
+
+	var reqs []models.Requirement
+	for rows.Next() {
+		var r models.Requirement
+		var status string
+		var priority *string
+		if err := rows.Scan(&r.ID, &r.WorkspaceID, &r.Title, &r.Description,
+			&status, &r.CurrentPhase, &priority, &r.Iteration, &r.Progress,
+			&r.SortOrder, &r.CreatedAt, &r.UpdatedAt, &r.TaskCount, &r.DoneCount); err != nil {
+			return nil, fmt.Errorf("scan requirement: %w", err)
+		}
+		r.Status = models.RequirementStatus(status)
+		if priority != nil {
+			p := models.TaskPriority(*priority)
+			r.Priority = &p
+		}
+		reqs = append(reqs, r)
+	}
+	if reqs == nil {
+		reqs = []models.Requirement{}
+	}
+	return reqs, nil
+}
+
+func (s *PostgresStore) UpdateRequirement(ctx context.Context, id, wsID string, req models.UpdateRequirementReq) (*models.Requirement, error) {
+	sets := make([]string, 0, 6)
+	args := make([]any, 0, 6)
+	idx := 1
+
+	if req.Title != nil {
+		sets = append(sets, fmt.Sprintf("title = $%d", idx))
+		args = append(args, *req.Title)
+		idx++
+	}
+	if req.Description != nil {
+		sets = append(sets, fmt.Sprintf("description = $%d", idx))
+		args = append(args, *req.Description)
+		idx++
+	}
+	if req.Status != nil {
+		sets = append(sets, fmt.Sprintf("status = $%d", idx))
+		args = append(args, *req.Status)
+		idx++
+	}
+	if req.CurrentPhase != nil {
+		sets = append(sets, fmt.Sprintf("current_phase = $%d", idx))
+		args = append(args, *req.CurrentPhase)
+		idx++
+	}
+	if req.Priority != nil {
+		sets = append(sets, fmt.Sprintf("priority = $%d", idx))
+		args = append(args, *req.Priority)
+		idx++
+	}
+	if req.Iteration != nil {
+		sets = append(sets, fmt.Sprintf("iteration = $%d", idx))
+		args = append(args, *req.Iteration)
+		idx++
+	}
+
+	if len(sets) == 0 {
+		return s.getRequirementLightweight(ctx, id, wsID)
+	}
+
+	sets = append(sets, "updated_at = NOW()")
+	args = append(args, id)
+	idIdx := idx
+	idx++
+	args = append(args, wsID)
+	wsIdx := idx
+	query := fmt.Sprintf("UPDATE requirements SET %s WHERE id = $%d AND workspace_id = $%d RETURNING %s",
+		strings.Join(sets, ", "), idIdx, wsIdx, requirementCols)
+
+	r, err := scanRequirement(s.pool.QueryRow(ctx, query, args...))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("update requirement: %w", err)
+	}
+	return r, nil
+}
+
+func (s *PostgresStore) getRequirementLightweight(ctx context.Context, id, wsID string) (*models.Requirement, error) {
+	r, err := scanRequirement(s.pool.QueryRow(ctx,
+		`SELECT `+requirementCols+` FROM requirements WHERE id = $1 AND workspace_id = $2`, id, wsID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return r, nil
+}
+
+func (s *PostgresStore) DeleteRequirement(ctx context.Context, id, wsID string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM requirements WHERE id = $1 AND workspace_id = $2`, id, wsID)
+	if err != nil {
+		return fmt.Errorf("delete requirement: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Requirement relation operations
+// ---------------------------------------------------------------------------
+
+func (s *PostgresStore) CreateRequirementRelation(ctx context.Context, rel *models.RequirementRelation) error {
+	return s.pool.QueryRow(ctx, `
+		INSERT INTO requirement_relations (id, workspace_id, source_id, target_id, relation_type, description)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING created_at`,
+		rel.ID, rel.WorkspaceID, rel.SourceID, rel.TargetID,
+		string(rel.RelationType), rel.Description,
+	).Scan(&rel.CreatedAt)
+}
+
+func (s *PostgresStore) DeleteRequirementRelation(ctx context.Context, id, wsID string) error {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM requirement_relations WHERE id = $1 AND workspace_id = $2`, id, wsID)
+	if err != nil {
+		return fmt.Errorf("delete requirement relation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *PostgresStore) GetRelatedRequirementArtifacts(ctx context.Context, reqID, wsID string) (map[string][]models.Artifact, error) {
+	relRows, err := s.pool.Query(ctx, `
+		SELECT rr.relation_type,
+		       CASE WHEN rr.source_id = $1 THEN rr.target_id ELSE rr.source_id END AS related_id
+		FROM requirement_relations rr
+		WHERE (rr.source_id = $1 OR rr.target_id = $1) AND rr.workspace_id = $2`, reqID, wsID)
+	if err != nil {
+		return nil, fmt.Errorf("query related requirements: %w", err)
+	}
+	defer relRows.Close()
+
+	type relInfo struct {
+		relationType string
+		relatedID    string
+	}
+	var rels []relInfo
+	for relRows.Next() {
+		var ri relInfo
+		if err := relRows.Scan(&ri.relationType, &ri.relatedID); err != nil {
+			return nil, fmt.Errorf("scan relation: %w", err)
+		}
+		rels = append(rels, ri)
+	}
+
+	result := make(map[string][]models.Artifact)
+	for _, ri := range rels {
+		artRows, err := s.pool.Query(ctx,
+			`SELECT `+artifactCols+` FROM artifacts WHERE requirement_id = $1 ORDER BY created_at DESC`,
+			ri.relatedID)
+		if err != nil {
+			return nil, fmt.Errorf("query related artifacts: %w", err)
+		}
+		defer artRows.Close()
+		for artRows.Next() {
+			a, err := scanArtifact(artRows)
+			if err != nil {
+				return nil, fmt.Errorf("scan related artifact: %w", err)
+			}
+			result[ri.relationType] = append(result[ri.relationType], *a)
+		}
+	}
+
+	return result, nil
+}
+
+// ---------------------------------------------------------------------------
+// Requirement phase task reset
+// ---------------------------------------------------------------------------
+
+func (s *PostgresStore) ResetRequirementPhaseTasks(ctx context.Context, reqID, phaseID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tasks SET status = 'pending', assigned_agent = NULL, updated_at = NOW()
+		WHERE requirement_id = $1 AND phase_id = $2 AND status != 'pending'`,
+		reqID, phaseID)
+	if err != nil {
+		return fmt.Errorf("reset requirement phase tasks: %w", err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Artifact upsert
+// ---------------------------------------------------------------------------
+
+func (s *PostgresStore) UpsertArtifact(ctx context.Context, art *models.Artifact) error {
+	return s.pool.QueryRow(ctx, `
+		INSERT INTO artifacts (id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title, content, metadata, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (workspace_id, task_id, type) WHERE task_id IS NOT NULL
+		DO UPDATE SET content = EXCLUDED.content, title = EXCLUDED.title,
+		             metadata = EXCLUDED.metadata, requirement_id = EXCLUDED.requirement_id,
+		             version = artifacts.version + 1, updated_at = NOW()
+		RETURNING id, version, created_at, updated_at`,
+		art.ID, art.WorkspaceID, art.PhaseID, art.TaskID, art.RequirementID,
+		string(art.AgentType), art.Type, art.Title, art.Content, art.Metadata, art.Version,
+	).Scan(&art.ID, &art.Version, &art.CreatedAt, &art.UpdatedAt)
 }
 
 // ListReposForPhase returns repos matching a phase type (or repos with no phase restriction).

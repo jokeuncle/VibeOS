@@ -26,11 +26,15 @@ export type WorkspaceColor = (typeof WORKSPACE_COLORS)[number]
 
 export type TaskPriority = 'p0' | 'p1' | 'p2' | 'p3'
 
+export type RequirementStatus = 'draft' | 'in_progress' | 'completed'
+export type RelationType = 'depends_on' | 'parent_of' | 'related_to' | 'evolves_from' | 'conflicts_with'
+
 export const LABEL_COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const
 export type LabelColor = (typeof LABEL_COLORS)[number]
 
 export interface Task {
   id: string
+  phaseId?: string
   title: string
   status: PhaseStatus
   description?: string
@@ -38,6 +42,7 @@ export interface Task {
   labels?: LabelColor[]
   dueDate?: string
   assignedAgent?: AgentType
+  requirementId?: string
 }
 
 export interface ActivityItem {
@@ -132,6 +137,7 @@ export interface Workspace {
   agents: Agent[]
   activities: ActivityItem[]
   repos: WorkspaceRepo[]
+  requirements: Requirement[]
   createdAt: string
   updatedAt: string
 }
@@ -141,12 +147,43 @@ export interface Artifact {
   workspaceId: string
   phaseId?: string
   taskId?: string
+  requirementId?: string
   agentType: AgentType
   type: string
   title: string
   content: string
   metadata: string
   version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RequirementRelation {
+  id: string
+  sourceId: string
+  targetId: string
+  relationType: RelationType
+  description: string
+  targetTitle: string
+  createdAt: string
+}
+
+export interface Requirement {
+  id: string
+  workspaceId: string
+  title: string
+  description: string
+  status: RequirementStatus
+  currentPhase: PhaseType
+  priority?: TaskPriority
+  iteration: string
+  progress: number
+  sortOrder: number
+  taskCount: number
+  doneCount: number
+  tasks?: Task[]
+  artifacts?: Artifact[]
+  relations?: RequirementRelation[]
   createdAt: string
   updatedAt: string
 }
@@ -181,6 +218,8 @@ export interface WorkflowEvent {
   tasks_failed?: number
   phases?: string[]
   success?: boolean
+  requirement_id?: string
+  requirement_title?: string
 }
 
 export interface TaskComment {
