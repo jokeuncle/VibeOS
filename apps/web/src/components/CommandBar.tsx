@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
+import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
 
 interface Suggestion {
   id: string
@@ -57,6 +58,16 @@ const AGENT_LABEL_KEY: Record<string, TranslationKey> = {
   cicd:         'agent.name.cicd',
   monitoring:   'agent.name.monitoring',
   pm:           'agent.name.pm',
+}
+
+const PHASE_CONTEXT_LABEL: Record<string, TranslationKey> = {
+  requirement:  'requirement.phase.requirement',
+  architecture: 'requirement.phase.architecture',
+  design:       'requirement.phase.design',
+  development:  'requirement.phase.development',
+  testing:      'requirement.phase.testing',
+  deployment:   'requirement.phase.deployment',
+  monitoring:   'requirement.phase.monitoring',
 }
 
 export default function CommandBar() {
@@ -115,11 +126,15 @@ export default function CommandBar() {
       const tasks: Suggestion[] = []
       ws.phases.forEach((p) => {
         p.tasks.forEach((task) => {
-          if (task.title.toLowerCase().includes(q)) {
+          const shown = translateSeedTaskCopy(task.title, task.description, t)
+          if (
+            task.title.toLowerCase().includes(q) ||
+            shown.title.toLowerCase().includes(q)
+          ) {
             tasks.push({
               id: `task-${task.id}`,
               type: 'task',
-              label: task.title,
+              label: shown.title,
               value: task.title,
               description: p.name,
             })
@@ -210,6 +225,10 @@ export default function CommandBar() {
   const agentKey = nlpContext?.agentType ? (AGENT_LABEL_KEY[nlpContext.agentType] || 'agent.name.pm') : 'agent.name.pm'
   const agentLabel = t(agentKey)
   const phaseIcon = nlpContext?.phaseType ? PHASE_ICONS[nlpContext.phaseType] : null
+  const phaseLabel =
+    nlpContext?.phaseType && PHASE_CONTEXT_LABEL[nlpContext.phaseType]
+      ? t(PHASE_CONTEXT_LABEL[nlpContext.phaseType])
+      : nlpContext?.phaseType ?? null
 
   const placeholder = activeWorkspaceId
     ? nlpContext
@@ -282,7 +301,7 @@ export default function CommandBar() {
                   <ChevronRight className="w-2.5 h-2.5 text-text-tertiary/50 shrink-0" />
                   <span className="flex items-center gap-1 text-[10px] text-accent font-medium">
                     {phaseIcon}
-                    {nlpContext.phaseType}
+                    {phaseLabel}
                   </span>
                 </>
               )}

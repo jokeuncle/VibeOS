@@ -7,6 +7,8 @@ import {
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18nStore, useT } from '../i18n'
+import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
+import type { TranslationKey } from '../i18n/en'
 
 interface Command {
   id: string
@@ -53,9 +55,10 @@ export default function CommandPalette() {
     workspaces.forEach((ws) => {
       ws.phases.forEach((phase) => {
         phase.tasks.forEach((task) => {
+          const label = translateSeedTaskCopy(task.title, task.description, t as (k: TranslationKey) => string).title
           cmds.push({
             id: `task-${ws.id}-${phase.id}-${task.id}`,
-            label: `${task.title}`,
+            label,
             icon: <CheckSquare className="w-4 h-4" />,
             category: t('command.tasks'),
             action: () => {

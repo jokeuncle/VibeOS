@@ -2,7 +2,7 @@
  * RequirementDetail — requirement execution dashboard.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -19,6 +19,7 @@ import {
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
 import type { PhaseType, PhaseStatus, RequirementRelation, RelationType, AgentType, Task, Artifact } from '../types'
 import type { ReactNode } from 'react'
 import type { TranslationKey } from '../i18n/en'
@@ -309,6 +310,7 @@ function TaskDrawer({ task, phase, artifacts, open, onClose, t }: {
 }) {
   if (!task) return null
 
+  const taskCopy = translateSeedTaskCopy(task.title, task.description, t)
   const typeInfo = getTaskTypeInfo(phase, task)
   const typeLabel = t(`task.type.${typeInfo.key}` as any)
   const linkedArtifacts = artifacts.filter(a => a.taskId === task.id)
@@ -334,7 +336,7 @@ function TaskDrawer({ task, phase, artifacts, open, onClose, t }: {
             <div className="mt-0.5 shrink-0">{statusConfig.icon}</div>
             <div className="flex-1 min-w-0">
               <Dialog.Title className="text-sm font-semibold text-text-primary leading-snug mb-2">
-                {task.title}
+                {taskCopy.title}
               </Dialog.Title>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {/* Phase-specific type badge */}
@@ -343,7 +345,7 @@ function TaskDrawer({ task, phase, artifacts, open, onClose, t }: {
                   {typeLabel}
                 </span>
                 {task.priority && (
-                  <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded uppercase ${PRIORITY_COLORS[task.priority] || ''}`}>
+                  <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded uppercase ${PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.p3}`}>
                     {task.priority}
                   </span>
                 )}
@@ -399,9 +401,9 @@ function TaskDrawer({ task, phase, artifacts, open, onClose, t }: {
                 {/* Description */}
                 <div>
                   <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">{t('task.description')}</p>
-                  {task.description ? (
+                  {taskCopy.description ? (
                     <div className="text-xs text-text-secondary leading-relaxed bg-surface-2/40 rounded-lg p-3.5 border border-border-subtle whitespace-pre-wrap">
-                      {task.description}
+                      {taskCopy.description}
                     </div>
                   ) : (
                     <div className="py-6 text-center rounded-lg border border-dashed border-border-subtle bg-surface-2/30">
@@ -533,6 +535,7 @@ function PhaseHintCard({ phase, taskType, t }: { phase: PhaseType; taskType: str
 function PhaseTaskRow({ task, phase, onClick, t }: {
   task: Task; phase: PhaseType; onClick: () => void; t: (k: any) => string
 }) {
+  const taskCopy = translateSeedTaskCopy(task.title, task.description, t as (k: TranslationKey) => string)
   const typeInfo = getTaskTypeInfo(phase, task)
   const typeLabel = t(`task.type.${typeInfo.key}` as any)
 
@@ -576,9 +579,9 @@ function PhaseTaskRow({ task, phase, onClick, t }: {
                 </span>
               )}
             </div>
-            <p className="text-xs text-text-primary/90 font-medium leading-relaxed">{task.title}</p>
-            {task.description && (
-              <p className="text-xs text-text-tertiary line-clamp-2 leading-relaxed">{task.description}</p>
+            <p className="text-xs text-text-primary/90 font-medium leading-relaxed">{taskCopy.title}</p>
+            {taskCopy.description && (
+              <p className="text-xs text-text-tertiary line-clamp-2 leading-relaxed">{taskCopy.description}</p>
             )}
           </div>
           <ChevronRight className="w-3.5 h-3.5 text-text-tertiary shrink-0 mt-1 opacity-0 group-hover:opacity-60 transition-opacity" />
@@ -676,6 +679,14 @@ export default function RequirementDetail() {
   const [newRelType, setNewRelType] = useState<RelationType>('depends_on')
   const [drawerTask, setDrawerTask] = useState<Task | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [descExpanded, setDescExpanded] = useState(false)
+
+  useLayoutEffect(() => {
+    if (!req) return
+    setSelectedPhase(req.currentPhase)
+    setDrawerTask(null)
+    setDescExpanded(false)
+  }, [req?.id])
 
   useEffect(() => {
     if (!req) return
@@ -762,10 +773,23 @@ export default function RequirementDetail() {
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <h2 className="text-xl font-semibold text-text-primary tracking-tight">{req.title}</h2>
-            {req.description && <p className="text-sm text-text-tertiary mt-1 leading-relaxed line-clamp-2">{req.description}</p>}
+            {req.description && (
+              <div className="mt-1">
+                <p className={`text-sm text-text-tertiary leading-relaxed ${descExpanded ? '' : 'line-clamp-2'}`}>{req.description}</p>
+                {req.description.length > 96 && (
+                  <button
+                    type="button"
+                    onClick={() => setDescExpanded(e => !e)}
+                    className="mt-1.5 text-[11px] font-medium text-accent hover:text-accent/90 transition-colors cursor-pointer"
+                  >
+                    {descExpanded ? t('requirement.detail.collapseDesc') : t('requirement.detail.expandDesc')}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-            {req.priority && <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase ${PRIORITY_COLORS[req.priority] || ''}`}>{req.priority}</span>}
+            {req.priority && <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase ${PRIORITY_COLORS[req.priority] || PRIORITY_COLORS.p3}`}>{req.priority}</span>}
             <span className={`px-2 py-0.5 text-[10px] font-medium rounded-md ${STATUS_COLORS[req.status] || STATUS_COLORS.draft}`}>{t(`requirement.status.${req.status}` as any)}</span>
           </div>
         </div>
@@ -830,7 +854,7 @@ export default function RequirementDetail() {
                 </div>
               )}
               {relations.map(rel => (
-                <div key={rel.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-surface-2/40 border border-border-subtle group">
+                <div key={rel.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-surface-2/35 transition-colors group -mx-1">
                   <span className="text-[10px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded">{t(`requirement.relation.${rel.relationType}` as any)}</span>
                   <span className="text-xs text-text-primary flex-1 truncate">{rel.targetTitle}</span>
                   {rel.relationType === 'depends_on' && <AlertTriangle className="w-3 h-3 text-warning shrink-0" />}
@@ -883,7 +907,7 @@ export default function RequirementDetail() {
           <Layers className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
           {t('phase.title')}
         </h4>
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-1.5">
           {PHASE_ORDER.map(ph => (
             <PhaseMatrixCard key={ph} phaseType={ph} tasks={getTasksForPhase(ph)} artifacts={getArtsForPhase(ph)}
               currentPhase={req.currentPhase} iteration={iteration} isSelected={selectedPhase === ph}

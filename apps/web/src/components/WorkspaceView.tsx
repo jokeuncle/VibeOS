@@ -41,7 +41,7 @@ function ViewContent() {
   }
 
   if (currentMode === 'requirements') {
-    if (activeRequirementId) return <RequirementDetail />
+    if (activeRequirementId) return <RequirementDetail key={activeRequirementId} />
     if (reqSubView === 'kanban') return <RequirementKanban />
     if (reqSubView === 'graph') return <RequirementGraph />
     return <RequirementList />

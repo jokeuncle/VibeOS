@@ -18,6 +18,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
 import type { Phase, PhaseStatus, Task, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
+import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
 
 interface BoardTask extends Task {
   phaseName: string
@@ -117,13 +118,14 @@ function DraggableCard({ task }: { task: BoardTask }) {
 }
 
 function TaskCardContent({ task, t }: { task: BoardTask; t: (key: TranslationKey) => string }) {
+  const titleShown = translateSeedTaskCopy(task.title, task.description, t).title
   return (
     <>
       <div className="flex items-start gap-2">
         <p className={`text-xs font-medium leading-relaxed flex-1 ${
           task.status === 'completed' ? 'text-text-tertiary line-through' : 'text-text-primary'
         }`}>
-          {task.title}
+          {titleShown}
         </p>
         {task.priority && PRIORITY_BADGE[task.priority] && (
           <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${PRIORITY_BADGE[task.priority].bg} ${PRIORITY_BADGE[task.priority].text} shrink-0`}>
@@ -187,10 +189,11 @@ export default function BoardView({ phases }: { phases: Phase[] }) {
     const task = allTasks.find((t) => t.id === taskId && t.phaseId === phaseId)
     if (!task || task.status === newStatus) return
 
+    const titleShown = translateSeedTaskCopy(task.title, task.description, t).title
     updateTask(activeWorkspaceId, phaseId, taskId, { status: newStatus })
     addActivity(activeWorkspaceId, {
       type: 'task_updated',
-      description: `"${task.title}" → ${newStatus}`,
+      description: `"${titleShown}" → ${newStatus}`,
     })
   }
 

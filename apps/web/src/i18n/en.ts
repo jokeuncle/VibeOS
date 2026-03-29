@@ -123,6 +123,25 @@ const en = {
   'task.save': 'Save',
   'task.cancel': 'Cancel',
 
+  'task.seed.req.clarify.title': 'Requirement Clarification',
+  'task.seed.req.clarify.desc':
+    'Clarify raw requirements, resolve ambiguities, and confirm scope boundaries',
+  'task.seed.req.stakeholder.title': 'Stakeholder & User Role Analysis',
+  'task.seed.req.stakeholder.desc':
+    'Identify stakeholders, define user personas, goals, and pain points',
+  'task.seed.req.stories.title': 'User Story Decomposition',
+  'task.seed.req.stories.desc':
+    'Break requirements into actionable user stories with priority levels',
+  'task.seed.req.acceptance.title': 'Acceptance Criteria Definition',
+  'task.seed.req.acceptance.desc':
+    'Define Given/When/Then acceptance criteria for each user story',
+  'task.seed.req.nfr.title': 'Non-functional Requirements & Constraints',
+  'task.seed.req.nfr.desc':
+    'Identify NFRs (performance, security, scalability) and technical/business constraints',
+  'task.seed.req.prd.title': 'PRD Document Generation',
+  'task.seed.req.prd.desc':
+    'Generate comprehensive Product Requirements Document from all prior analysis',
+
   'notification.title': 'Notifications',
   'notification.markAllRead': 'Mark all read',
   'notification.empty': 'No notifications',
@@ -497,6 +516,8 @@ const en = {
   'requirement.relation.select': 'Select requirement...',
   'requirement.relation.type': 'Relation type',
   'requirement.detail.back': 'Back to list',
+  'requirement.detail.expandDesc': 'Show full description',
+  'requirement.detail.collapseDesc': 'Show less',
   'requirement.advance': 'Next Phase',
   'requirement.scoped': 'Scoped',
   'requirement.progress': '{done}/{total} tasks',

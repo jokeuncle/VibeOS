@@ -23,6 +23,7 @@ import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextM
 import type { Phase, PhaseStatus, TaskPriority, LabelColor } from '../types'
 import type { DraggableAttributes } from '@dnd-kit/core'
 import type { TranslationKey } from '../i18n/en'
+import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
 
 function StatusIcon({ status }: { status: PhaseStatus }) {
   switch (status) {
@@ -227,7 +228,7 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
 }
 
 interface TaskRowProps {
-  task: { id: string; title: string; status: PhaseStatus; assignedAgent?: string; priority?: TaskPriority; labels?: LabelColor[] }
+  task: { id: string; title: string; description?: string; status: PhaseStatus; assignedAgent?: string; priority?: TaskPriority; labels?: LabelColor[] }
   phaseId: string
   onOpen: () => void
   onDelete: () => void
@@ -309,7 +310,7 @@ function TaskRow({
             : task.status === 'in_progress' ? 'text-text-primary'
               : 'text-text-secondary'
         }`}>
-          {task.title}
+          {translateSeedTaskCopy(task.title, task.description, t).title}
         </span>
         {task.labels && task.labels.length > 0 && (
           <div className="flex items-center gap-0.5">
