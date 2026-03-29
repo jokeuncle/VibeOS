@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re as _re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
@@ -65,6 +66,27 @@ Provide code examples in fenced code blocks, explain architectural choices, \
 and discuss trade-offs. Do NOT respond with raw JSON—use prose, bullet points, \
 code blocks, and headings.\
 """
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    """Extract a JSON object from LLM output that may contain trailing prose."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    m = _re.search(r'\{[\s\S]*\}', text)
+    if m:
+        candidate = m.group()
+        while candidate:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                last_brace = candidate.rfind('}', 0, len(candidate) - 1)
+                if last_brace == -1:
+                    break
+                candidate = candidate[:last_brace + 1]
+    return {"summary": text, "code_artifacts": [], "dependencies": [], "tasks": []}
+
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -246,10 +268,7 @@ class DevelopmentAgent(BaseAgent):
                 yield self._make_event("error", task.workspace_id, {"error": f"Tool failure: {failure_desc}"})
                 raise RuntimeError(f"Critical tool(s) failed: {failure_desc}")
 
-            try:
-                structured = json.loads(raw_reply)
-            except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "code_artifacts": [], "dependencies": [], "tasks": []}
+            structured = _extract_json(raw_reply)
 
             # Save code output as artifact
             try:
@@ -260,7 +279,6 @@ class DevelopmentAgent(BaseAgent):
                     title=f"Code: {task.description[:80]}",
                     content=raw_reply,
                     phase_id=dev_phase_id,
-                    task_id=task.task_id,
                 )
                 await _log(task.workspace_id, agent_name, "Code output saved as artifact", level="success", task_id=task.task_id)
             except Exception as exc:

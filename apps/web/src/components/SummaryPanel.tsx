@@ -131,15 +131,51 @@ export default function SummaryPanel() {
     setGenerating(true)
     try {
       const agentMessages = messages.filter((m) => m.role === 'agent' && m.content)
-      const summary = agentMessages.length > 0
-        ? agentMessages.slice(-5).map((m) => m.content.slice(0, 200)).join('\n')
-        : 'No conversation data available.'
+      if (agentMessages.length === 0) {
+        addToast({ type: 'info', message: t('summary.empty' as TranslationKey) })
+        return
+      }
+
+      const conversationContext = agentMessages.slice(-10).map((m) => m.content.slice(0, 500)).join('\n---\n')
+
+      const resp = await fetch('/api/nlp/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: activeWorkspaceId,
+          message: `请用中文总结当前工作空间的对话要点和关键决策，以JSON格式返回：{"summary":"总结内容","keyDecisions":["决策1","决策2"]}。对话内容：\n${conversationContext}`,
+        }),
+      })
+
+      let summaryText = ''
+      const reader = resp.body?.getReader()
+      const decoder = new TextDecoder()
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value, { stream: true })
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
+            try {
+              const d = JSON.parse(line.slice(6))
+              if (d.delta) summaryText += d.delta
+            } catch { /* skip non-json lines */ }
+          }
+        }
+      }
+
+      let parsed: { summary: string; keyDecisions: string[] }
+      try {
+        const jsonMatch = summaryText.match(/\{[\s\S]*\}/)
+        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { summary: summaryText.slice(0, 500), keyDecisions: [] }
+      } catch {
+        parsed = { summary: summaryText.slice(0, 500), keyDecisions: [] }
+      }
 
       const result = await workspaceApi.createConversationSummary(activeWorkspaceId, {
-        summary: `Summary of ${messages.length} messages in this workspace session.`,
-        keyDecisions: JSON.stringify(
-          agentMessages.slice(-3).map((m) => m.content.slice(0, 100))
-        ),
+        summary: parsed.summary,
+        keyDecisions: JSON.stringify(parsed.keyDecisions),
         messageCount: messages.length,
       })
       setConvSummaries((prev) => [result, ...prev])

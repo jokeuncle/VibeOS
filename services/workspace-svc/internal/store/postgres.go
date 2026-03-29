@@ -25,12 +25,14 @@ type Store interface {
 
 	GetPhase(ctx context.Context, id string) (*models.Phase, error)
 	UpdatePhaseStatus(ctx context.Context, id string, status string) (*models.Phase, error)
+	UpdatePhaseStatusCAS(ctx context.Context, id, fromStatus, toStatus string) (*models.Phase, error)
 	UpdatePhaseProgress(ctx context.Context, id string, progress float64) error
 	ListPhasesByWorkspace(ctx context.Context, workspaceID string) ([]models.Phase, error)
 
 	CreateTask(ctx context.Context, task *models.Task) error
 	GetTask(ctx context.Context, id string) (*models.Task, error)
 	UpdateTask(ctx context.Context, id string, workspaceID string, req models.UpdateTaskReq) (*models.Task, error)
+	ClaimTask(ctx context.Context, id string, workspaceID string, agent string) (*models.Task, error)
 	DeleteTask(ctx context.Context, id string, workspaceID string) error
 	ReorderTasks(ctx context.Context, phaseID string, taskIDs []string) error
 	CountTasksByPhase(ctx context.Context, phaseID string) (total int, completed int, err error)
@@ -459,6 +461,19 @@ func (s *PostgresStore) UpdatePhaseStatus(ctx context.Context, id string, status
 	return p, nil
 }
 
+func (s *PostgresStore) UpdatePhaseStatusCAS(ctx context.Context, id, fromStatus, toStatus string) (*models.Phase, error) {
+	p, err := scanPhase(s.pool.QueryRow(ctx,
+		`UPDATE phases SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3 RETURNING `+phaseCols,
+		toStatus, id, fromStatus))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("cas update phase status: %w", err)
+	}
+	return p, nil
+}
+
 func (s *PostgresStore) UpdatePhaseProgress(ctx context.Context, id string, progress float64) error {
 	_, err := s.pool.Exec(ctx,
 		`UPDATE phases SET progress = $1, updated_at = NOW() WHERE id = $2`, progress, id)
@@ -576,6 +591,21 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, id string, workspaceID s
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("update task: %w", err)
+	}
+	return t, nil
+}
+
+func (s *PostgresStore) ClaimTask(ctx context.Context, id string, workspaceID string, agent string) (*models.Task, error) {
+	query := fmt.Sprintf(
+		`UPDATE tasks SET status = 'in_progress', assigned_agent = $3, updated_at = NOW()
+		 WHERE id = $1 AND workspace_id = $2 AND status = 'pending'
+		 RETURNING %s`, taskCols)
+	t, err := scanTask(s.pool.QueryRow(ctx, query, id, workspaceID, agent))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("claim task: %w", err)
 	}
 	return t, nil
 }

@@ -39,7 +39,7 @@ class Dispatcher:
     """Routes tasks to the correct domain agent and reports status."""
 
     def __init__(self) -> None:
-        self._http = httpx.AsyncClient(timeout=120)
+        self._http = httpx.AsyncClient(timeout=httpx.Timeout(300, connect=30))
         self.ws = WSGatewayClient()
 
     async def dispatch(

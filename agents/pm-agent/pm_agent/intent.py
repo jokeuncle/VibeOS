@@ -51,12 +51,19 @@ CLASSIFICATION_PROMPT = (
     '{"intent": "<intent_type>", "summary": "<one-line summary>"} where intent_type '
     f"is one of: {', '.join(INTENT_TYPES)}.\n"
     "Intent guide:\n"
+    "- create_task: user wants to create a single task\n"
     "- execute_task: user wants to run/execute a specific task\n"
     "- execute_phase: user wants to run all tasks in a specific phase\n"
     "- run_project: user wants to run the entire project lifecycle end-to-end\n"
+    "- analyze_requirements: user wants to analyze, define, or refine project requirements\n"
+    "- architecture_design: user wants to design system/technical architecture\n"
     "- ui_design: user is asking about UI/UX design, wireframes, mockups, or visual design\n"
+    "- generate_code: user wants to write/generate/develop code or implement features\n"
+    "- run_tests: user wants to create test plans, write test cases, run tests, or do QA\n"
+    "- deploy: user wants to deploy, set up CI/CD pipelines, or release\n"
     "- setup_monitoring: user wants to set up monitoring, alerting, dashboards, or observability\n"
     "- design_observability: user is asking about SRE, SLOs, incident response, or runbooks\n"
+    "- general_chat: casual conversation or questions not fitting above categories\n"
     "Do NOT include anything else."
 )
 

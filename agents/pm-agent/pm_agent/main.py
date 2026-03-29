@@ -628,6 +628,11 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 
             yield f"event: intent\ndata: {json.dumps({'intent': parsed.intent, 'summary': parsed.summary, 'target_agent': parsed.target_agent.value})}\n\n"
 
+            if parsed.intent != "general_chat" and parsed.intent != "query_progress" and workflow.is_busy(req.workspace_id):
+                yield f"data: {json.dumps({'delta': '⏳ 当前工作空间正在执行任务，请等待完成后再操作。 / Workspace is busy, please wait for the current operation to finish.'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
             await ws.publish_agent_status(
                 req.workspace_id, AgentType.PM, AgentStatus.RUNNING,
                 detail=f"Parsed intent: {parsed.intent}",

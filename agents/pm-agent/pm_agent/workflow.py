@@ -167,6 +167,16 @@ class WorkflowEngine:
         self.dispatcher = dispatcher
         self.ws_client = ws_client
         self.ws_gw = ws_gw
+        self._workspace_locks: dict[str, asyncio.Lock] = {}
+        self._active_runs: dict[str, str] = {}
+
+    def _get_lock(self, workspace_id: str) -> asyncio.Lock:
+        if workspace_id not in self._workspace_locks:
+            self._workspace_locks[workspace_id] = asyncio.Lock()
+        return self._workspace_locks[workspace_id]
+
+    def is_busy(self, workspace_id: str) -> bool:
+        return workspace_id in self._active_runs
 
     async def _broadcast(self, workspace_id: str, event: dict[str, Any]) -> None:
         """Broadcast a workflow event through WebSocket gateway."""
@@ -339,6 +349,30 @@ class WorkflowEngine:
         user_message: str = "",
     ) -> AsyncIterator[dict[str, Any]]:
         """Execute all pending tasks in a single phase, yielding SSE events."""
+        lock = self._get_lock(workspace_id)
+        if lock.locked():
+            current = self._active_runs.get(workspace_id, "unknown")
+            yield {
+                "type": "workflow:phase_skip",
+                "phase": phase_type,
+                "reason": f"Workspace busy (running: {current}). Please wait for it to finish.",
+            }
+            return
+
+        async with lock:
+            self._active_runs[workspace_id] = f"phase:{phase_type}"
+            try:
+                async for evt in self._run_phase_inner(workspace_id, phase_type, user_message):
+                    yield evt
+            finally:
+                self._active_runs.pop(workspace_id, None)
+
+    async def _run_phase_inner(
+        self,
+        workspace_id: str,
+        phase_type: str,
+        user_message: str = "",
+    ) -> AsyncIterator[dict[str, Any]]:
         phase_start_event = {
             "type": "workflow:phase_start",
             "phase": phase_type,
@@ -399,12 +433,16 @@ class WorkflowEngine:
                 task_id=task["id"],
             )
 
-            try:
-                await self.ws_client.update_task(
-                    workspace_id, task["id"], {"status": "in_progress"}
+            claimed = await self.ws_client.claim_task(
+                workspace_id, task["id"], agent=agent_type.value
+            )
+            if claimed is None:
+                await self.ws_gw.publish_log(
+                    workspace_id, "pm",
+                    f"Task '{task_title}' already claimed by another runner — skipping",
+                    level="warn", task_id=task["id"],
                 )
-            except Exception:
-                pass
+                continue
 
             # --- Resolve GitLab repo context for this task ---
             repos = await self.ws_client.get_repos_for_phase(workspace_id, phase_type)
@@ -564,6 +602,30 @@ class WorkflowEngine:
         start_phase: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Execute the full project lifecycle end-to-end."""
+        lock = self._get_lock(workspace_id)
+        if lock.locked():
+            current = self._active_runs.get(workspace_id, "unknown")
+            yield {
+                "type": "workflow:project_error",
+                "error": f"Workspace busy (running: {current}). Please wait for it to finish.",
+            }
+            return
+
+        async with lock:
+            self._active_runs[workspace_id] = "project:full-lifecycle"
+            try:
+                async for evt in self._run_project_inner(workspace_id, user_message, start_phase=start_phase):
+                    yield evt
+            finally:
+                self._active_runs.pop(workspace_id, None)
+
+    async def _run_project_inner(
+        self,
+        workspace_id: str,
+        user_message: str = "",
+        *,
+        start_phase: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         proj_start_evt = {
             "type": "workflow:project_start",
             "workspace_id": workspace_id,
@@ -584,7 +646,7 @@ class WorkflowEngine:
         has_error = False
         for phase_type in PHASE_ORDER[start_idx:]:
             failed_task_id: str | None = None
-            async for event in self.run_phase(workspace_id, phase_type, user_message):
+            async for event in self._run_phase_inner(workspace_id, phase_type, user_message):
                 yield event
 
                 if event.get("type") == "workflow:task_error":

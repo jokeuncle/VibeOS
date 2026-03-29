@@ -170,8 +170,11 @@ func (s *Service) UpdatePhaseStatus(ctx context.Context, wsID, phaseID, status s
 		return nil, fmt.Errorf("%w: cannot transition from %s to %s", ErrInvalidTransition, phase.Status, newStatus)
 	}
 
-	updated, err := s.store.UpdatePhaseStatus(ctx, phaseID, status)
+	updated, err := s.store.UpdatePhaseStatusCAS(ctx, phaseID, string(phase.Status), status)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, fmt.Errorf("%w: phase status changed concurrently", ErrInvalidTransition)
+		}
 		return nil, err
 	}
 
@@ -258,6 +261,19 @@ func (s *Service) UpdateTask(ctx context.Context, wsID, taskID string, req model
 		}
 	}
 
+	return task, nil
+}
+
+func (s *Service) ClaimTask(ctx context.Context, wsID, taskID, agent string) (*models.Task, error) {
+	task, err := s.store.ClaimTask(ctx, taskID, wsID, agent)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recalculatePhaseProgress(ctx, task.PhaseID); err != nil {
+		s.log.Error("failed to recalculate phase progress", "error", err)
+	}
+	s.logActivity(ctx, wsID, "task_updated", task.Title+" (claimed by "+agent+")", nil)
+	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, task)
 	return task, nil
 }
 

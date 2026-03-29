@@ -109,6 +109,7 @@ func main() {
 			r.Put("/phases/{phaseId}/tasks/reorder", taskHandler.Reorder)
 
 			r.Patch("/tasks/{taskId}", taskHandler.Update)
+			r.Post("/tasks/{taskId}/claim", taskHandler.Claim)
 			r.Delete("/tasks/{taskId}", taskHandler.Delete)
 
 			r.Get("/artifacts", artifactHandler.ListByWorkspace)

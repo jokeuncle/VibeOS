@@ -87,6 +87,34 @@ func (h *TaskHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *TaskHandler) Claim(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "wsId")
+	taskID := chi.URLParam(r, "taskId")
+
+	var body struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Agent == "" {
+		body.Agent = "unknown"
+	}
+
+	task, err := h.svc.ClaimTask(r.Context(), wsID, taskID, body.Agent)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusConflict, "task already claimed or not found")
+			return
+		}
+		h.log.Error("claim task failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[*models.Task]{Data: task})
+}
+
 func (h *TaskHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
 	phaseID := chi.URLParam(r, "phaseId")

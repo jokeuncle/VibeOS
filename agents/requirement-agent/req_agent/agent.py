@@ -56,6 +56,29 @@ Help the user refine requirements, write user stories, and define acceptance cri
 Do NOT respond with raw JSON—use prose, bullet points, and tables.\
 """
 
+import re as _re
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    """Extract a JSON object from LLM output that may contain trailing prose."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    m = _re.search(r'\{[\s\S]*\}', text)
+    if m:
+        candidate = m.group()
+        while candidate:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                last_brace = candidate.rfind('}', 0, len(candidate) - 1)
+                if last_brace == -1:
+                    break
+                candidate = candidate[:last_brace + 1]
+    return {"summary": text, "user_stories": [], "acceptance_criteria": [], "constraints": [], "tasks": []}
+
+
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -149,12 +172,9 @@ class RequirementAgent(BaseAgent):
             raw_reply = await self._call_llm_with_tools(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
-            try:
-                structured = json.loads(raw_reply)
-            except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "user_stories": [], "acceptance_criteria": [], "constraints": [], "tasks": []}
+            structured = _extract_json(raw_reply)
 
-            # Save requirements spec as artifact
+            # Save requirements spec as artifact (no task_id — dispatch IDs aren't DB task IDs)
             try:
                 req_phase_id = await self.workspace_svc.find_phase_by_type(task.workspace_id, "requirement")
                 await self._save_artifact(
@@ -163,7 +183,6 @@ class RequirementAgent(BaseAgent):
                     title=f"Requirements: {task.description[:80]}",
                     content=raw_reply,
                     phase_id=req_phase_id,
-                    task_id=task.task_id,
                 )
                 await _log(task.workspace_id, agent_name, "Requirements spec saved as artifact", level="success", task_id=task.task_id)
             except Exception as exc:

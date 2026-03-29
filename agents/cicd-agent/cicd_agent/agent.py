@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re as _re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
@@ -59,6 +60,27 @@ Discuss pipeline designs, deployment strategies, and infrastructure choices. \
 Do NOT respond with raw JSON—use prose, bullet points, YAML/config blocks, \
 and diagrams.\
 """
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    """Extract a JSON object from LLM output that may contain trailing prose."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    m = _re.search(r"\{[\s\S]*\}", text)
+    if m:
+        candidate = m.group()
+        while candidate:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                last_brace = candidate.rfind("}", 0, len(candidate) - 1)
+                if last_brace == -1:
+                    break
+                candidate = candidate[:last_brace + 1]
+    return {"summary": text, "tasks": []}
+
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -182,10 +204,7 @@ class CicdAgent(BaseAgent):
             )
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
-            try:
-                structured = json.loads(raw_reply)
-            except json.JSONDecodeError:
-                structured = {"summary": raw_reply, "infrastructure": [], "tasks": []}
+            structured = _extract_json(raw_reply)
 
             # Save deployment output as artifact
             try:
@@ -196,7 +215,6 @@ class CicdAgent(BaseAgent):
                     title=f"Deployment: {task.description[:80]}",
                     content=raw_reply,
                     phase_id=cicd_phase_id,
-                    task_id=task.task_id,
                 )
                 await _log(task.workspace_id, agent_name, "Deployment config saved as artifact", level="success", task_id=task.task_id)
             except Exception as exc:

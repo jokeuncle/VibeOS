@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
@@ -90,6 +91,19 @@ class WorkspaceClient:
         self, workspace_id: str, task_id: str
     ) -> dict[str, Any]:
         return await self.update_task(workspace_id, task_id, {"status": "completed"})
+
+    async def claim_task(
+        self, workspace_id: str, task_id: str, agent: str = "pm"
+    ) -> dict[str, Any] | None:
+        """Atomically claim a pending task. Returns None if already claimed."""
+        resp = await self._http.post(
+            f"/api/workspaces/{workspace_id}/tasks/{task_id}/claim",
+            json={"agent": agent},
+        )
+        if resp.status_code == 409:
+            return None
+        resp.raise_for_status()
+        return resp.json()
 
     async def get_task(
         self, workspace_id: str, task_id: str
@@ -563,10 +577,28 @@ class BaseAgent(ABC):
         self.rag = RAGClient()
         self.knowledge = KnowledgeClient()
         self.tool_registry = ToolRegistry()
-        # Set by execute() before tool calls so tools can resolve credentials from task context.
-        self._current_task_context: dict[str, Any] | None = None
-        # Populated by _call_llm_with_tools so callers can inspect critical tool outcomes.
-        self._tool_results: list[dict[str, Any]] = []
+        self._task_context_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+            "task_context", default=None,
+        )
+        self._tool_results_var: contextvars.ContextVar[list[dict[str, Any]]] = contextvars.ContextVar(
+            "tool_results", default=[],
+        )
+
+    @property
+    def _current_task_context(self) -> dict[str, Any] | None:
+        return self._task_context_var.get(None)
+
+    @_current_task_context.setter
+    def _current_task_context(self, val: dict[str, Any] | None) -> None:
+        self._task_context_var.set(val)
+
+    @property
+    def _tool_results(self) -> list[dict[str, Any]]:
+        return self._tool_results_var.get([])
+
+    @_tool_results.setter
+    def _tool_results(self, val: list[dict[str, Any]]) -> None:
+        self._tool_results_var.set(val)
 
     # ------------------------------------------------------------------
     # Abstract interface
