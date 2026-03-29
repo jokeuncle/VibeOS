@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useRef, useLayoutEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 
 export interface FormSelectOption {
@@ -40,6 +40,45 @@ const SIZE = {
   },
 } as const
 
+function useMenuPosition(
+  open: boolean,
+  triggerRef: React.RefObject<HTMLElement | null>,
+  fullWidth: boolean,
+) {
+  const [rect, setRect] = useState({ top: 0, left: 0, width: 200, showAbove: false })
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return
+
+    function update() {
+      const el = triggerRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const pad = 8
+      const menuW = fullWidth ? r.width : Math.max(r.width, 7 * 16)
+      let left = r.left
+      if (left + menuW > vw - pad) left = Math.max(pad, vw - pad - menuW)
+      const spaceBelow = vh - r.bottom - pad
+      const estimatedMenu = 220
+      const showAbove = spaceBelow < estimatedMenu && r.top > vh - r.bottom
+      const top = showAbove ? r.top - pad - estimatedMenu : r.bottom + pad
+      setRect({ top, left, width: menuW, showAbove })
+    }
+
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [open, fullWidth, triggerRef])
+
+  return rect
+}
+
 export default function FormSelect({
   value,
   options,
@@ -59,6 +98,7 @@ export default function FormSelect({
   const selected = options.find((o) => o.value === value)
   const sz = SIZE[size]
   const fullWidth = fullWidthProp ?? prefix == null
+  const menuPos = useMenuPosition(open, ref, fullWidth)
 
   useEffect(() => {
     if (!open) return
@@ -68,6 +108,65 @@ export default function FormSelect({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
+
+  const portal =
+    open &&
+    !disabled &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <>
+        <div
+          className="fixed inset-0 z-[140]"
+          aria-hidden
+          onMouseDown={(e) => {
+            e.preventDefault()
+            setOpen(false)
+          }}
+        />
+        <div
+          role="listbox"
+          className={`
+            fixed z-[150] py-1.5 max-h-60 overflow-y-auto overflow-x-hidden
+            bg-surface-2/95 backdrop-blur-md border border-border-default rounded-xl
+            shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]
+            motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-100
+          `.trim().replace(/\s+/g, ' ')}
+          style={{
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            maxWidth: 'min(100vw - 16px, 320px)',
+          }}
+        >
+          {options.map((opt) => {
+            const isOn = opt.value === value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={isOn}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onChange(opt.value)
+                  setOpen(false)
+                }}
+                className={`
+                  w-full flex items-center justify-between gap-2 rounded-lg mx-1 max-w-[calc(100%-8px)]
+                  text-left transition-colors cursor-pointer outline-none
+                  ${sz.item}
+                  ${isOn ? 'bg-accent/12 text-accent' : 'text-text-secondary hover:bg-surface-3/90'}
+                `.trim().replace(/\s+/g, ' ')}
+              >
+                <span className="truncate">{opt.label}</span>
+                {isOn && <Check className={`shrink-0 text-accent ${sz.check}`} aria-hidden />}
+              </button>
+            )
+          })}
+        </div>
+      </>,
+      document.body,
+    )
 
   return (
     <div
@@ -81,7 +180,11 @@ export default function FormSelect({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onMouseDown={(e) => {
+          if (disabled) return
+          e.preventDefault()
+          setOpen((o) => !o)
+        }}
         className={`
           flex items-center justify-between rounded-lg border transition-all outline-none
           bg-surface-2/90 backdrop-blur-sm border-border-subtle
@@ -112,56 +215,7 @@ export default function FormSelect({
         />
       </button>
 
-      <AnimatePresence>
-        {open && !disabled && (
-          <>
-            <div
-              className="fixed inset-0 z-[140]"
-              aria-hidden
-              onClick={() => setOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.98 }}
-              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
-              role="listbox"
-              className={`
-                absolute z-[150] py-1.5 max-h-60 overflow-y-auto overflow-x-hidden
-                bg-surface-2/95 backdrop-blur-md border border-border-default rounded-xl
-                shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]
-                ${fullWidth ? 'left-0 right-0' : 'left-0 min-w-full'}
-              `.trim().replace(/\s+/g, ' ')}
-              style={{ top: 'calc(100% + 6px)' }}
-            >
-              {options.map((opt) => {
-                const isOn = opt.value === value
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="option"
-                    aria-selected={isOn}
-                    onClick={() => {
-                      onChange(opt.value)
-                      setOpen(false)
-                    }}
-                    className={`
-                      w-full flex items-center justify-between gap-2 rounded-lg mx-1 max-w-[calc(100%-8px)]
-                      text-left transition-colors cursor-pointer outline-none
-                      ${sz.item}
-                      ${isOn ? 'bg-accent/12 text-accent' : 'text-text-secondary hover:bg-surface-3/90'}
-                    `.trim().replace(/\s+/g, ' ')}
-                  >
-                    <span className="truncate">{opt.label}</span>
-                    {isOn && <Check className={`shrink-0 text-accent ${sz.check}`} aria-hidden />}
-                  </button>
-                )
-              })}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {portal}
     </div>
   )
 }
