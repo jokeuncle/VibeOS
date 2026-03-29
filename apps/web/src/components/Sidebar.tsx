@@ -1,139 +1,137 @@
 import {
-  FileText, Palette, Blocks, Code2, FlaskConical, Rocket, Activity,
-  PanelLeftClose, PanelLeftOpen, FileStack,
+  PanelLeftClose, PanelLeftOpen, LayoutDashboard, FileStack,
+  Bot, Settings,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import type { PhaseType, PhaseStatus } from '../types'
-import type { ReactNode } from 'react'
 import type { TranslationKey } from '../i18n/en'
 
-const PHASE_ICONS: Record<PhaseType, ReactNode> = {
-  requirement: <FileText className="w-[18px] h-[18px]" />,
-  design: <Palette className="w-[18px] h-[18px]" />,
-  architecture: <Blocks className="w-[18px] h-[18px]" />,
-  development: <Code2 className="w-[18px] h-[18px]" />,
-  testing: <FlaskConical className="w-[18px] h-[18px]" />,
-  deployment: <Rocket className="w-[18px] h-[18px]" />,
-  monitoring: <Activity className="w-[18px] h-[18px]" />,
-}
+type SidebarSection = 'dashboard' | 'requirements' | 'agents' | 'settings'
 
-function StatusDot({ status }: { status: PhaseStatus }) {
-  if (status === 'completed') return <div className="w-1.5 h-1.5 rounded-full bg-success" />
-  if (status === 'in_progress') return <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow" />
-  return <div className="w-1.5 h-1.5 rounded-full bg-surface-4" />
-}
-
-function MiniProgress({ completed, total }: { completed: number; total: number }) {
-  if (total === 0) return null
-  const pct = Math.round((completed / total) * 100)
-  return (
-    <div className="w-full px-1.5 mt-0.5">
-      <div className="h-[2px] bg-surface-4 rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full bg-accent/60 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  )
-}
+const SECTIONS: { key: SidebarSection; icon: typeof LayoutDashboard; label: TranslationKey }[] = [
+  { key: 'dashboard', icon: LayoutDashboard, label: 'sidebar.dashboard' },
+  { key: 'requirements', icon: FileStack, label: 'sidebar.requirements' },
+  { key: 'agents', icon: Bot, label: 'sidebar.agents' },
+  { key: 'settings', icon: Settings, label: 'sidebar.settings' },
+]
 
 export default function Sidebar() {
-  const { activeWorkspaceId, activePhaseId, workspaces, setActivePhase } = useWorkspaceStore()
+  const { activeWorkspaceId, workspaces, setActiveRequirement } = useWorkspaceStore()
   const { sidebarCollapsed, toggleSidebar, viewMode, setViewMode } = useUIStore()
   const t = useT()
 
-  const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId)
   if (!workspace) return null
+
+  function handleSectionClick(key: SidebarSection) {
+    setViewMode(key)
+    if (key !== 'requirements') setActiveRequirement(null)
+  }
+
+  if (sidebarCollapsed) {
+    return (
+      <Tooltip.Provider delayDuration={400}>
+        <motion.aside
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0, width: 48 }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
+          className="border-r border-border-subtle bg-surface-1/50 flex flex-col py-3 overflow-hidden shrink-0"
+        >
+          <div className="flex items-center justify-center mb-3">
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <button
+                  onClick={toggleSidebar}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer"
+                >
+                  <PanelLeftOpen className="w-4 h-4" />
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  side="right"
+                  sideOffset={8}
+                  className="px-2.5 py-1.5 text-[11px] font-medium text-text-primary bg-surface-3 border border-border-default rounded-lg shadow-lg z-[300] select-none"
+                >
+                  {t('sidebar.expand' as TranslationKey)}
+                  <Tooltip.Arrow className="fill-surface-3" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          </div>
+
+          <div className="flex flex-col items-center gap-1">
+            {SECTIONS.map(({ key, icon: Icon, label }) => {
+              const isActive = viewMode === key
+              return (
+                <Tooltip.Root key={key}>
+                  <Tooltip.Trigger asChild>
+                    <button
+                      onClick={() => handleSectionClick(key)}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                        isActive ? 'bg-accent/15 text-accent' : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-3'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </button>
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Content
+                      side="right"
+                      sideOffset={8}
+                      className="px-2.5 py-1.5 text-[11px] font-medium text-text-primary bg-surface-3 border border-border-default rounded-lg shadow-lg z-[300] select-none"
+                    >
+                      {t(label)}
+                      <Tooltip.Arrow className="fill-surface-3" />
+                    </Tooltip.Content>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+              )
+            })}
+          </div>
+        </motion.aside>
+      </Tooltip.Provider>
+    )
+  }
 
   return (
     <motion.aside
       initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0, width: sidebarCollapsed ? 40 : 68 }}
+      animate={{ opacity: 1, x: 0, width: 200 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className="border-r border-border-subtle bg-surface-1/50 flex flex-col items-center py-3 gap-1 overflow-hidden shrink-0"
+      className="border-r border-border-subtle bg-surface-1/50 flex flex-col py-3 overflow-hidden shrink-0"
     >
-      <button
-        onClick={toggleSidebar}
-        className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer mb-2"
-      >
-        {sidebarCollapsed ? (
-          <PanelLeftOpen className="w-4 h-4" />
-        ) : (
+      <div className="flex items-center justify-end px-3 mb-3">
+        <button
+          onClick={toggleSidebar}
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer"
+        >
           <PanelLeftClose className="w-4 h-4" />
-        )}
-      </button>
+        </button>
+      </div>
 
-      {/* Requirements shortcut */}
-      <button
-        onClick={() => {
-          setActivePhase(null)
-          setViewMode('requirements')
-        }}
-        className={`w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors ${
-          viewMode === 'requirements'
-            ? 'bg-accent/15 text-accent'
-            : 'text-text-tertiary hover:text-text-primary hover:bg-surface-3'
-        }`}
-        title={t('view.requirements')}
-      >
-        <FileStack className="w-[18px] h-[18px]" />
-        {!sidebarCollapsed && (
-          <span className="text-[10px] font-medium">
-            {workspace.requirements?.length || 0}
-          </span>
-        )}
-      </button>
-
-      <div className="w-8 mx-auto border-t border-border-subtle my-1" />
-
-      {workspace.phases.map((phase, index) => {
-        const isActive = activePhaseId === phase.id
-        const icon = PHASE_ICONS[phase.type]
-        const labelKey = `phase.short.${phase.type}` as TranslationKey
-        const completed = phase.tasks.filter((t) => t.status === 'completed').length
-        const total = phase.tasks.length
-
-        return (
-          <div key={phase.id} className="flex flex-col items-center w-full">
-            {!sidebarCollapsed && index > 0 && (
-              <div className={`w-px h-3 mb-1 transition-colors ${
-                phase.status !== 'pending' ? 'bg-accent/40' : 'bg-border-subtle'
-              }`} />
-            )}
-            <motion.button
-              onClick={() => setActivePhase(isActive ? null : phase.id)}
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.95 }}
-              title={sidebarCollapsed ? t(labelKey) : undefined}
-              className={`relative ${sidebarCollapsed ? 'w-7 h-7 rounded-lg' : 'w-11 h-11 rounded-xl'} flex items-center justify-center transition-all duration-200 cursor-pointer ${
-                isActive ? 'bg-accent/15 text-accent glow-accent'
-                  : phase.status === 'completed' ? 'text-success/70 hover:bg-surface-3'
-                    : phase.status === 'in_progress' ? 'text-accent/70 hover:bg-surface-3'
-                      : 'text-text-tertiary hover:bg-surface-3 hover:text-text-secondary'
+      <nav className="flex-1 px-2 space-y-0.5">
+        {SECTIONS.map(({ key, icon: Icon, label }) => {
+          const isActive = viewMode === key
+          return (
+            <button
+              key={key}
+              onClick={() => handleSectionClick(key)}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12px] font-medium transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'
               }`}
             >
-              <div className={sidebarCollapsed ? 'scale-[0.72]' : ''}>{icon}</div>
-              <div className={`absolute ${sidebarCollapsed ? '-top-0.5 -right-0.5' : '-top-0.5 -right-0.5'}`}>
-                <StatusDot status={phase.status} />
-              </div>
-            </motion.button>
-            {!sidebarCollapsed && (
-              <>
-                <span className={`text-[9px] font-mono font-medium mt-0.5 tracking-wider ${
-                  isActive ? 'text-accent' : 'text-text-tertiary'
-                }`}>
-                  {t(labelKey)}
-                </span>
-                <MiniProgress completed={completed} total={total} />
-              </>
-            )}
-          </div>
-        )
-      })}
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="flex-1 text-left truncate">{t(label)}</span>
+            </button>
+          )
+        })}
+      </nav>
     </motion.aside>
   )
 }

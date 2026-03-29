@@ -1,6 +1,6 @@
 const en = {
   'app.subtitle': 'AI-native product lifecycle operating system.',
-  'app.tagline': 'One workspace. Every phase. Full control.',
+  'app.tagline': 'One workspace. Every requirement. Every phase. Full control.',
 
   'workspace.new': 'New Workspace',
   'workspace.untitled': 'Untitled Workspace',
@@ -42,6 +42,7 @@ const en = {
   'phase.short.deployment': 'SHIP',
   'phase.short.monitoring': 'OPS',
 
+  'phase.title': 'Phases',
   'phase.allPhases': 'All Phases',
   'phase.phaseDetail': 'Phase Detail',
 
@@ -69,6 +70,8 @@ const en = {
   'command.placeholder': 'Ask anything… "Deploy to staging" "Current progress?"',
   'command.placeholderHome': 'Search workspaces or create a new one…',
   'command.placeholderNLP': '@ Agent · / Command · or ask anything…',
+  'command.contextPlaceholder': 'Ask',
+  'nlp.clearContext': 'Clear context',
   'command.title': 'Command Palette',
   'command.navigation': 'Navigation',
   'command.actions': 'Actions',
@@ -210,6 +213,7 @@ const en = {
   'dashboard.inProgress': 'In Progress',
   'dashboard.completed': 'Completed',
   'dashboard.totalTasks': 'Total Tasks',
+  'dashboard.requirementHealth': 'Requirement Health',
 
   'theme.label': 'Theme',
   'theme.dark': 'Dark',
@@ -217,6 +221,8 @@ const en = {
 
   'view.dashboard': 'Dashboard',
   'view.agents': 'Agents',
+  'view.kanban': 'Kanban',
+  'view.graph': 'Graph',
 
   'agent.topology': 'Agent Topology',
   'agent.logStream': 'Execution Log',
@@ -491,7 +497,273 @@ const en = {
   'requirement.relation.select': 'Select requirement...',
   'requirement.relation.type': 'Relation type',
   'requirement.detail.back': 'Back to list',
+  'requirement.advance': 'Next Phase',
+  'requirement.scoped': 'Scoped',
   'requirement.progress': '{done}/{total} tasks',
+  'requirement.noTasks': 'No tasks for this phase',
+  'requirement.noArtifacts': 'No artifacts yet',
+  'requirement.deleteConfirmTitle': 'Delete Requirement',
+  'requirement.deleteConfirmMsg': 'Delete "{title}" and all its tasks and artifacts?',
+  'requirement.noneAssigned': 'Unassigned',
+  'task.status.pending': 'Pending',
+  'task.status.in_progress': 'In Progress',
+  'task.status.completed': 'Completed',
+
+  'sidebar.dashboard': 'Dashboard',
+  'sidebar.requirements': 'Requirements',
+  'sidebar.agents': 'Agents',
+  'sidebar.settings': 'Settings',
+  'sidebar.showMore': 'Show more',
+
+  'reqSubView.list': 'List',
+  'reqSubView.kanban': 'Board',
+  'reqSubView.graph': 'Relations',
+
+  'phase.tab.overview': 'Overview',
+  'phase.tab.artifacts': 'Artifacts',
+  'phase.tab.relations': 'Relations',
+  'phase.tab.stories': 'User Stories',
+  'phase.tab.decisions': 'Arch Decisions',
+  'phase.tab.specs': 'Design Specs',
+  'phase.tab.implementation': 'Implementation',
+  'phase.tab.cases': 'Test Cases',
+  'phase.tab.deploy': 'Deploy Steps',
+  'phase.tab.metrics': 'Metrics & Alerts',
+
+  'phase.tag.story': 'Story',
+  'phase.tag.adr': 'ADR',
+  'phase.tag.spec': 'Spec',
+  'phase.tag.feature': 'Feature',
+  'phase.tag.fix': 'Fix',
+  'phase.tag.refactor': 'Refactor',
+  'phase.tag.unit': 'Unit',
+  'phase.tag.integration': 'Integration',
+  'phase.tag.e2e': 'E2E',
+  'phase.tag.perf': 'Perf',
+  'phase.tag.automated': 'Automated',
+  'phase.tag.manual': 'Manual',
+  'phase.tag.warning': 'Warning',
+  'phase.tag.critical': 'Critical',
+
+  'phase.status.active': 'Active',
+  'phase.status.idle': 'Waiting',
+  'phase.status.rework': 'Rework',
+  'phase.status.pending': 'Pending',
+  'phase.status.completed': 'Done',
+  'phase.status.skipped': 'Skipped',
+
+  'phase.iteration': 'Run',
+  'phase.noPhaseSelected': 'Select a phase above to view details',
+  'phase.producedArtifacts': 'Produced Artifacts',
+  'phase.agentTrace': 'Agent Notes',
+  'phase.noArtifacts': 'No artifacts yet',
+
+  'settings.workspaceInfo': 'Workspace Info',
+  'settings.repos': 'Repositories',
+  'settings.members': 'Members',
+  'settings.addMember': 'Add Member',
+  'settings.removeMember': 'Remove',
+  'settings.memberRole.owner': 'Owner',
+  'settings.memberRole.editor': 'Editor',
+  'settings.memberRole.viewer': 'Viewer',
+  'settings.saved': 'Settings saved',
+  'settings.memberAdded': 'Member added',
+  'settings.memberRemoved': 'Member removed',
+
+  // Sidebar
+  'sidebar.expand': 'Expand sidebar',
+
+  // Requirement relations
+  'requirement.relation.empty': 'No relations yet',
+  'requirement.relation.noOther': 'No other requirements to link',
+
+  // Phase task badges
+  'phase.badge.story': 'Story',
+  'phase.badge.adr': 'ADR',
+  'phase.badge.spec': 'Spec',
+  'phase.badge.impl': 'Impl',
+  'phase.badge.test': 'Test',
+  'phase.badge.deploy': 'Deploy',
+  'phase.badge.alert': 'Alert',
+
+  // Phase run hint
+  'phase.runHint': 'Run analysis to generate tasks for this phase',
+
+  // Task type labels (requirement phase)
+  'task.type.story': 'User Story',
+  'task.type.epic': 'Epic',
+  'task.type.ac': 'Acceptance Criteria',
+
+  // Task type labels (architecture phase)
+  'task.type.adr': 'Architecture Decision',
+  'task.type.diagram': 'Architecture Diagram',
+  'task.type.design': 'System Design',
+
+  // Task type labels (design phase)
+  'task.type.wireframe': 'Wireframe',
+  'task.type.component': 'Component',
+  'task.type.flow': 'User Flow',
+  'task.type.style': 'Style Guide',
+
+  // Task type labels (development phase)
+  'task.type.feature': 'Feature',
+  'task.type.fix': 'Bug Fix',
+  'task.type.refactor': 'Refactor',
+  'task.type.config': 'Configuration',
+
+  // Task type labels (testing phase)
+  'task.type.unit': 'Unit Test',
+  'task.type.integration': 'Integration Test',
+  'task.type.e2e': 'E2E Test',
+  'task.type.perf': 'Performance Test',
+
+  // Task type labels (deployment phase)
+  'task.type.staging': 'Staging',
+  'task.type.production': 'Production',
+  'task.type.preview': 'Preview',
+  'task.type.rollback': 'Rollback',
+
+  // Task type labels (monitoring phase)
+  'task.type.alert': 'Alert Rule',
+  'task.type.metric': 'Metric',
+  'task.type.dashboard': 'Dashboard',
+  'task.type.incident': 'Incident',
+
+  // AI summary
+  'requirement.aiSummary': 'AI Summary',
+  'requirement.aiSummaryLoading': 'Generating summary…',
+
+  // Dock contextual labels
+  'dock.newRequirement': 'New Requirement',
+  'dock.viewDashboard': 'Dashboard',
+  'dock.runAnalysis': 'Run Analysis',
+
+  // Task type label (generic)
+  'task.type.label': 'Type',
+
+  // Task drawer tabs
+  'task.checklist': 'Checklist',
+  'task.doneWhen': 'Definition of Done',
+  'task.checklistHint': 'Checklist is auto-updated as the agent progresses',
+  'task.artifactsHint': 'Artifacts will appear here once the agent generates them',
+  'task.hintTitle': 'Best Practice',
+
+  // Checklist items — requirement
+  'task.check.req.roleGoalBenefit': 'Defines user role, goal, and benefit',
+  'task.check.req.ac': 'Has clear acceptance criteria',
+  'task.check.req.priority': 'Priority and estimation set',
+  'task.check.req.estimation': 'Story points estimated',
+
+  // Checklist items — architecture
+  'task.check.arch.context': 'Problem context documented',
+  'task.check.arch.decision': 'Decision and rationale recorded',
+  'task.check.arch.consequences': 'Consequences analyzed',
+  'task.check.arch.reviewed': 'Reviewed by team',
+
+  // Checklist items — design
+  'task.check.design.wireframe': 'Wireframe approved',
+  'task.check.design.hifi': 'High-fidelity mockup complete',
+  'task.check.design.reviewed': 'Design review passed',
+  'task.check.design.handoff': 'Dev handoff done',
+
+  // Checklist items — development
+  'task.check.dev.impl': 'Implementation complete',
+  'task.check.dev.unitTest': 'Unit tests written',
+  'task.check.dev.reviewed': 'Code review approved',
+  'task.check.dev.docs': 'Documentation updated',
+
+  // Checklist items — testing
+  'task.check.test.written': 'Test cases written',
+  'task.check.test.passed': 'All tests passing',
+  'task.check.test.coverage': 'Coverage threshold met',
+  'task.check.test.edgeCases': 'Edge cases covered',
+
+  // Checklist items — deployment
+  'task.check.deploy.stagingOk': 'Staging deployment verified',
+  'task.check.deploy.prodOk': 'Production deployment successful',
+  'task.check.deploy.rollback': 'Rollback plan verified',
+  'task.check.deploy.notified': 'Stakeholders notified',
+
+  // Checklist items — monitoring
+  'task.check.mon.alert': 'Alert rules configured',
+  'task.check.mon.dashboard': 'Dashboard created',
+  'task.check.mon.runbook': 'Runbook documented',
+  'task.check.mon.sloSet': 'SLO/SLA thresholds set',
+
+  // Phase-specific hints (drawer)
+  'task.hint.req.line1': 'As a [user], I want [goal], so that [benefit]',
+  'task.hint.req.line2': 'Acceptance criteria should be testable and specific',
+  'task.hint.req.line3': 'Each story should be independently deliverable',
+  'task.hint.arch.line1': 'Document the architectural context and forces',
+  'task.hint.arch.line2': 'Record the decision and its trade-offs clearly',
+  'task.hint.arch.line3': 'Capture positive, negative and neutral consequences',
+  'task.hint.design.line1': 'Start with low-fidelity, iterate to high-fidelity',
+  'task.hint.design.line2': 'Validate designs with users before handoff',
+  'task.hint.dev.line1': 'Follow the existing code style and patterns',
+  'task.hint.dev.line2': 'Write tests alongside implementation (TDD recommended)',
+  'task.hint.test.line1': 'Cover happy path, error path, and edge cases',
+  'task.hint.test.line2': 'Aim for ≥ 80% code coverage for critical paths',
+  'task.hint.deploy.line1': 'Verify in staging before production deployment',
+  'task.hint.deploy.line2': 'Ensure rollback plan is tested and documented',
+  'task.hint.mon.line1': 'Set meaningful alert thresholds (not too noisy)',
+  'task.hint.mon.line2': 'Every alert should have a clear runbook action',
+
+  // Suggested tasks empty state
+  'phase.suggestHint': 'Click a suggestion below or run analysis to generate tasks',
+  'task.suggested': 'Common tasks for this phase',
+
+  // Suggested task labels — requirement
+  'task.suggest.req.userStory': 'Write User Stories',
+  'task.suggest.req.ac': 'Define Acceptance Criteria',
+  'task.suggest.req.journey': 'User Journey Mapping',
+  'task.suggest.req.stakeholder': 'Stakeholder Analysis',
+  'task.suggest.req.competitive': 'Competitive Research',
+
+  // Suggested task labels — architecture
+  'task.suggest.arch.techStack': 'Tech Stack Decision',
+  'task.suggest.arch.sysDesign': 'System Architecture Design',
+  'task.suggest.arch.database': 'Database Schema Design',
+  'task.suggest.arch.api': 'API Interface Design',
+  'task.suggest.arch.security': 'Security Architecture Review',
+  'task.suggest.arch.nfr': 'Non-functional Requirements',
+
+  // Suggested task labels — design
+  'task.suggest.design.wireframe': 'Low-fidelity Wireframe',
+  'task.suggest.design.hifi': 'High-fidelity UI Design',
+  'task.suggest.design.prototype': 'Interactive Prototype',
+  'task.suggest.design.ds': 'Design System Components',
+  'task.suggest.design.a11y': 'Accessibility Review',
+
+  // Suggested task labels — development
+  'task.suggest.dev.frontend': 'Frontend Implementation',
+  'task.suggest.dev.backend': 'Backend API Development',
+  'task.suggest.dev.migration': 'Database Migration',
+  'task.suggest.dev.unitTest': 'Write Unit Tests',
+  'task.suggest.dev.review': 'Code Review',
+  'task.suggest.dev.docs': 'Documentation Update',
+
+  // Suggested task labels — testing
+  'task.suggest.test.unit': 'Unit Tests',
+  'task.suggest.test.integration': 'Integration Tests',
+  'task.suggest.test.e2e': 'End-to-End Tests',
+  'task.suggest.test.perf': 'Performance Tests',
+  'task.suggest.test.security': 'Security Tests',
+  'task.suggest.test.regression': 'Regression Tests',
+
+  // Suggested task labels — deployment
+  'task.suggest.deploy.staging': 'Staging Deployment',
+  'task.suggest.deploy.prod': 'Production Deployment',
+  'task.suggest.deploy.migration': 'Run DB Migrations',
+  'task.suggest.deploy.monitor': 'Set Up Monitoring',
+  'task.suggest.deploy.rollback': 'Validate Rollback Plan',
+
+  // Suggested task labels — monitoring
+  'task.suggest.mon.errorRate': 'Error Rate Alert',
+  'task.suggest.mon.latency': 'Latency Monitoring',
+  'task.suggest.mon.resource': 'Resource Utilization Alert',
+  'task.suggest.mon.dashboard': 'Business Metrics Dashboard',
+  'task.suggest.mon.slo': 'SLO / SLA Configuration',
+  'task.suggest.mon.runbook': 'Incident Response Runbook',
 } as const
 
 export type TranslationKey = keyof typeof en

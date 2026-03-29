@@ -188,7 +188,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
 }
 
 export default function ArtifactPanel() {
-  const { activeWorkspaceId, workflowRunning, workspaces } = useWorkspaceStore()
+  const { activeWorkspaceId, workflowRunning, workspaces, activeRequirementId } = useWorkspaceStore()
   const t = useT()
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(false)
@@ -222,9 +222,15 @@ export default function ArtifactPanel() {
   }, [activeWorkspaceId])
 
   const filteredArtifacts = useMemo(() => {
-    if (phaseFilter === 'all') return artifacts
-    return artifacts.filter((a) => a.phaseId === phaseFilter)
-  }, [artifacts, phaseFilter])
+    let filtered = artifacts
+    if (activeRequirementId) {
+      filtered = filtered.filter(a => a.requirementId === activeRequirementId)
+    }
+    if (phaseFilter !== 'all') {
+      filtered = filtered.filter(a => a.phaseId === phaseFilter)
+    }
+    return filtered
+  }, [artifacts, phaseFilter, activeRequirementId])
 
   if (!activeWorkspaceId) return null
 
@@ -236,6 +242,11 @@ export default function ArtifactPanel() {
         <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
           {t('artifact.title')}
         </span>
+        {activeRequirementId && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-medium">
+            {t('requirement.scoped' as TranslationKey)}
+          </span>
+        )}
         <span className="text-[10px] text-text-tertiary font-mono">
           ({filteredArtifacts.length})
         </span>

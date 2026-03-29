@@ -103,11 +103,16 @@ services:
       RAG_SVC_URL: http://rag-pipeline:8060
       KNOWLEDGE_SVC_URL: http://knowledge-service:8070
       REDIS_URL: redis://redis:6379/2
+      GITLAB_URL: ${GITLAB_URL:-}
+      GITLAB_BASE_URL: ${GITLAB_BASE_URL:-${GITLAB_URL:-}}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
     depends_on:
       - llm-gateway
       - workspace-svc
+      - ws-gateway
       - memory-service
       - rag-pipeline
+      - knowledge-service
 
   architecture-agent:
     build:
@@ -124,11 +129,16 @@ services:
       RAG_SVC_URL: http://rag-pipeline:8060
       KNOWLEDGE_SVC_URL: http://knowledge-service:8070
       REDIS_URL: redis://redis:6379/6
+      GITLAB_URL: ${GITLAB_URL:-}
+      GITLAB_BASE_URL: ${GITLAB_BASE_URL:-${GITLAB_URL:-}}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
     depends_on:
       - llm-gateway
       - workspace-svc
+      - ws-gateway
       - memory-service
       - rag-pipeline
+      - knowledge-service
 
   # --- Phase 2: Platform Services ---
 

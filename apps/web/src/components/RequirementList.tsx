@@ -1,18 +1,39 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, FileStack, ChevronRight, Trash2 } from 'lucide-react'
+import {
+  FileStack, ChevronRight, Trash2, FileText, Blocks, Palette,
+  Code2, FlaskConical, Rocket, Activity, CheckCircle2, Circle,
+} from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { Requirement, RequirementStatus } from '../types'
+import type { PhaseType } from '../types'
 
-const STATUS_COLORS: Record<RequirementStatus, string> = {
-  draft: 'bg-surface-4 text-text-secondary',
-  in_progress: 'bg-accent/20 text-accent',
-  completed: 'bg-success/20 text-success',
+const STATUS_COLORS: Record<RequirementStatus, { bar: string; pill: string }> = {
+  draft:       { bar: 'bg-surface-4',   pill: 'bg-surface-3 text-text-tertiary' },
+  in_progress: { bar: 'bg-accent',      pill: 'bg-accent/15 text-accent' },
+  completed:   { bar: 'bg-success',     pill: 'bg-success/15 text-success' },
 }
 
-const PHASE_LABELS: Record<string, string> = {
+const PRIORITY_COLORS: Record<string, string> = {
+  p0: 'bg-danger/10 text-danger border-danger/20',
+  p1: 'bg-warning/10 text-warning border-warning/20',
+  p2: 'bg-accent/10 text-accent border-accent/20',
+  p3: 'bg-surface-3 text-text-tertiary border-border-subtle',
+}
+
+const PHASE_ICONS: Partial<Record<PhaseType, React.ReactNode>> = {
+  requirement:  <FileText className="w-3 h-3" />,
+  architecture: <Blocks className="w-3 h-3" />,
+  design:       <Palette className="w-3 h-3" />,
+  development:  <Code2 className="w-3 h-3" />,
+  testing:      <FlaskConical className="w-3 h-3" />,
+  deployment:   <Rocket className="w-3 h-3" />,
+  monitoring:   <Activity className="w-3 h-3" />,
+}
+
+const PHASE_LABEL_KEYS: Record<string, string> = {
   requirement: 'requirement.phase.requirement',
   architecture: 'requirement.phase.architecture',
   design: 'requirement.phase.design',
@@ -22,143 +43,250 @@ const PHASE_LABELS: Record<string, string> = {
   monitoring: 'requirement.phase.monitoring',
 }
 
+function RequirementCard({ req, index, onOpen, onDelete }: {
+  req: Requirement
+  index: number
+  onOpen: () => void
+  onDelete: () => void
+}) {
+  const t = useT()
+  const statusConfig = STATUS_COLORS[req.status] || STATUS_COLORS.draft
+  const progress = req.taskCount > 0 ? Math.round((req.doneCount / req.taskCount) * 100) : 0
+  const phaseIcon = PHASE_ICONS[req.currentPhase as PhaseType]
+  const phaseLabel = t(PHASE_LABEL_KEYS[req.currentPhase] as any || req.currentPhase)
+  const isCompleted = req.status === 'completed'
+  const isActive = req.status === 'in_progress'
+
+  const avatarClass = isCompleted
+    ? 'bg-success/10 text-success'
+    : isActive
+      ? 'bg-accent/10 text-accent'
+      : 'bg-surface-3 text-text-tertiary'
+
+  const avatarIcon = isCompleted ? (
+    <CheckCircle2 className="w-3.5 h-3.5" />
+  ) : isActive ? (
+    <Circle className="w-3.5 h-3.5" />
+  ) : (
+    <FileStack className="w-3.5 h-3.5" />
+  )
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ delay: index * 0.04, duration: 0.2 }}
+      onClick={onOpen}
+      className="flex gap-2.5 group cursor-pointer rounded-lg -mx-1 px-1 py-1.5 hover:bg-surface-2/35 transition-colors"
+    >
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${avatarClass}`}>
+        {avatarIcon}
+      </div>
+
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="flex items-center gap-1.5 min-w-0">
+                {phaseIcon && <span className="text-text-tertiary shrink-0">{phaseIcon}</span>}
+                <span className="text-[11px] font-semibold text-text-secondary truncate">{phaseLabel}</span>
+              </span>
+              {req.taskCount > 0 && (
+                <span className="text-[10px] text-text-tertiary/50 font-mono tabular-nums shrink-0">
+                  {req.doneCount}/{req.taskCount}
+                </span>
+              )}
+              <span className={`px-1.5 py-0.5 text-[9px] font-medium rounded-md shrink-0 ${statusConfig.pill}`}>
+                {t(`requirement.status.${req.status}` as any)}
+              </span>
+              {req.priority && (
+                <span className={`px-1.5 py-0.5 text-[9px] font-semibold rounded-md border uppercase shrink-0 ${PRIORITY_COLORS[req.priority] || PRIORITY_COLORS.p3}`}>
+                  {req.priority}
+                </span>
+              )}
+            </div>
+            <h3 className="text-xs text-text-primary/90 font-medium leading-relaxed">{req.title}</h3>
+            {req.description && (
+              <p className="text-xs text-text-tertiary line-clamp-2 leading-relaxed">{req.description}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onDelete() }}
+              className="p-1 rounded-md hover:bg-danger/10 hover:text-danger text-text-tertiary/60 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+            <div className="p-1 rounded-md bg-accent/10 text-accent">
+              <ChevronRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+        </div>
+
+        { req.taskCount > 0 && (
+          <div className="h-0.5 bg-surface-3 rounded-full overflow-hidden">
+            <motion.div
+              className={`h-full rounded-full ${statusConfig.bar}`}
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.6, ease: 'easeOut', delay: index * 0.04 + 0.1 }}
+            />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
 export default function RequirementList() {
   const t = useT()
   const { workspaces, activeWorkspaceId, createRequirement, deleteRequirement, setActiveRequirement } = useWorkspaceStore()
-  const { showConfirm } = useUIStore()
-  const [creating, setCreating] = useState(false)
+  const { showConfirm, reqCreating, setReqCreating } = useUIStore()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
 
   const workspace = workspaces.find(w => w.id === activeWorkspaceId)
   const requirements = workspace?.requirements || []
 
+  useEffect(() => {
+    return () => setReqCreating(false)
+  }, [setReqCreating])
+
   const handleCreate = () => {
     if (!activeWorkspaceId || !title.trim()) return
     createRequirement(activeWorkspaceId, title.trim(), description.trim())
     setTitle('')
     setDescription('')
-    setCreating(false)
+    setReqCreating(false)
+  }
+
+  const handleCancel = () => {
+    setTitle('')
+    setDescription('')
+    setReqCreating(false)
   }
 
   const handleDelete = (req: Requirement) => {
     showConfirm({
-      title: 'Delete Requirement',
-      message: `Delete "${req.title}" and all its tasks and artifacts?`,
+      title: t('requirement.deleteConfirmTitle' as any),
+      message: t('requirement.deleteConfirmMsg' as any).replace('{title}', req.title),
       danger: true,
       onConfirm: () => activeWorkspaceId && deleteRequirement(activeWorkspaceId, req.id),
     })
   }
 
+  // Group by status for a cleaner overview
+  const drafts = requirements.filter(r => r.status === 'draft')
+  const inProgress = requirements.filter(r => r.status === 'in_progress')
+  const completed = requirements.filter(r => r.status === 'completed')
+
+  const groups = [
+    { key: 'in_progress', items: inProgress, label: t('requirement.status.in_progress'), dot: 'bg-accent animate-pulse' },
+    { key: 'draft', items: drafts, label: t('requirement.status.draft'), dot: 'bg-surface-4' },
+    { key: 'completed', items: completed, label: t('requirement.status.completed'), dot: 'bg-success' },
+  ].filter(g => g.items.length > 0)
+
+  let globalIdx = 0
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Create form */}
       <AnimatePresence>
-        {creating ? (
+        {reqCreating && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="bg-surface-2 border border-border-subtle rounded-xl p-4 space-y-3"
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
           >
-            <input
-              autoFocus
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreate()}
-              placeholder={t('requirement.create.placeholder.title')}
-              className="w-full bg-surface-3 border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
-            />
-            <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder={t('requirement.create.placeholder.desc')}
-              rows={3}
-              className="w-full bg-surface-3 border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent resize-none"
-            />
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setCreating(false)} className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">
-                Cancel
-              </button>
-              <button onClick={handleCreate} disabled={!title.trim()} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-40">
-                {t('requirement.create')}
-              </button>
+            <div className="bg-surface-2 border border-accent/25 rounded-xl p-4 space-y-3 shadow-sm">
+              <p className="text-xs font-semibold text-text-secondary">{t('requirement.create')}</p>
+              <input
+                autoFocus
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                placeholder={t('requirement.create.placeholder.title')}
+                className="w-full bg-surface-3 border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/40 transition-colors"
+              />
+              <textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder={t('requirement.create.placeholder.desc')}
+                rows={3}
+                className="w-full bg-surface-3 border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/40 resize-none transition-colors"
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={handleCancel} className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-3 transition-colors cursor-pointer">
+                  {t('task.cancel' as any)}
+                </button>
+                <button onClick={handleCreate} disabled={!title.trim()} className="px-4 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-40 cursor-pointer transition-colors font-medium">
+                  {t('requirement.create')}
+                </button>
+              </div>
             </div>
           </motion.div>
-        ) : (
-          <motion.button
-            onClick={() => setCreating(true)}
-            className="w-full flex items-center gap-2 px-4 py-3 text-sm text-text-secondary hover:text-text-primary bg-surface-2/50 hover:bg-surface-2 border border-dashed border-border-subtle hover:border-accent/40 rounded-xl transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t('requirement.create')}
-          </motion.button>
         )}
       </AnimatePresence>
 
-      {requirements.length === 0 && !creating && (
-        <div className="text-center py-12 text-text-tertiary text-sm">
-          <FileStack className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p>{t('requirement.empty')}</p>
-        </div>
-      )}
+      {/* List panel — same chrome as conversation (MessageThread) */}
+      {(requirements.length > 0 || (!requirements.length && !reqCreating)) && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.12 }}
+          className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden"
+        >
+          <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
+            <FileStack className="w-3.5 h-3.5 text-text-tertiary" />
+            <span className="text-xs font-medium text-text-secondary">{t('sidebar.requirements')}</span>
+            <div className="flex-1" />
+            <span className="text-[10px] font-mono text-text-tertiary tabular-nums">{requirements.length}</span>
+          </div>
 
-      <div className="grid gap-3">
-        <AnimatePresence>
-          {requirements.map((req, i) => (
-            <motion.div
-              key={req.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ delay: i * 0.05 }}
-              onClick={() => setActiveRequirement(req.id)}
-              className="group bg-surface-2 hover:bg-surface-3/80 border border-border-subtle hover:border-accent/30 rounded-xl p-4 cursor-pointer transition-all"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-sm font-medium text-text-primary truncate">{req.title}</h3>
-                    <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md ${STATUS_COLORS[req.status]}`}>
-                      {t(`requirement.status.${req.status}` as any)}
-                    </span>
-                    {req.priority && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-surface-4 text-text-secondary uppercase">
-                        {req.priority}
-                      </span>
-                    )}
-                  </div>
-                  {req.description && (
-                    <p className="text-xs text-text-tertiary line-clamp-2 mb-2">{req.description}</p>
-                  )}
-                  <div className="flex items-center gap-3 text-[11px] text-text-tertiary">
-                    <span>{t(PHASE_LABELS[req.currentPhase] as any || req.currentPhase)}</span>
-                    <span>{req.doneCount}/{req.taskCount} tasks</span>
-                  </div>
+          <div className="p-4">
+            {requirements.length === 0 && !reqCreating && (
+              <div className="text-center py-14">
+                <div className="w-12 h-12 rounded-2xl bg-surface-2/80 border border-border-subtle flex items-center justify-center mx-auto mb-4">
+                  <FileStack className="w-5 h-5 text-text-tertiary opacity-60" />
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDelete(req) }}
-                    className="p-1 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:text-danger transition-opacity"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                  <ChevronRight className="w-4 h-4 text-text-tertiary opacity-0 group-hover:opacity-60 transition-opacity" />
+                <p className="text-xs text-text-tertiary leading-relaxed">{t('requirement.empty')}</p>
+              </div>
+            )}
+
+            {groups.map((group) => (
+              <div key={group.key} className="mb-5 last:mb-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${group.dot}`} />
+                  <span className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
+                    {group.label}
+                  </span>
+                  <span className="text-[10px] font-mono text-text-tertiary/60 tabular-nums">({group.items.length})</span>
+                </div>
+                <div className="space-y-1">
+                  <AnimatePresence mode="popLayout">
+                    {group.items.map((req) => {
+                      const idx = globalIdx++
+                      return (
+                        <RequirementCard
+                          key={req.id}
+                          req={req}
+                          index={idx}
+                          onOpen={() => setActiveRequirement(req.id)}
+                          onDelete={() => handleDelete(req)}
+                        />
+                      )
+                    })}
+                  </AnimatePresence>
                 </div>
               </div>
-              {req.taskCount > 0 && (
-                <div className="mt-3 h-1 bg-surface-4 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-accent/70 rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(req.doneCount / req.taskCount) * 100}%` }}
-                    transition={{ duration: 0.5 }}
-                  />
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </div>
   )
 }

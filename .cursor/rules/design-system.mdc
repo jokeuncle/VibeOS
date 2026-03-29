@@ -51,3 +51,4 @@ All tokens are defined in `apps/web/src/index.css` inside `@theme { ... }` (Tail
 - Never use raw hex colors; always reference token classes (`text-text-primary`, `bg-surface-2`)
 - New colors must be added to `@theme` first
 - Keep dark/light parity: add any new token to both the default and `[data-theme="light"]` blocks
+- **Layout / panels / list rows / floating Dock:** follow `ui-chrome.mdc` so screens stay visually aligned with Dashboard and conversation panels.

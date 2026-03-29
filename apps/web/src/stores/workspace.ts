@@ -13,6 +13,7 @@ import en from '../i18n/en'
 import zh from '../i18n/zh'
 import { useI18nStore } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
+import { useUIStore } from './ui'
 
 function tRaw(key: TranslationKey, vars?: Record<string, string>): string {
   const locale = useI18nStore.getState().locale
@@ -189,14 +190,20 @@ function buildNlpPhaseContext(get: () => WorkspaceState): Record<string, unknown
   const phaseId = get().activePhaseId
   const phase = ws?.phases.find((p) => p.id === phaseId)
 
+  // Read NLP context from UI store (requirement + phase targeting)
+  const nlpCtxState = useUIStore.getState().nlpContext
+
   const repos = ws?.repos ?? []
+  const activePhaseType = nlpCtxState?.phaseType || phase?.type
   const phaseRepos = repos.filter((r) =>
-    !r.phaseTypes?.length || (phase?.type && r.phaseTypes.includes(phase.type))
+    !r.phaseTypes?.length || (activePhaseType && r.phaseTypes.includes(activePhaseType))
   )
   const primary = phaseRepos.find((r) => r.isPrimary) ?? phaseRepos[0]
 
   const ctx: Record<string, unknown> = {}
-  if (phase?.type) ctx.phase_type = phase.type
+  if (activePhaseType) ctx.phase_type = activePhaseType
+  if (nlpCtxState?.agentType) ctx.target_agent = nlpCtxState.agentType
+  if (nlpCtxState?.requirementId) ctx.requirement_id = nlpCtxState.requirementId
   if (phaseRepos.length) {
     ctx.gitlab_repos = phaseRepos.map((r) => ({
       projectId: r.projectId,

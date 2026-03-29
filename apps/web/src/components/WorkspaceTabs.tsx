@@ -9,7 +9,7 @@ export default function WorkspaceTabs() {
   const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const { openTabs, removeTab } = useUIStore()
 
-  if (openTabs.length === 0) return null
+  if (openTabs.length <= 1) return null
 
   return (
     <div className="h-8 flex items-end px-2 bg-surface-0 border-b border-border-subtle overflow-x-auto shrink-0">

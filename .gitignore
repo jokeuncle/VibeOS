@@ -11,6 +11,7 @@ services/ws-gateway/ws-gateway
 
 # Environment
 .env
+deploy/.env
 
 # Docker volumes
 pgdata

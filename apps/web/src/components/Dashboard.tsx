@@ -1,8 +1,37 @@
+import { useId } from 'react'
 import { motion } from 'framer-motion'
 import { useT } from '../i18n'
-import type { Phase, Agent, PhaseStatus, AgentStatus } from '../types'
+import type { Phase, Agent, AgentStatus } from '../types'
 import type { TranslationKey } from '../i18n/en'
-import GanttChart from './GanttChart'
+import ActivityLog from './ActivityLog'
+import { useWorkspaceStore } from '../stores/workspace'
+
+function ProgressRing({ progress }: { progress: number }) {
+  const gradientId = useId()
+  const radius = 28
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (progress / 100) * circumference
+
+  return (
+    <svg width="72" height="72" className="transform -rotate-90">
+      <circle cx="36" cy="36" r={radius} fill="none" stroke="var(--color-surface-3)" strokeWidth="3" />
+      <motion.circle
+        cx="36" cy="36" r={radius}
+        fill="none" stroke={`url(#${gradientId})`} strokeWidth="3"
+        strokeLinecap="round" strokeDasharray={circumference}
+        initial={{ strokeDashoffset: circumference }}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
+      />
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="var(--color-accent)" />
+          <stop offset="100%" stopColor="#8b5cf6" />
+        </linearGradient>
+      </defs>
+    </svg>
+  )
+}
 
 function DonutChart({ data }: { data: { value: number; color: string }[] }) {
   const total = data.reduce((a, d) => a + d.value, 0)
@@ -39,27 +68,30 @@ function DonutChart({ data }: { data: { value: number; color: string }[] }) {
   )
 }
 
-function PhaseBar({ name, progress, status }: { name: string; progress: number; status: PhaseStatus }) {
-  const statusColor = status === 'completed' ? 'bg-success' : status === 'in_progress' ? 'bg-accent' : 'bg-surface-4'
-
+function LegendItem({ color, label, value }: { color: string; label: string; value: number }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-text-secondary w-24 truncate">{name}</span>
-      <div className="flex-1 h-2 bg-surface-3 rounded-full overflow-hidden">
-        <motion.div
-          className={`h-full rounded-full ${statusColor}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-        />
-      </div>
-      <span className="text-[10px] font-mono text-text-tertiary w-8 text-right">{progress}%</span>
+    <div className="flex items-center gap-2">
+      <div className={`w-2.5 h-2.5 rounded-sm ${color}`} />
+      <span className="text-xs text-text-secondary">{label}</span>
+      <span className="text-xs font-mono text-text-primary font-semibold ml-auto">{value}</span>
     </div>
   )
 }
 
-export default function Dashboard({ phases, agents, startDate }: { phases: Phase[]; agents: Agent[]; startDate?: string }) {
+function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="rounded-lg bg-surface-2/40 px-3 py-2.5">
+      <span className={`text-xl font-semibold font-mono ${color}`}>{value}</span>
+      <p className="text-[10px] text-text-tertiary mt-0.5">{label}</p>
+    </div>
+  )
+}
+
+export default function Dashboard({ phases, agents }: { phases: Phase[]; agents: Agent[] }) {
   const t = useT()
+  const { workspaces, activeWorkspaceId } = useWorkspaceStore()
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const requirements = workspace?.requirements || []
 
   const totalTasks = phases.reduce((a, p) => a + p.tasks.length, 0)
   const pending = phases.reduce((a, p) => a + p.tasks.filter((t) => t.status === 'pending').length, 0)
@@ -74,14 +106,71 @@ export default function Dashboard({ phases, agents, startDate }: { phases: Phase
 
   const agentsByStatus = (s: AgentStatus) => agents.filter((a) => a.status === s).length
 
+  const draftCount = requirements.filter(r => r.status === 'draft').length
+  const inProgressReqs = requirements.filter(r => r.status === 'in_progress').length
+  const completedReqs = requirements.filter(r => r.status === 'completed').length
+
   return (
     <div className="space-y-6">
-      {/* Task distribution + stats */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Workspace header with progress ring */}
+      {workspace && (
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-center gap-6"
+        >
+          <div className="relative">
+            <ProgressRing progress={workspace.progress} />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-sm font-semibold text-text-primary font-mono">
+                {workspace.progress}
+                <span className="text-[10px] text-text-tertiary">%</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex-1">
+            <h2 className="text-xl font-semibold tracking-tight text-text-primary">
+              {workspace.name || t('workspace.untitled')}
+            </h2>
+            {workspace.description && (
+              <p className="text-sm text-text-tertiary mt-1">{workspace.description}</p>
+            )}
+            <div className="flex items-center gap-4 mt-2">
+              <span className="text-[11px] font-mono text-text-tertiary">
+                {requirements.length} {t('view.requirements' as TranslationKey)} · {draftCount} {t('requirement.status.draft')} / {inProgressReqs} {t('requirement.status.in_progress')} / {completedReqs} {t('requirement.status.completed')}
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Requirement Health — first business metric after workspace identity */}
+      {requirements.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
+          className="rounded-xl border border-border-subtle bg-surface-1/30 p-5"
+        >
+          <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">
+            {t('dashboard.requirementHealth' as TranslationKey)}
+          </h4>
+          <div className="grid grid-cols-3 gap-3">
+            <StatCard label={t('requirement.status.draft')} value={draftCount} color="text-text-tertiary" />
+            <StatCard label={t('requirement.status.in_progress')} value={inProgressReqs} color="text-accent" />
+            <StatCard label={t('requirement.status.completed')} value={completedReqs} color="text-success" />
+          </div>
+        </motion.div>
+      )}
+
+      {/* Task distribution + Agent status */}
+      <div className="grid grid-cols-2 gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
           className="rounded-xl border border-border-subtle bg-surface-1/30 p-5"
         >
           <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">
@@ -104,7 +193,7 @@ export default function Dashboard({ phases, agents, startDate }: { phases: Phase
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
+          transition={{ delay: 0.2 }}
           className="rounded-xl border border-border-subtle bg-surface-1/30 p-5"
         >
           <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">
@@ -119,51 +208,16 @@ export default function Dashboard({ phases, agents, startDate }: { phases: Phase
         </motion.div>
       </div>
 
-      {/* Phase progress */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="rounded-xl border border-border-subtle bg-surface-1/30 p-5"
-      >
-        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">
-          {t('dashboard.phaseProgress')}
-        </h4>
-        <div className="space-y-3">
-          {phases.map((p) => {
-            const nameKey = `phase.${p.type}` as TranslationKey
-            return <PhaseBar key={p.id} name={t(nameKey)} progress={p.progress} status={p.status} />
-          })}
-        </div>
-      </motion.div>
-
-      {/* Gantt timeline */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-      >
-        <GanttChart phases={phases} startDate={startDate} />
-      </motion.div>
-    </div>
-  )
-}
-
-function LegendItem({ color, label, value }: { color: string; label: string; value: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className={`w-2.5 h-2.5 rounded-sm ${color}`} />
-      <span className="text-xs text-text-secondary">{label}</span>
-      <span className="text-xs font-mono text-text-primary font-semibold ml-auto">{value}</span>
-    </div>
-  )
-}
-
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="rounded-lg bg-surface-2/40 px-3 py-2.5">
-      <span className={`text-xl font-semibold font-mono ${color}`}>{value}</span>
-      <p className="text-[10px] text-text-tertiary mt-0.5">{label}</p>
+      {/* Activity Log */}
+      {workspace && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <ActivityLog activities={workspace.activities} />
+        </motion.div>
+      )}
     </div>
   )
 }

@@ -2,7 +2,7 @@ import type { TranslationKey } from './en'
 
 const zh: Record<TranslationKey, string> = {
   'app.subtitle': 'AI 原生产品全生命周期操作系统',
-  'app.tagline': '一个空间，全部阶段，完整掌控。',
+  'app.tagline': '一个空间，全部需求，全部阶段，完整掌控。',
 
   'workspace.new': '新建空间',
   'workspace.untitled': '未命名空间',
@@ -44,6 +44,7 @@ const zh: Record<TranslationKey, string> = {
   'phase.short.deployment': '部署',
   'phase.short.monitoring': '监控',
 
+  'phase.title': '阶段',
   'phase.allPhases': '全部阶段',
   'phase.phaseDetail': '阶段详情',
 
@@ -71,6 +72,8 @@ const zh: Record<TranslationKey, string> = {
   'command.placeholder': '问任何事… "部署到预发环境" "当前进度？"',
   'command.placeholderHome': '搜索空间或创建新空间…',
   'command.placeholderNLP': '@ Agent · / 命令 · 或提问任何事…',
+  'command.contextPlaceholder': '向',
+  'nlp.clearContext': '清除上下文',
   'command.title': '命令面板',
   'command.navigation': '导航',
   'command.actions': '操作',
@@ -212,6 +215,7 @@ const zh: Record<TranslationKey, string> = {
   'dashboard.inProgress': '进行中',
   'dashboard.completed': '已完成',
   'dashboard.totalTasks': '总任务数',
+  'dashboard.requirementHealth': '需求健康度',
 
   'theme.label': '主题',
   'theme.dark': '深色',
@@ -219,6 +223,8 @@ const zh: Record<TranslationKey, string> = {
 
   'view.dashboard': '仪表盘',
   'view.agents': 'Agents',
+  'view.kanban': '看板',
+  'view.graph': '关系图',
 
   'agent.topology': 'Agent 拓扑图',
   'agent.logStream': '执行日志',
@@ -493,7 +499,273 @@ const zh: Record<TranslationKey, string> = {
   'requirement.relation.select': '选择需求...',
   'requirement.relation.type': '关联类型',
   'requirement.detail.back': '返回列表',
+  'requirement.advance': '推进阶段',
+  'requirement.scoped': '已筛选',
   'requirement.progress': '{done}/{total} 个任务',
+  'requirement.noTasks': '此阶段暂无任务',
+  'requirement.noArtifacts': '暂无制品',
+  'requirement.deleteConfirmTitle': '删除需求',
+  'requirement.deleteConfirmMsg': '删除「{title}」及其所有任务和制品？',
+  'requirement.noneAssigned': '未分配',
+  'task.status.pending': '待开始',
+  'task.status.in_progress': '进行中',
+  'task.status.completed': '已完成',
+
+  'sidebar.dashboard': '总览',
+  'sidebar.requirements': '需求',
+  'sidebar.agents': 'Agents',
+  'sidebar.settings': '设置',
+  'sidebar.showMore': '加载更多',
+
+  'reqSubView.list': '列表',
+  'reqSubView.kanban': '看板',
+  'reqSubView.graph': '关系图',
+
+  'phase.tab.overview': '总览',
+  'phase.tab.artifacts': '制品',
+  'phase.tab.relations': '依赖关系',
+  'phase.tab.stories': '用户故事',
+  'phase.tab.decisions': '架构决策',
+  'phase.tab.specs': '设计规格',
+  'phase.tab.implementation': '实现清单',
+  'phase.tab.cases': '测试用例',
+  'phase.tab.deploy': '部署步骤',
+  'phase.tab.metrics': '监控配置',
+
+  'phase.tag.story': 'Story',
+  'phase.tag.adr': 'ADR',
+  'phase.tag.spec': 'Spec',
+  'phase.tag.feature': 'Feature',
+  'phase.tag.fix': 'Fix',
+  'phase.tag.refactor': 'Refactor',
+  'phase.tag.unit': 'Unit',
+  'phase.tag.integration': 'Integration',
+  'phase.tag.e2e': 'E2E',
+  'phase.tag.perf': 'Perf',
+  'phase.tag.automated': '自动化',
+  'phase.tag.manual': '手动',
+  'phase.tag.warning': '警告',
+  'phase.tag.critical': '严重',
+
+  'phase.status.active': '执行中',
+  'phase.status.idle': '待运行',
+  'phase.status.rework': '返工中',
+  'phase.status.pending': '待开始',
+  'phase.status.completed': '已完成',
+  'phase.status.skipped': '已跳过',
+
+  'phase.iteration': '第',
+  'phase.noPhaseSelected': '点击上方阶段查看详情',
+  'phase.producedArtifacts': '产出制品',
+  'phase.agentTrace': 'Agent 备注',
+  'phase.noArtifacts': '暂无制品',
+
+  'settings.workspaceInfo': '空间信息',
+  'settings.repos': '仓库绑定',
+  'settings.members': '成员管理',
+  'settings.addMember': '添加成员',
+  'settings.removeMember': '移除',
+  'settings.memberRole.owner': '拥有者',
+  'settings.memberRole.editor': '编辑者',
+  'settings.memberRole.viewer': '查看者',
+  'settings.saved': '设置已保存',
+  'settings.memberAdded': '成员已添加',
+  'settings.memberRemoved': '成员已移除',
+
+  // 侧边栏
+  'sidebar.expand': '展开侧边栏',
+
+  // 需求关联
+  'requirement.relation.empty': '暂无关联需求',
+  'requirement.relation.noOther': '没有其他需求可以关联',
+
+  // 阶段任务徽章
+  'phase.badge.story': '故事',
+  'phase.badge.adr': '架构决策',
+  'phase.badge.spec': '设计规格',
+  'phase.badge.impl': '实现',
+  'phase.badge.test': '测试',
+  'phase.badge.deploy': '部署',
+  'phase.badge.alert': '告警',
+
+  // 阶段运行提示
+  'phase.runHint': '运行分析以为此阶段生成任务',
+
+  // 需求阶段任务类型（需求分析）
+  'task.type.story': '用户故事',
+  'task.type.epic': '史诗',
+  'task.type.ac': '验收标准',
+
+  // 架构阶段任务类型
+  'task.type.adr': '架构决策记录',
+  'task.type.diagram': '架构图',
+  'task.type.design': '系统设计',
+
+  // 设计阶段任务类型
+  'task.type.wireframe': '线框图',
+  'task.type.component': '组件',
+  'task.type.flow': '用户流程',
+  'task.type.style': '设计规范',
+
+  // 开发阶段任务类型
+  'task.type.feature': '功能开发',
+  'task.type.fix': '缺陷修复',
+  'task.type.refactor': '重构',
+  'task.type.config': '配置',
+
+  // 测试阶段任务类型
+  'task.type.unit': '单元测试',
+  'task.type.integration': '集成测试',
+  'task.type.e2e': '端到端测试',
+  'task.type.perf': '性能测试',
+
+  // 部署阶段任务类型
+  'task.type.staging': '预发布环境',
+  'task.type.production': '生产环境',
+  'task.type.preview': '预览环境',
+  'task.type.rollback': '回滚',
+
+  // 监控阶段任务类型
+  'task.type.alert': '告警规则',
+  'task.type.metric': '监控指标',
+  'task.type.dashboard': '监控面板',
+  'task.type.incident': '事故响应',
+
+  // AI 总结
+  'requirement.aiSummary': 'AI 进展总结',
+  'requirement.aiSummaryLoading': '正在生成总结…',
+
+  // Dock 上下文标签
+  'dock.newRequirement': '新建需求',
+  'dock.viewDashboard': '总览',
+  'dock.runAnalysis': '运行分析',
+
+  // 任务类型通用标签
+  'task.type.label': '类型',
+
+  // 任务抽屉标签
+  'task.checklist': '完成清单',
+  'task.doneWhen': '完成标准',
+  'task.checklistHint': '清单随 Agent 进展自动更新',
+  'task.artifactsHint': 'Agent 生成制品后将在此显示',
+  'task.hintTitle': '最佳实践',
+
+  // 完成清单 — 需求分析
+  'task.check.req.roleGoalBenefit': '定义用户角色、目标与收益',
+  'task.check.req.ac': '验收标准清晰可测试',
+  'task.check.req.priority': '优先级与工作量已评估',
+  'task.check.req.estimation': '故事点数已估算',
+
+  // 完成清单 — 架构设计
+  'task.check.arch.context': '问题背景已记录',
+  'task.check.arch.decision': '决策与理由已说明',
+  'task.check.arch.consequences': '正负面影响已分析',
+  'task.check.arch.reviewed': '已通过团队评审',
+
+  // 完成清单 — UI 设计
+  'task.check.design.wireframe': '线框图已通过确认',
+  'task.check.design.hifi': '高保真稿已完成',
+  'task.check.design.reviewed': '设计评审已通过',
+  'task.check.design.handoff': '已完成开发交付',
+
+  // 完成清单 — 开发
+  'task.check.dev.impl': '功能实现完成',
+  'task.check.dev.unitTest': '单元测试已编写',
+  'task.check.dev.reviewed': '代码审查已通过',
+  'task.check.dev.docs': '文档已更新',
+
+  // 完成清单 — 测试
+  'task.check.test.written': '测试用例已编写',
+  'task.check.test.passed': '所有测试通过',
+  'task.check.test.coverage': '覆盖率达标',
+  'task.check.test.edgeCases': '边界情况已覆盖',
+
+  // 完成清单 — 部署
+  'task.check.deploy.stagingOk': '预发布环境验证通过',
+  'task.check.deploy.prodOk': '生产环境部署成功',
+  'task.check.deploy.rollback': '回滚方案已验证',
+  'task.check.deploy.notified': '相关方已通知',
+
+  // 完成清单 — 监控
+  'task.check.mon.alert': '告警规则已配置',
+  'task.check.mon.dashboard': '监控面板已创建',
+  'task.check.mon.runbook': '运维手册已文档化',
+  'task.check.mon.sloSet': 'SLO/SLA 阈值已设置',
+
+  // 阶段特定提示（抽屉）
+  'task.hint.req.line1': '作为 [用户角色]，我希望 [目标]，以便 [获益]',
+  'task.hint.req.line2': '验收标准应具体且可测试',
+  'task.hint.req.line3': '每个故事应能独立交付',
+  'task.hint.arch.line1': '记录架构问题背景与约束条件',
+  'task.hint.arch.line2': '明确说明决策内容及其权衡',
+  'task.hint.arch.line3': '梳理正面、负面和中性影响',
+  'task.hint.design.line1': '从低保真开始，迭代到高保真',
+  'task.hint.design.line2': '交付前与用户验证设计方案',
+  'task.hint.dev.line1': '遵循现有代码风格和设计模式',
+  'task.hint.dev.line2': '与实现同步编写测试（推荐 TDD）',
+  'task.hint.test.line1': '覆盖正常路径、错误路径和边界情况',
+  'task.hint.test.line2': '关键路径代码覆盖率建议 ≥ 80%',
+  'task.hint.deploy.line1': '在预发布环境验证后再部署生产',
+  'task.hint.deploy.line2': '确保回滚方案经过测试并有文档记录',
+  'task.hint.mon.line1': '设置合理的告警阈值（避免噪音告警）',
+  'task.hint.mon.line2': '每个告警都应有清晰的运维操作步骤',
+
+  // 建议任务空态
+  'phase.suggestHint': '点击下方建议快速创建任务，或运行分析自动生成',
+  'task.suggested': '此阶段常见任务',
+
+  // 建议任务标签 — 需求分析
+  'task.suggest.req.userStory': '编写用户故事',
+  'task.suggest.req.ac': '定义验收标准',
+  'task.suggest.req.journey': '用户旅程地图',
+  'task.suggest.req.stakeholder': '利益相关方分析',
+  'task.suggest.req.competitive': '竞品调研分析',
+
+  // 建议任务标签 — 架构设计
+  'task.suggest.arch.techStack': '技术选型决策',
+  'task.suggest.arch.sysDesign': '系统架构设计',
+  'task.suggest.arch.database': '数据库结构设计',
+  'task.suggest.arch.api': 'API 接口设计',
+  'task.suggest.arch.security': '安全架构评审',
+  'task.suggest.arch.nfr': '非功能需求定义',
+
+  // 建议任务标签 — UI 设计
+  'task.suggest.design.wireframe': '低保真线框图',
+  'task.suggest.design.hifi': '高保真 UI 设计',
+  'task.suggest.design.prototype': '交互原型设计',
+  'task.suggest.design.ds': '设计系统组件',
+  'task.suggest.design.a11y': '无障碍可访问性评审',
+
+  // 建议任务标签 — 开发
+  'task.suggest.dev.frontend': '前端界面开发',
+  'task.suggest.dev.backend': '后端 API 开发',
+  'task.suggest.dev.migration': '数据库迁移',
+  'task.suggest.dev.unitTest': '编写单元测试',
+  'task.suggest.dev.review': '代码审查',
+  'task.suggest.dev.docs': '文档更新',
+
+  // 建议任务标签 — 测试
+  'task.suggest.test.unit': '单元测试',
+  'task.suggest.test.integration': '集成测试',
+  'task.suggest.test.e2e': '端到端测试',
+  'task.suggest.test.perf': '性能测试',
+  'task.suggest.test.security': '安全测试',
+  'task.suggest.test.regression': '回归测试',
+
+  // 建议任务标签 — 部署
+  'task.suggest.deploy.staging': '预发布环境部署',
+  'task.suggest.deploy.prod': '生产环境部署',
+  'task.suggest.deploy.migration': '执行数据库迁移',
+  'task.suggest.deploy.monitor': '配置监控告警',
+  'task.suggest.deploy.rollback': '验证回滚方案',
+
+  // 建议任务标签 — 监控
+  'task.suggest.mon.errorRate': '错误率告警规则',
+  'task.suggest.mon.latency': '响应时延监控',
+  'task.suggest.mon.resource': '系统资源告警',
+  'task.suggest.mon.dashboard': '业务指标看板',
+  'task.suggest.mon.slo': 'SLO / SLA 配置',
+  'task.suggest.mon.runbook': '事故响应手册',
 }
 
 export default zh

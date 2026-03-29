@@ -51,13 +51,14 @@ interface UIState {
   sidebarCollapsed: boolean
   toggleSidebar: () => void
 
-  viewMode: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements'
-  setViewMode: (mode: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements') => void
+  viewMode: 'dashboard' | 'requirements' | 'agents' | 'settings'
+  setViewMode: (mode: 'dashboard' | 'requirements' | 'agents' | 'settings') => void
 
-  splitMode: boolean
-  splitSecondaryView: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements'
-  toggleSplitMode: () => void
-  setSplitSecondaryView: (mode: 'list' | 'board' | 'dashboard' | 'agents' | 'requirements') => void
+  reqSubView: 'list' | 'kanban' | 'graph'
+  setReqSubView: (sub: 'list' | 'kanban' | 'graph') => void
+
+  reqCreating: boolean
+  setReqCreating: (v: boolean) => void
 
   notifications: Notification[]
   addNotification: (n: Omit<Notification, 'id' | 'read'>) => void
@@ -87,6 +88,19 @@ interface UIState {
 
   dockVisible: boolean
   toggleDock: () => void
+
+  nlpContext: {
+    requirementId: string
+    requirementTitle: string
+    phaseType: string | null
+    agentType: string | null
+  } | null
+  setNlpContext: (ctx: {
+    requirementId: string
+    requirementTitle: string
+    phaseType?: string | null
+    agentType?: string | null
+  } | null) => void
 
   closeTopmostOverlay: () => boolean
 }
@@ -129,13 +143,14 @@ export const useUIStore = create<UIState>((set, get) => ({
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
-  viewMode: 'list',
+  viewMode: 'dashboard',
   setViewMode: (mode) => set({ viewMode: mode }),
 
-  splitMode: false,
-  splitSecondaryView: 'board',
-  toggleSplitMode: () => set((s) => ({ splitMode: !s.splitMode })),
-  setSplitSecondaryView: (mode) => set({ splitSecondaryView: mode }),
+  reqSubView: 'list',
+  setReqSubView: (sub) => set({ reqSubView: sub }),
+
+  reqCreating: false,
+  setReqCreating: (v) => set({ reqCreating: v }),
 
   notifications: [],
   addNotification: (n) =>
@@ -190,6 +205,16 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   dockVisible: true,
   toggleDock: () => set((s) => ({ dockVisible: !s.dockVisible })),
+
+  nlpContext: null,
+  setNlpContext: (ctx) => set({
+    nlpContext: ctx ? {
+      requirementId: ctx.requirementId,
+      requirementTitle: ctx.requirementTitle,
+      phaseType: ctx.phaseType ?? null,
+      agentType: ctx.agentType ?? null,
+    } : null,
+  }),
 
   closeTopmostOverlay: () => {
     const s = get()

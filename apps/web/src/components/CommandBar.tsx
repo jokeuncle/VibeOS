@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, ArrowUp, Command, Bot, Slash, CheckSquare } from 'lucide-react'
+import {
+  Sparkles, ArrowUp, Command, Bot, Slash, CheckSquare,
+  FileText, Blocks, Palette, Code2, FlaskConical, Rocket, Activity,
+  X, ChevronRight,
+} from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -34,13 +38,34 @@ const COMMAND_SUGGESTIONS: { cmd: string; key: TranslationKey }[] = [
   { cmd: '/report', key: 'cmd.report' },
 ]
 
+const PHASE_ICONS: Record<string, React.ReactNode> = {
+  requirement:  <FileText className="w-3 h-3" />,
+  architecture: <Blocks className="w-3 h-3" />,
+  design:       <Palette className="w-3 h-3" />,
+  development:  <Code2 className="w-3 h-3" />,
+  testing:      <FlaskConical className="w-3 h-3" />,
+  deployment:   <Rocket className="w-3 h-3" />,
+  monitoring:   <Activity className="w-3 h-3" />,
+}
+
+const AGENT_LABEL_KEY: Record<string, TranslationKey> = {
+  requirement:  'agent.name.requirement',
+  architecture: 'agent.name.architecture',
+  design:       'agent.name.design',
+  development:  'agent.name.development',
+  testing:      'agent.name.testing',
+  cicd:         'agent.name.cicd',
+  monitoring:   'agent.name.monitoring',
+  pm:           'agent.name.pm',
+}
+
 export default function CommandBar() {
   const [input, setInput] = useState('')
   const [focused, setFocused] = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const { activeWorkspaceId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading } = useWorkspaceStore()
-  const { setHomeSearchQuery } = useUIStore()
+  const { setHomeSearchQuery, nlpContext, setNlpContext } = useUIStore()
   const t = useT()
 
   useEffect(() => {
@@ -181,6 +206,17 @@ export default function CommandBar() {
 
   const showSuggestions = focused && suggestions.length > 0
 
+  // Derive placeholder and context display
+  const agentKey = nlpContext?.agentType ? (AGENT_LABEL_KEY[nlpContext.agentType] || 'agent.name.pm') : 'agent.name.pm'
+  const agentLabel = t(agentKey)
+  const phaseIcon = nlpContext?.phaseType ? PHASE_ICONS[nlpContext.phaseType] : null
+
+  const placeholder = activeWorkspaceId
+    ? nlpContext
+      ? `${t('command.contextPlaceholder' as TranslationKey)} ${agentLabel}…`
+      : t('command.placeholderNLP')
+    : t('command.placeholderHome')
+
   return (
     <div className="relative z-[55]">
       {/* Suggestion dropdown (above input) */}
@@ -223,6 +259,55 @@ export default function CommandBar() {
         )}
       </AnimatePresence>
 
+      {/* Context pill (above form, when in requirement detail) */}
+      <AnimatePresence>
+        {nlpContext && activeWorkspaceId && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: 6, height: 0 }}
+            transition={{ duration: 0.18 }}
+            className="mx-4 mb-1 overflow-hidden"
+          >
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-2/80 border border-border-subtle backdrop-blur-sm">
+              {/* Requirement breadcrumb */}
+              <FileText className="w-3 h-3 text-text-tertiary shrink-0" />
+              <span className="text-[10px] text-text-tertiary truncate max-w-[140px]">
+                {nlpContext.requirementTitle}
+              </span>
+
+              {/* Phase arrow */}
+              {nlpContext.phaseType && (
+                <>
+                  <ChevronRight className="w-2.5 h-2.5 text-text-tertiary/50 shrink-0" />
+                  <span className="flex items-center gap-1 text-[10px] text-accent font-medium">
+                    {phaseIcon}
+                    {nlpContext.phaseType}
+                  </span>
+                </>
+              )}
+
+              <div className="flex-1" />
+
+              {/* Agent badge */}
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/10 border border-accent/20">
+                <Bot className="w-2.5 h-2.5 text-accent" />
+                <span className="text-[10px] font-medium text-accent">{agentLabel}</span>
+              </div>
+
+              {/* Clear context */}
+              <button
+                onClick={() => setNlpContext(null)}
+                className="p-0.5 rounded text-text-tertiary/50 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer"
+                title={t('nlp.clearContext' as TranslationKey)}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <form
         onSubmit={handleSubmit}
         className={`
@@ -244,11 +329,7 @@ export default function CommandBar() {
           onFocus={() => setFocused(true)}
           onBlur={() => setTimeout(() => setFocused(false), 150)}
           onKeyDown={handleInputKeyDown}
-          placeholder={
-            activeWorkspaceId
-              ? t('command.placeholderNLP')
-              : t('command.placeholderHome')
-          }
+          placeholder={placeholder}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary outline-none"
         />
 
