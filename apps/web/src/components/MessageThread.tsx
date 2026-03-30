@@ -482,7 +482,12 @@ function groupIntoSessions(messages: Message[]): Session[] {
 }
 
 export default function MessageThread() {
-  const { messages, messagesHasMore, loadOlderMessages, nlpLoading } = useWorkspaceStore()
+  const messages = useWorkspaceStore((s) => s.messages)
+  const messagesHasMore = useWorkspaceStore((s) => s.messagesHasMore)
+  const loadOlderMessages = useWorkspaceStore((s) => s.loadOlderMessages)
+  const nlpLoading = useWorkspaceStore((s) => s.nlpLoading)
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const fetchWorkspaceMessages = useWorkspaceStore((s) => s.fetchWorkspaceMessages)
   const t = useT()
   const bottomRef = useRef<HTMLDivElement>(null)
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(new Set())
@@ -490,6 +495,12 @@ export default function MessageThread() {
   const isLoadingOlderRef = useRef(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+
+  useEffect(() => {
+    if (activeWorkspaceId && !activeWorkspaceId.startsWith('ws-temp-')) {
+      void fetchWorkspaceMessages(activeWorkspaceId)
+    }
+  }, [activeWorkspaceId, fetchWorkspaceMessages])
 
   const filteredMessages = useMemo(() => {
     if (!searchQuery.trim()) return messages

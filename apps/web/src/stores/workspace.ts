@@ -82,6 +82,17 @@ export interface LogEntry {
 /** Per workspace: execution log history has been loaded from the API this SPA session. */
 const executionLogsHydratedIds = new Set<string>()
 const executionLogsFetchInflight = new Map<string, Promise<void>>()
+const workspaceMessagesFetchInflight = new Map<string, Promise<void>>()
+
+/** Merge server-fetched history with local/WS messages that arrived while fetching (by id). */
+function mergeMessagesById(remoteOldestFirst: Message[], local: Message[]): Message[] {
+  const map = new Map<string, Message>()
+  for (const m of remoteOldestFirst) map.set(m.id, m)
+  for (const m of local) map.set(m.id, m)
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  )
+}
 
 export interface AgentStatusEvent {
   agentType: string
@@ -133,6 +144,8 @@ interface WorkspaceState {
   setExecutionLogs: (workspaceId: string, entries: LogEntry[]) => void
   /** Load persisted execution logs when opening Traces or Agent log stream (not on workspace switch). */
   fetchExecutionLogs: (workspaceId?: string) => Promise<void>
+  /** Load persisted NLP thread messages when MessageThread mounts (not in setActiveWorkspace). */
+  fetchWorkspaceMessages: (workspaceId?: string) => Promise<void>
   updateAgentStatus: (workspaceId: string, agentType: string, status: import('../types').AgentStatus, detail?: string) => void
   patchTaskStatus: (workspaceId: string, taskId: string, status: PhaseStatus) => void
 
@@ -294,41 +307,33 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveWorkspace: (id) => {
     const gen = ++wsLoadGeneration
-    set({ activeWorkspaceId: id, activePhaseId: null, messages: [], workflowEvents: [] })
+    set({
+      activeWorkspaceId: id,
+      activePhaseId: null,
+      messages: [],
+      workflowEvents: [],
+      messagesCursor: null,
+      messagesHasMore: false,
+    })
     if (id && !id.startsWith('ws-temp-')) {
-      Promise.all([
-        workspaceApi.get(id),
-        workspaceApi.listActivities(id, 1, 50),
-        workspaceApi.listMessages(id, undefined, 50).catch(() => ({ data: [], hasMore: false })),
-      ]).then(([ws, actResp, msgResp]) => {
-        if (wsLoadGeneration !== gen) return
-        const activities = (actResp.data || []).map((a: any) => ({
-          id: a.id,
-          type: a.type,
-          description: a.description,
-          timestamp: a.timestamp || a.createdAt,
-          agentType: a.agentType,
-        }))
-        const merged = { ...ws, activities }
-        // Restore persisted messages (API returns newest-first, UI needs oldest-first)
-        const restored: Message[] = (msgResp.data || []).reverse().map((m: any) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          agentType: m.agentType,
-          timestamp: m.createdAt,
-          richBlocks: safeParseRichBlocks(m.richBlocks),
-          sessionId: m.sessionId,
-        }))
-        set((s) => ({
-          messages: restored,
-          messagesCursor: (msgResp as any).cursor || null,
-          messagesHasMore: (msgResp as any).hasMore || false,
-          workspaces: s.workspaces.some((w) => w.id === id)
-            ? patchWorkspace(s.workspaces, id, () => merged)
-            : [...s.workspaces, merged],
-        }))
-      }).catch((err) => console.error('Failed to load workspace:', err))
+      Promise.all([workspaceApi.get(id), workspaceApi.listActivities(id, 1, 50)])
+        .then(([ws, actResp]) => {
+          if (wsLoadGeneration !== gen) return
+          const activities = (actResp.data || []).map((a: any) => ({
+            id: a.id,
+            type: a.type,
+            description: a.description,
+            timestamp: a.timestamp || a.createdAt,
+            agentType: a.agentType,
+          }))
+          const merged = { ...ws, activities }
+          set((s) => ({
+            workspaces: s.workspaces.some((w) => w.id === id)
+              ? patchWorkspace(s.workspaces, id, () => merged)
+              : [...s.workspaces, merged],
+          }))
+        })
+        .catch((err) => console.error('Failed to load workspace:', err))
     }
   },
 
@@ -941,6 +946,49 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     return run
   },
 
+  fetchWorkspaceMessages: async (workspaceId) => {
+    const id = workspaceId ?? get().activeWorkspaceId
+    if (!id || id.startsWith('ws-temp-')) return
+
+    const inflight = workspaceMessagesFetchInflight.get(id)
+    if (inflight) return inflight
+
+    const run = (async () => {
+      try {
+        const msgResp = await workspaceApi
+          .listMessages(id, undefined, 50)
+          .catch(() => ({ data: [] as any[], hasMore: false, cursor: undefined as string | undefined }))
+        if (get().activeWorkspaceId !== id) return
+
+        const restored: Message[] = (msgResp.data || []).reverse().map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          agentType: m.agentType,
+          timestamp: m.createdAt,
+          richBlocks: safeParseRichBlocks(m.richBlocks),
+          sessionId: m.sessionId,
+        }))
+
+        set((s) => {
+          if (s.activeWorkspaceId !== id) return {}
+          return {
+            messages: mergeMessagesById(restored, s.messages),
+            messagesCursor: msgResp.cursor || null,
+            messagesHasMore: msgResp.hasMore || false,
+          }
+        })
+      } catch (err) {
+        console.error('Failed to fetch workspace messages:', err)
+      } finally {
+        workspaceMessagesFetchInflight.delete(id)
+      }
+    })()
+
+    workspaceMessagesFetchInflight.set(id, run)
+    return run
+  },
+
   updateAgentStatus: (workspaceId, agentType, status, detail) => {
     const event: AgentStatusEvent = { agentType, status, detail, timestamp: Date.now() }
     set((s) => ({
@@ -1277,6 +1325,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!wsId || !cursor) return
 
     return workspaceApi.listMessages(wsId, cursor, 50).then((resp) => {
+      if (get().activeWorkspaceId !== wsId) return
       const older: Message[] = (resp.data || []).reverse().map((m: any) => ({
         id: m.id,
         role: m.role,
@@ -1286,11 +1335,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         richBlocks: safeParseRichBlocks(m.richBlocks),
         sessionId: m.sessionId,
       }))
-      set((s) => ({
-        messages: [...older, ...s.messages],
-        messagesCursor: resp.cursor || null,
-        messagesHasMore: resp.hasMore,
-      }))
+      set((s) => {
+        if (s.activeWorkspaceId !== wsId) return {}
+        return {
+          messages: [...older, ...s.messages],
+          messagesCursor: resp.cursor || null,
+          messagesHasMore: resp.hasMore,
+        }
+      })
     }).catch((err) => console.error('Failed to load older messages:', err))
   },
 }))
