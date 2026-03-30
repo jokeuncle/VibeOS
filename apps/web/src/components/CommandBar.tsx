@@ -103,7 +103,15 @@ function predictIntent(text: string): IntentHint | null {
   return null
 }
 
-function AgentActivityIndicator({ agents, t }: { agents: Agent[]; t: (key: TranslationKey) => string }) {
+function AgentActivityIndicator({
+  agents,
+  t,
+  popoverInset,
+}: {
+  agents: Agent[]
+  t: (key: TranslationKey) => string
+  popoverInset: string
+}) {
   const runningAgents = agents.filter((a) => a.status === 'running')
   if (runningAgents.length === 0) return null
 
@@ -112,7 +120,7 @@ function AgentActivityIndicator({ agents, t }: { agents: Agent[]; t: (key: Trans
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 4 }}
-      className="absolute bottom-full left-4 right-4 mb-1"
+      className={`absolute bottom-full mb-1 ${popoverInset}`}
     >
       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20 backdrop-blur-sm">
         <span className="relative flex h-2 w-2">
@@ -151,6 +159,10 @@ export default function CommandBar() {
 
   const isZeroRequirements = !!activeWorkspaceId && (activeWorkspace?.requirements?.length ?? 0) === 0
   const activeRequirement = activeWorkspace?.requirements?.find((r) => r.id === activeRequirementId)
+
+  /** Align input strip with home assistant panel (`WorkspaceHome` uses max-w-2xl + px-6 sm:px-10). */
+  const isHomeShell = !activeWorkspaceId
+  const barPopOverInset = isHomeShell ? 'left-0 right-0' : 'left-4 right-4'
 
   useEffect(() => {
     setInput('')
@@ -373,7 +385,13 @@ export default function CommandBar() {
   const placeholder = getPlaceholder()
 
   return (
-    <div className="relative z-[55]">
+    <div
+      className={
+        isHomeShell
+          ? 'relative z-[55] w-full max-w-2xl mx-auto px-6 sm:px-10'
+          : 'relative z-[55]'
+      }
+    >
       {/* Suggestion dropdown (above input) */}
       <AnimatePresence>
         {showSuggestions && (
@@ -382,7 +400,7 @@ export default function CommandBar() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.12 }}
-            className="absolute bottom-full left-4 right-4 mb-1 rounded-xl border border-border-default bg-surface-1 shadow-xl shadow-black/20 overflow-hidden"
+            className={`absolute bottom-full mb-1 rounded-xl border border-border-default bg-surface-1 shadow-xl shadow-black/20 overflow-hidden ${barPopOverInset}`}
           >
             <div className="px-3 py-1.5 border-b border-border-subtle">
               <span className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
@@ -422,7 +440,7 @@ export default function CommandBar() {
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: 4, height: 0 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-full left-4 right-4 mb-1 overflow-hidden"
+            className={`absolute bottom-full mb-1 overflow-hidden ${barPopOverInset}`}
           >
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-2/90 border border-accent/15 backdrop-blur-sm">
               <Target className="w-3 h-3 text-accent/60 shrink-0" />
@@ -486,14 +504,14 @@ export default function CommandBar() {
       {/* Agent activity indicator */}
       <AnimatePresence>
         {hasRunningAgents && (
-          <AgentActivityIndicator agents={workspaceAgents} t={t} />
+          <AgentActivityIndicator agents={workspaceAgents} t={t} popoverInset={barPopOverInset} />
         )}
       </AnimatePresence>
 
       <form
         onSubmit={handleSubmit}
         className={`
-          mx-4 mb-3 flex items-center gap-3 px-4 h-12 rounded-2xl border transition-all duration-300
+          ${isHomeShell ? 'w-full' : 'mx-4'} mb-3 flex items-center gap-3 px-4 h-12 rounded-2xl border transition-all duration-300
           ${
             focused
               ? 'border-accent/40 bg-surface-2 shadow-[0_0_30px_rgba(99,102,241,0.08)]'

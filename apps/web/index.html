@@ -2,6 +2,14 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <!-- Apply saved theme before CSS/JS so [data-theme] tokens match on first paint (avoids dark→light FOUC). -->
+    <script>
+      (function () {
+        var k = 'anyos-theme'
+        var t = localStorage.getItem(k)
+        document.documentElement.setAttribute('data-theme', t === 'light' || t === 'dark' ? t : 'dark')
+      })()
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#09090b" />

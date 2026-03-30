@@ -60,6 +60,7 @@ export default function HomeConversation() {
   }
 
   const lastAgentMsg = visible ? [...homeMessages].reverse().find((m) => m.role === 'agent') : undefined
+  const lastAgentId = lastAgentMsg?.id
   const hasActionBlocks = lastAgentMsg?.richBlocks?.some((b) => b.type === 'nlp_action')
   const isStreaming = homeNlpLoading
   const showQuickStart = visible && !isStreaming && !hasActionBlocks && homeMessages.length <= 2
@@ -94,8 +95,9 @@ export default function HomeConversation() {
           </div>
           <div
             ref={scrollRef}
-            className="max-h-[min(50vh,22rem)] overflow-y-auto p-3 space-y-2.5 scroll-smooth"
+            className="max-h-[min(50vh,22rem)] overflow-y-auto p-3 scroll-smooth"
           >
+            <div className="mx-auto w-full max-w-xl space-y-2.5">
             {homeMessages.map((msg) => (
               <div key={msg.id}>
                 {msg.role === 'user' ? (
@@ -105,7 +107,7 @@ export default function HomeConversation() {
                     transition={{ duration: 0.2 }}
                     className="flex justify-end"
                   >
-                    <div className="px-3.5 py-2 rounded-2xl rounded-tr-sm bg-accent/10 border border-accent/15 text-xs text-text-primary max-w-[80%]">
+                    <div className="px-3.5 py-2 rounded-2xl rounded-tr-sm bg-accent/10 border border-accent/15 text-xs text-text-primary max-w-[min(85%,20rem)]">
                       {msg.content}
                     </div>
                   </motion.div>
@@ -120,17 +122,35 @@ export default function HomeConversation() {
                       <Bot className="w-3 h-3 text-accent" />
                     </div>
                     <div className="flex-1 space-y-2 min-w-0">
-                      {msg.content && (
-                        <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10">
-                          <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
-                            {msg.content}
-                          </p>
-                        </div>
-                      )}
                       {(() => {
                         const { inlineBlocks, cardBlocks } = partitionHomeRichBlocks(msg.richBlocks)
+                        const hasVisible =
+                          !!(msg.content && msg.content.trim()) || inlineBlocks.length > 0 || cardBlocks.length > 0
+                        const agentRowStreaming =
+                          isStreaming && msg.role === 'agent' && msg.id === lastAgentId
+
+                        if (agentRowStreaming && !hasVisible) {
+                          return (
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/60 w-fit max-w-[min(100%,20rem)]">
+                              <span className="flex gap-1">
+                                <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                              </span>
+                              <span className="text-[11px] text-text-tertiary">{t('nlp.generatingReply' as TranslationKey)}</span>
+                            </div>
+                          )
+                        }
+
                         return (
                           <>
+                            {msg.content && (
+                              <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
+                                <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
+                                  {msg.content}
+                                </p>
+                              </div>
+                            )}
                             {inlineBlocks.map((block, i) => (
                               <div key={`i-${i}`}>
                                 <RichBlockRenderer block={block} />
@@ -153,26 +173,6 @@ export default function HomeConversation() {
                 )}
               </div>
             ))}
-
-            {isStreaming && !lastAgentMsg?.content && (
-              <motion.div
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-2"
-              >
-                <div className="w-6 h-6 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-                  <Bot className="w-3 h-3 text-accent" />
-                </div>
-                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/60">
-                  <span className="flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </span>
-                  <span className="text-[11px] text-text-tertiary">{t('nlp.generatingReply' as TranslationKey)}</span>
-                </div>
-              </motion.div>
-            )}
 
             {showQuickStart && (
               <motion.div
@@ -197,6 +197,7 @@ export default function HomeConversation() {
                 </div>
               </motion.div>
             )}
+            </div>
           </div>
         </motion.div>
       )}
