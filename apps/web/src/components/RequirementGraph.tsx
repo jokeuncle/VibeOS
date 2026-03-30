@@ -6,9 +6,11 @@ import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { Requirement, RequirementStatus, RelationType } from '../types'
 
-const STATUS_ORDER: RequirementStatus[] = ['draft', 'in_progress', 'completed']
+const STATUS_ORDER: RequirementStatus[] = ['draft', 'designing', 'ready', 'in_progress', 'completed']
 const STATUS_FILL: Record<RequirementStatus, string> = {
   draft: 'var(--color-surface-4)',
+  designing: 'var(--color-accent)',
+  ready: 'var(--color-success)',
   in_progress: 'var(--color-accent)',
   completed: 'var(--color-success)',
 }
@@ -55,7 +57,7 @@ export default function RequirementGraph() {
     const PAD = 40
 
     const columns: Record<RequirementStatus, Requirement[]> = {
-      draft: [], in_progress: [], completed: [],
+      draft: [], designing: [], ready: [], in_progress: [], completed: [],
     }
     requirements.forEach(r => columns[r.status].push(r))
 

@@ -21,18 +21,30 @@ from vibeos_agent import (
 def _build_agent_endpoints() -> dict[str, str]:
     """Build agent endpoint registry from env vars with sensible defaults."""
     defaults = {
-        "architecture": ("ARCHITECTURE_AGENT_URL", "http://architecture-agent:8041"),
-        "requirement": ("REQUIREMENT_AGENT_URL", "http://requirement-agent:8042"),
-        "design": ("DESIGN_AGENT_URL", "http://design-agent:8043"),
-        "development": ("DEVELOPMENT_AGENT_URL", "http://dev-agent:8044"),
-        "testing": ("TESTING_AGENT_URL", "http://test-agent:8045"),
-        "cicd": ("CICD_AGENT_URL", "http://cicd-agent:8046"),
-        "monitoring": ("MONITORING_AGENT_URL", "http://monitoring-agent:8047"),
+        "architecture": ("ARCHITECTURE_AGENT_URL", "http://localhost:8041"),
+        "requirement": ("REQUIREMENT_AGENT_URL", "http://localhost:8042"),
+        "design": ("DESIGN_AGENT_URL", "http://localhost:8043"),
+        "development": ("DEVELOPMENT_AGENT_URL", "http://localhost:8044"),
+        "testing": ("TESTING_AGENT_URL", "http://localhost:8045"),
+        "cicd": ("CICD_AGENT_URL", "http://localhost:8046"),
+        "monitoring": ("MONITORING_AGENT_URL", "http://localhost:8047"),
     }
     return {k: os.getenv(env, default) for k, (env, default) in defaults.items()}
 
 
 AGENT_ENDPOINTS: dict[str, str] = _build_agent_endpoints()
+
+# Agent 中文名称映射
+AGENT_NAME_CN: dict[str, str] = {
+    "requirement": "需求",
+    "architecture": "架构",
+    "design": "设计",
+    "development": "开发",
+    "testing": "测试",
+    "cicd": "CI/CD",
+    "monitoring": "监控",
+    "pm": "项目管理",
+}
 
 
 class Dispatcher:
@@ -70,12 +82,14 @@ class Dispatcher:
             await self.ws.publish_agent_status(
                 task.workspace_id, agent_type, AgentStatus.ERROR, detail=body,
             )
-            return {"error": f"Agent {agent_type.value} error ({exc.response.status_code}): {body}"}
+            name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
+            return {"error": f"{name} Agent 服务错误 ({exc.response.status_code})"}
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             await self.ws.publish_agent_status(
                 task.workspace_id, agent_type, AgentStatus.ERROR, detail=str(exc),
             )
-            return {"error": f"Agent {agent_type.value} unavailable: {exc}"}
+            name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
+            return {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
 
         await self.ws.publish_agent_status(
             task.workspace_id,
@@ -123,7 +137,8 @@ class Dispatcher:
             await self.ws.publish_agent_status(
                 task.workspace_id, agent_type, AgentStatus.ERROR, detail=str(exc),
             )
-            yield {"error": f"Agent {agent_type} unavailable: {exc}"}
+            name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
+            yield {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
             return
 
         await self.ws.publish_agent_status(
@@ -175,7 +190,8 @@ class Dispatcher:
             resp.raise_for_status()
             return resp.json()
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-            return {"error": f"Agent {agent_type} unavailable: {exc}"}
+            name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
+            return {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
 
     async def forward_chat_stream(
         self,
@@ -209,7 +225,8 @@ class Dispatcher:
                         except json.JSONDecodeError:
                             continue
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-            yield {"error": f"Agent {agent_type} unavailable: {exc}"}
+            name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
+            yield {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
 
     async def close(self) -> None:
         await self._http.aclose()

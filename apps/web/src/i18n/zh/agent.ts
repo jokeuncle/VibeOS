@@ -51,6 +51,8 @@ const agent = {
   'statusbar.workspace_one': '个空间',
   'statusbar.workspace_other': '个空间',
   'statusbar.version': 'VibeOS v0.1.0',
+  'statusbar.wsConnected': '实时连接',
+  'statusbar.wsDisconnected': '连接断开',
 
   'conversation.title': '对话',
   'conversation.you': '你',

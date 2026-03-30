@@ -1,11 +1,36 @@
 import type { StoreApi } from 'zustand'
-import type { WorkflowEvent } from '../../../types'
+import type { WorkflowEvent, RequirementStatus, PhaseType } from '../../../types'
 import { workflowApi } from '../../../lib/api'
 import { workflowEventToMessage } from '../helpers'
 import type { WorkspaceState } from '../types'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
+
+// Helper to check if AI execution is allowed for a requirement
+function canExecuteAI(
+  status: RequirementStatus,
+  phase: PhaseType,
+  targetPhase: PhaseType
+): { allowed: boolean; reason?: string } {
+  // Design mode: only requirement phase allowed for draft/designing
+  if (status === 'draft' || status === 'designing') {
+    if (targetPhase !== 'requirement') {
+      return {
+        allowed: false,
+        reason: '需求尚未发布，请先完成设计并发布',
+      }
+    }
+    return { allowed: true }
+  }
+
+  // Execute mode: all phases allowed for ready/in_progress/completed
+  if (status === 'ready' || status === 'in_progress' || status === 'completed') {
+    return { allowed: true }
+  }
+
+  return { allowed: false, reason: '未知需求状态' }
+}
 
 export function buildWorkflowSlice(set: SetState, get: GetState) {
   return {
@@ -122,7 +147,26 @@ export function buildWorkflowSlice(set: SetState, get: GetState) {
 
     runRequirement: (reqId: string, phaseType?: string, userMessage?: string) => {
       const wsId = get().activeWorkspaceId
+      const req = get().workspaces.find(w => w.id === wsId)?.requirements?.find(r => r.id === reqId)
       if (!wsId || get().workflowRunning) return
+
+        // Check requirement status before executing AI
+      if (req) {
+        const targetPhase = phaseType || req.currentPhase || 'requirement'
+        const check = canExecuteAI(req.status, req.currentPhase || 'requirement', targetPhase as PhaseType)
+        if (!check.allowed) {
+          console.warn('AI execution blocked:', check.reason)
+          // Add system message to inform user
+          const sysMsg = {
+            id: `sys-${Date.now()}`,
+            role: 'system' as const,
+            content: `⚠️ ${check.reason}，请先发布需求。`,
+            timestamp: new Date().toISOString(),
+          }
+          set((s) => ({ messages: [...s.messages, sysMsg] }))
+          return
+        }
+      }
 
       set({ workflowRunning: true, workflowEvents: [] })
 

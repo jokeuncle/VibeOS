@@ -61,6 +61,8 @@ type RequirementStatus string
 
 const (
 	RequirementDraft      RequirementStatus = "draft"
+	RequirementDesigning  RequirementStatus = "designing"
+	RequirementReady      RequirementStatus = "ready"
 	RequirementInProgress RequirementStatus = "in_progress"
 	RequirementCompleted  RequirementStatus = "completed"
 )

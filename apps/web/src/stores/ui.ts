@@ -122,6 +122,10 @@ interface UIState {
     agentType?: string | null
   } | null) => void
 
+  // WebSocket connection status
+  wsConnected: boolean
+  setWsConnected: (connected: boolean) => void
+
   closeTopmostOverlay: () => boolean
 }
 
@@ -235,6 +239,10 @@ export const useUIStore = create<UIState>((set, get) => ({
       agentType: ctx.agentType ?? null,
     } : null,
   }),
+
+  // WebSocket connection status
+  wsConnected: false,
+  setWsConnected: (connected) => set({ wsConnected: connected }),
 
   closeTopmostOverlay: () => {
     const s = get()

@@ -26,7 +26,7 @@ export type WorkspaceColor = (typeof WORKSPACE_COLORS)[number]
 
 export type TaskPriority = 'p0' | 'p1' | 'p2' | 'p3'
 
-export type RequirementStatus = 'draft' | 'in_progress' | 'completed'
+export type RequirementStatus = 'draft' | 'designing' | 'ready' | 'in_progress' | 'completed'
 export type RelationType = 'depends_on' | 'parent_of' | 'related_to' | 'evolves_from' | 'conflicts_with'
 
 export const LABEL_COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const

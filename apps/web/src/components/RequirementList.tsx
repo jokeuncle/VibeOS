@@ -12,6 +12,8 @@ import type { PhaseType } from '../types'
 
 const STATUS_COLORS: Record<RequirementStatus, { bar: string; pill: string }> = {
   draft:       { bar: 'bg-surface-4',   pill: 'bg-surface-3 text-text-tertiary' },
+  designing:   { bar: 'bg-accent',      pill: 'bg-accent/15 text-accent' },
+  ready:       { bar: 'bg-success',     pill: 'bg-success/15 text-success' },
   in_progress: { bar: 'bg-accent',      pill: 'bg-accent/15 text-accent' },
   completed:   { bar: 'bg-success',     pill: 'bg-success/15 text-success' },
 }
@@ -154,12 +156,16 @@ export default function RequirementList() {
     return () => setReqCreating(false)
   }, [setReqCreating])
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!activeWorkspaceId || !title.trim()) return
-    createRequirement(activeWorkspaceId, title.trim(), description.trim())
-    setTitle('')
-    setDescription('')
-    setReqCreating(false)
+    try {
+      await createRequirement(activeWorkspaceId, title.trim(), description.trim())
+      setTitle('')
+      setDescription('')
+      setReqCreating(false)
+    } catch {
+      // Error is already logged in the store, keep form open for retry
+    }
   }
 
   const handleCancel = () => {

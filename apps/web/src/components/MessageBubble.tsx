@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Bot, User, Loader2, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Bot, User, Loader2, ThumbsUp, ThumbsDown, Activity } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -100,6 +100,7 @@ export function SystemMessage({ msg }: { msg: Message }) {
 
 export function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
   const t = useT()
+  const { workspaces, activeWorkspaceId } = useWorkspaceStore()
   if (msg.role === 'system') return <SystemMessage msg={msg} />
 
   const isAgent = msg.role !== 'user'
@@ -108,22 +109,39 @@ export function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?
     : t('conversation.agent')
   const showTyping = isStreaming && isAgent && !msg.content
 
+  // Check if this agent is currently running
+  const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  const agentStatus = useMemo(() => {
+    if (!isAgent || !msg.agentType || !workspace) return null
+    const agent = workspace.agents.find((a) => a.type === msg.agentType)
+    return agent?.status || 'idle'
+  }, [isAgent, msg.agentType, workspace])
+
+  const isAgentRunning = agentStatus === 'running'
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className="flex gap-2.5 group"
     >
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-        msg.role === 'user' ? 'bg-surface-3 text-text-tertiary' : 'bg-accent/10 text-accent'
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 transition-all duration-300 ${
+        msg.role === 'user' ? 'bg-surface-3 text-text-tertiary' : 
+        isAgentRunning ? 'bg-accent/20 text-accent animate-pulse' : 'bg-accent/10 text-accent'
       }`}>
         {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
       </div>
       <div className="flex-1 min-w-0 space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold text-text-secondary">
+          <span className={`text-[11px] font-semibold ${isAgentRunning ? 'text-accent' : 'text-text-secondary'}`}>
             {msg.role === 'user' ? t('conversation.you') : agentLabel}
           </span>
+          {isAgentRunning && (
+            <span className="flex items-center gap-1 text-[10px] text-accent">
+              <Activity className="w-3 h-3 animate-pulse" />
+              {t('agent.status.running')}
+            </span>
+          )}
           <span className="text-[10px] text-text-tertiary/50 font-mono">
             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>

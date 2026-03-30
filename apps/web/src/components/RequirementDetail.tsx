@@ -13,7 +13,7 @@ import {
   TestTube2, BarChart3, PenSquare, RefreshCw,
   Layers, MessageSquare, CheckCircle2, Circle, FileCode2,
   GitBranch, Users, Target, ShieldCheck, Server, Gauge, Bell, BookMarked,
-  Milestone, ScrollText, Map, Columns3, Braces, Siren, TrendingUp,
+  Milestone, ScrollText, Map, Columns3, Braces, Siren, TrendingUp, Undo2,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
@@ -227,6 +227,8 @@ const TASK_STATUS_PILL: Record<PhaseStatus, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   draft:       'bg-surface-4 text-text-secondary',
+  designing:   'bg-accent/20 text-accent',
+  ready:       'bg-success/20 text-success',
   in_progress: 'bg-accent/20 text-accent',
   completed:   'bg-success/20 text-success',
 }
@@ -731,6 +733,30 @@ export default function RequirementDetail() {
     } catch { addToast({ type: 'error', message: 'Failed to advance phase' }) }
   }
 
+  const handlePublish = async () => {
+    if (!activeWorkspaceId) return
+    try {
+      const { workspaceApi } = await import('../lib/api')
+      await workspaceApi.updateRequirement(activeWorkspaceId, req.id, { status: 'ready' })
+      const { useWorkspaceStore: gs } = await import('../stores/workspace')
+      gs.getState().loadRequirementDetail(activeWorkspaceId, req.id)
+      gs.getState().refreshActiveWorkspace()
+      addToast({ type: 'success', message: t('requirement.publishConfirm' as any) })
+    } catch { addToast({ type: 'error', message: 'Failed to publish requirement' }) }
+  }
+
+  const handleUnpublish = async () => {
+    if (!activeWorkspaceId) return
+    try {
+      const { workspaceApi } = await import('../lib/api')
+      await workspaceApi.updateRequirement(activeWorkspaceId, req.id, { status: 'draft' })
+      const { useWorkspaceStore: gs } = await import('../stores/workspace')
+      gs.getState().loadRequirementDetail(activeWorkspaceId, req.id)
+      gs.getState().refreshActiveWorkspace()
+      addToast({ type: 'info', message: t('requirement.unpublishDesc' as any) })
+    } catch { addToast({ type: 'error', message: 'Failed to unpublish requirement' }) }
+  }
+
   const handleAddRelation = async () => {
     if (!activeWorkspaceId || !newRelTarget) return
     try {
@@ -805,11 +831,36 @@ export default function RequirementDetail() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleAISummary} disabled={workflowRunning || summaryLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-40 cursor-pointer">
-            {summaryLoading ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-            {t('requirement.run')}
-          </button>
+          {/* Design Mode: AI辅助设计 */}
+          {(req.status === 'draft' || req.status === 'designing') && (
+            <button onClick={handleAISummary} disabled={workflowRunning || summaryLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-40 cursor-pointer">
+              {summaryLoading ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              {t('requirement.run')}
+            </button>
+          )}
+          {/* Execute Mode: AI执行 */}
+          {(req.status === 'ready' || req.status === 'in_progress') && (
+            <button onClick={handleAISummary} disabled={workflowRunning || summaryLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-40 cursor-pointer">
+              {summaryLoading ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Rocket className="w-3.5 h-3.5" />}
+              {req.currentPhase === 'requirement' ? t('requirement.run') : t('requirement.continue')}
+            </button>
+          )}
+          {/* Publish: 草稿/设计中 → 已就绪 */}
+          {(req.status === 'draft' || req.status === 'designing') && allCurrentDone && req.currentPhase === 'requirement' && (
+            <button onClick={handlePublish} disabled={workflowRunning}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-success text-white rounded-lg hover:bg-success/90 transition-colors disabled:opacity-40 cursor-pointer">
+              <Check className="w-3.5 h-3.5" />{t('requirement.publish' as any)}
+            </button>
+          )}
+          {/* Unpublish: 已就绪 → 草稿 */}
+          {req.status === 'ready' && (
+            <button onClick={handleUnpublish} disabled={workflowRunning}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-surface-3 hover:bg-surface-4 text-text-secondary rounded-lg transition-colors disabled:opacity-40 cursor-pointer">
+              <Undo2 className="w-3.5 h-3.5" />{t('requirement.unpublish' as any)}
+            </button>
+          )}
           {allCurrentDone && nextPhaseType && (
             <button onClick={handleAdvancePhase}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-success/15 text-success rounded-lg hover:bg-success/20 transition-colors cursor-pointer">

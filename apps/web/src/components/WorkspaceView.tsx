@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Sparkles, FileStack, LayoutGrid, GitBranch, ChevronLeft, ListChecks } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
@@ -194,26 +194,30 @@ export default function WorkspaceView() {
                 </div>
               </div>
 
-              {/* Zero-requirement onboarding hero */}
-              {reqCount === 0 && reqSubView === 'list' && (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-dashed border-border-default bg-surface-1/30 p-10 text-center mt-6"
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
-                    <Sparkles className="w-6 h-6 text-accent" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
-                  <p className="text-sm text-text-tertiary mb-6 max-w-sm mx-auto leading-relaxed">{t('emptyState.desc')}</p>
-                  <div className="flex items-center justify-center gap-2 text-xs text-text-tertiary">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2/60 border border-border-subtle">
-                      <Sparkles className="w-3 h-3 text-accent" />
-                      {t('emptyState.inputHint')}
-                    </span>
-                  </div>
-                </motion.div>
-              )}
+              {/* Zero-requirement onboarding hero — hide while form is open */}
+              <AnimatePresence>
+                {reqCount === 0 && reqSubView === 'list' && !reqCreating && (
+                  <motion.div
+                    key="empty-hero"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }}
+                    className="rounded-2xl border border-dashed border-border-default bg-surface-1/30 p-10 text-center mt-6"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                      <Sparkles className="w-6 h-6 text-accent" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
+                    <p className="text-sm text-text-tertiary mb-6 max-w-sm mx-auto leading-relaxed">{t('emptyState.desc')}</p>
+                    <div className="flex items-center justify-center gap-2 text-xs text-text-tertiary">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2/60 border border-border-subtle">
+                        <Sparkles className="w-3 h-3 text-accent" />
+                        {t('emptyState.inputHint')}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
 

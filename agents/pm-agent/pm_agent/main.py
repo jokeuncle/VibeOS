@@ -283,15 +283,37 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 async def handle_chat(agent_type: str, req: ChatRequest) -> ChatResponse:
     """Forward a chat message to a specific domain agent."""
     dispatcher: Dispatcher = app.state.dispatcher
+    llm: LLMGatewayClient = app.state.llm
     try:
         at = AgentType(agent_type)
     except ValueError:
-        return ChatResponse(agent_type=agent_type, reply=f"Unknown agent type: {agent_type}")
+        return ChatResponse(agent_type=agent_type, reply=f"未知的 Agent 类型: {agent_type}")
     try:
-        result = await dispatcher.forward_chat(at, req.workspace_id, req.message)
+        # Handle PM chat directly using LLM
+        if at == AgentType.PM:
+            messages = [
+                {"role": "system", "content": "你是VibeOS项目管理助手，帮助用户分析需求、规划任务和协调团队工作。"},
+                {"role": "user", "content": req.message},
+            ]
+            result = await llm.chat(messages)
+            reply = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return ChatResponse(agent_type=agent_type, reply=reply)
+        else:
+            result = await dispatcher.forward_chat(at, req.workspace_id, req.message)
+            return ChatResponse(agent_type=agent_type, reply=result.get("reply", ""), rich_blocks=result.get("rich_blocks", []))
     except Exception as exc:
-        return ChatResponse(agent_type=agent_type, reply=f"Agent error: {exc}")
-    return ChatResponse(agent_type=agent_type, reply=result.get("reply", ""), rich_blocks=result.get("rich_blocks", []))
+        agent_names = {
+            "requirement": "需求",
+            "architecture": "架构",
+            "design": "设计",
+            "development": "开发",
+            "testing": "测试",
+            "cicd": "CI/CD",
+            "monitoring": "监控",
+            "pm": "项目管理",
+        }
+        name = agent_names.get(agent_type, agent_type)
+        return ChatResponse(agent_type=agent_type, reply=f"{name} Agent 处理时出错: {exc}")
 
 
 @app.post("/api/chat/{agent_type}/stream")

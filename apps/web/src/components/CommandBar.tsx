@@ -3,13 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles, ArrowUp, Command, Bot, Slash, CheckSquare,
   FileText, Blocks, Palette, Code2, FlaskConical, Rocket, Activity,
-  X, ChevronRight,
+  X, ChevronRight, Loader2, Cpu,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
+import type { Agent } from '../types'
 
 interface Suggestion {
   id: string
@@ -70,17 +71,54 @@ const PHASE_CONTEXT_LABEL: Record<string, TranslationKey> = {
   monitoring:   'requirement.phase.monitoring',
 }
 
+// Agent activity indicator component
+function AgentActivityIndicator({ agents, t }: { agents: Agent[]; t: (key: TranslationKey) => string }) {
+  const runningAgents = agents.filter((a) => a.status === 'running')
+  if (runningAgents.length === 0) return null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      className="absolute bottom-full left-4 right-4 mb-1"
+    >
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20 backdrop-blur-sm">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
+        </span>
+        <Loader2 className="w-3 h-3 text-accent animate-spin" />
+        <span className="text-[11px] text-accent font-medium">
+          {runningAgents.length === 1
+            ? `${t(`agent.name.${runningAgents[0].type}` as TranslationKey)} ${t('agent.status.running')}`
+            : `${runningAgents.length} ${t('agent.active')} ${t('agent.status.running')}`}
+        </span>
+        {runningAgents[0]?.currentTask && (
+          <span className="text-[10px] text-text-tertiary truncate max-w-[200px]">
+            · {runningAgents[0].currentTask}
+          </span>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
 export default function CommandBar() {
   const [input, setInput] = useState('')
   const [focused, setFocused] = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { activeWorkspaceId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading } = useWorkspaceStore()
+  const { activeWorkspaceId, activeRequirementId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading } = useWorkspaceStore()
   const { setHomeSearchQuery, nlpContext, setNlpContext } = useUIStore()
   const t = useT()
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  const workspaceAgents = activeWorkspace?.agents || []
+
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const isZeroRequirements = !!activeWorkspaceId && (activeWorkspace?.requirements?.length ?? 0) === 0
+  const activeRequirement = activeWorkspace?.requirements?.find((r) => r.id === activeRequirementId)
 
   useEffect(() => {
     if (!activeWorkspaceId) setHomeSearchQuery(input)
@@ -210,6 +248,27 @@ export default function CommandBar() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!input.trim() || !activeWorkspaceId || nlpLoading) return
+
+    // Check if user is trying to execute non-requirement phase on unpublished requirement
+    if (activeRequirement && (activeRequirement.status === 'draft' || activeRequirement.status === 'designing')) {
+      const targetPhase = nlpContext?.phaseType || 'requirement'
+      const currentPhase = activeRequirement.currentPhase || 'requirement'
+
+      // Check if user explicitly asks for non-requirement phase
+      const nonRequirementPhases = ['architecture', 'design', 'development', 'testing', 'deployment', 'monitoring']
+      const mentionsNonRequirementPhase = nonRequirementPhases.some(phase =>
+        input.toLowerCase().includes(phase) ||
+        input.toLowerCase().includes(t(`requirement.phase.${phase}` as TranslationKey).toLowerCase())
+      )
+
+      if (mentionsNonRequirementPhase && targetPhase !== 'requirement') {
+        // Show alert and prevent execution
+        alert(t('requirement.notReadyAlert' as TranslationKey))
+        setInput('')
+        return
+      }
+    }
+
     sendNLPMessage(input.trim())
     setInput('')
   }
@@ -223,6 +282,7 @@ export default function CommandBar() {
   }
 
   const showSuggestions = focused && suggestions.length > 0
+  const hasRunningAgents = workspaceAgents.some((a) => a.status === 'running')
 
   // Derive placeholder and context display
   const agentKey = nlpContext?.agentType ? (AGENT_LABEL_KEY[nlpContext.agentType] || 'agent.name.pm') : 'agent.name.pm'
@@ -233,13 +293,29 @@ export default function CommandBar() {
       ? t(PHASE_CONTEXT_LABEL[nlpContext.phaseType])
       : nlpContext?.phaseType ?? null
 
-  const placeholder = activeWorkspaceId
-    ? nlpContext
-      ? `${t('command.contextPlaceholder' as TranslationKey)} ${agentLabel}…`
-      : isZeroRequirements
-        ? t('command.placeholderDiscovery' as TranslationKey)
-        : t('command.placeholderNLP')
-    : t('command.placeholderHome')
+  // Dynamic placeholder based on requirement status
+  const getPlaceholder = () => {
+    if (!activeWorkspaceId) return t('command.placeholderHome')
+    if (isZeroRequirements) return t('command.placeholderDiscovery' as TranslationKey)
+
+    // Design mode: requirement not published yet
+    if (activeRequirement && (activeRequirement.status === 'draft' || activeRequirement.status === 'designing')) {
+      return t('requirement.designModeHint' as TranslationKey)
+    }
+
+    // Execute mode: requirement published
+    if (activeRequirement && (activeRequirement.status === 'ready' || activeRequirement.status === 'in_progress' || activeRequirement.status === 'completed')) {
+      return t('requirement.executeModeHint' as TranslationKey)
+    }
+
+    // Default NLP placeholder
+    if (nlpContext) {
+      return `${t('command.contextPlaceholder' as TranslationKey)} ${agentLabel}…`
+    }
+    return t('command.placeholderNLP')
+  }
+
+  const placeholder = getPlaceholder()
 
   return (
     <div className="relative z-[55]">
@@ -329,6 +405,13 @@ export default function CommandBar() {
               </button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Agent activity indicator - shows when agents are running */}
+      <AnimatePresence>
+        {hasRunningAgents && (
+          <AgentActivityIndicator agents={workspaceAgents} t={t} />
         )}
       </AnimatePresence>
 

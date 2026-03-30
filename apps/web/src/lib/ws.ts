@@ -45,6 +45,7 @@ export function connectWebSocket(workspaceId: string | null) {
 
   socket.onopen = () => {
     console.log('[WS] connected', workspaceId)
+    useUIStore.getState().setWsConnected(true)
     consecutiveReconnectFailures = 0
     gaveUpLogged = false
     if (reconnectTimer) {
@@ -70,6 +71,7 @@ export function connectWebSocket(workspaceId: string | null) {
 
   socket.onclose = () => {
     socket = null
+    useUIStore.getState().setWsConnected(false)
     if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
     if (intentionalClose) return
     consecutiveReconnectFailures += 1
@@ -94,6 +96,7 @@ export function connectWebSocket(workspaceId: string | null) {
 
 export function disconnectWebSocket() {
   intentionalClose = true
+  useUIStore.getState().setWsConnected(false)
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
