@@ -27,6 +27,8 @@ export function buildChatSlice(set: SetState, get: GetState) {
     nlpLoading: false,
     chatLoading: false,
     agentChatMessages: {} as Record<string, Message[]>,
+    homeMessages: [] as Message[],
+    homeNlpLoading: false,
 
     addMessage: (message: Message) => {
       set((s) => ({ messages: [...s.messages, message] }))
@@ -297,7 +299,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- CTA actions ---
+            // --- CTA actions (legacy) ---
             if (evt.event === 'cta') {
               richBlocks.push({
                 type: 'cta_actions',
@@ -306,6 +308,21 @@ export function buildChatSlice(set: SetState, get: GetState) {
                   label: a.label,
                   variant: a.variant || 'secondary',
                 })),
+              })
+              updateMsg()
+              continue
+            }
+
+            // --- NLP action (structured) ---
+            if (evt.event === 'nlp_action') {
+              richBlocks.push({
+                type: 'nlp_action',
+                actionType: data.action_type,
+                actionPayload: data.action_payload,
+                actionLabel: data.action_label,
+                actionVariant: data.action_variant || 'primary',
+                title: data.title,
+                description: data.description,
               })
               updateMsg()
               continue
@@ -384,6 +401,144 @@ export function buildChatSlice(set: SetState, get: GetState) {
               .catch(() => {})
           }
           get().refreshActiveWorkspace()
+        }
+      })()
+    },
+
+    clearHomeMessages: () => {
+      set({ homeMessages: [], homeNlpLoading: false })
+    },
+
+    sendHomeNLPStream: (input: string) => {
+      const ts = new Date().toISOString()
+      const msgId = crypto.randomUUID()
+
+      const userMsg: Message = {
+        id: crypto.randomUUID(),
+        role: 'user' as const,
+        content: input,
+        timestamp: ts,
+      }
+
+      set((s) => ({
+        homeNlpLoading: true,
+        homeMessages: [...s.homeMessages, userMsg],
+      }))
+
+      ;(async () => {
+        let content = ''
+        let agentType: AgentType = 'pm'
+        const richBlocks: RichBlock[] = []
+        const timelineSteps: ExecutionStep[] = []
+
+        const updateMsg = () => {
+          set((s) => ({
+            homeMessages: s.homeMessages.map((m) =>
+              m.id === msgId
+                ? { ...m, content, agentType, richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined }
+                : m,
+            ),
+          }))
+        }
+
+        const upsertTimeline = () => {
+          const idx = richBlocks.findIndex((b) => b.type === 'execution_timeline')
+          const block: RichBlock = { type: 'execution_timeline', steps: [...timelineSteps] }
+          if (idx !== -1) richBlocks[idx] = block
+          else richBlocks.unshift(block)
+        }
+
+        try {
+          set((s) => ({
+            homeMessages: [
+              ...s.homeMessages,
+              {
+                id: msgId,
+                role: 'agent' as const,
+                content: '',
+                agentType,
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          }))
+
+          for await (const evt of agentApi.nlpStream('__home__', input, { home: true })) {
+            let data: any
+            try {
+              data = JSON.parse(evt.data)
+            } catch {
+              continue
+            }
+
+            if (evt.event === 'timeline') {
+              const existing = timelineSteps.find((s) => s.id === data.step_id)
+              if (existing) {
+                existing.status = data.status
+                if (data.detail) existing.detail = data.detail
+              } else {
+                timelineSteps.push({ id: data.step_id, label: data.label, status: data.status, detail: data.detail })
+              }
+              upsertTimeline()
+              updateMsg()
+              continue
+            }
+
+            if (evt.event === 'intent' && data.target_agent) {
+              agentType = data.target_agent as AgentType
+              richBlocks.push({
+                type: 'intent_feedback',
+                intentLabel: data.intent_label?.zh || data.intent,
+                intentId: data.intent,
+                agentLabel: data.agent_label?.zh || data.target_agent,
+                agentId: data.target_agent,
+                confidence: data.confidence,
+              })
+              updateMsg()
+              continue
+            }
+
+            if (evt.event === 'nlp_action') {
+              richBlocks.push({
+                type: 'nlp_action',
+                actionType: data.action_type,
+                actionPayload: data.action_payload,
+                actionLabel: data.action_label,
+                actionVariant: data.action_variant || 'primary',
+                title: data.title,
+                description: data.description,
+              })
+              updateMsg()
+              continue
+            }
+
+            if (evt.event === 'error_card') {
+              richBlocks.push({
+                type: 'error_card',
+                errorSeverity: data.error_type,
+                errorMessage: data.message,
+                errorHints: data.hints,
+                errorActions: data.actions?.map((a: any) => ({
+                  id: a.id, label: a.label, variant: a.variant || 'secondary',
+                })),
+              })
+              updateMsg()
+              continue
+            }
+
+            if (data.delta) {
+              content += data.delta
+            } else if (data.error) {
+              content = friendlyError(data.error)
+            }
+            updateMsg()
+          }
+        } catch (err: any) {
+          if (!content) {
+            content = friendlyError(err.message)
+            updateMsg()
+          }
+        } finally {
+          set({ homeNlpLoading: false })
         }
       })()
     },
@@ -553,11 +708,15 @@ export function buildChatSlice(set: SetState, get: GetState) {
     | 'nlpLoading'
     | 'chatLoading'
     | 'agentChatMessages'
+    | 'homeMessages'
+    | 'homeNlpLoading'
     | 'addMessage'
     | 'sendNLPMessage'
     | 'sendAgentChatMessage'
     | 'sendNLPMessageStream'
     | 'sendAgentChatMessageStream'
+    | 'sendHomeNLPStream'
+    | 'clearHomeMessages'
     | 'fetchWorkspaceMessages'
     | 'loadOlderMessages'
   >

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 
 async def yield_text_as_deltas(
@@ -29,3 +29,28 @@ async def yield_text_as_deltas(
             yield f"data: {json.dumps({'delta': chunk})}\n\n"
             await asyncio.sleep(0.012)
         i = end
+
+
+def build_action_event(
+    action_type: str,
+    payload: dict[str, Any] | None = None,
+    label: str = "",
+    variant: str = "primary",
+    title: str = "",
+    description: str = "",
+) -> str:
+    """Build a structured nlp_action SSE event for data-driven frontend actions."""
+    data: dict[str, Any] = {
+        "type": "nlp_action",
+        "action_type": action_type,
+        "action_variant": variant,
+    }
+    if payload:
+        data["action_payload"] = payload
+    if label:
+        data["action_label"] = label
+    if title:
+        data["title"] = title
+    if description:
+        data["description"] = description
+    return f"event: nlp_action\ndata: {json.dumps(data)}\n\n"

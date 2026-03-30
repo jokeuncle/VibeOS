@@ -1,10 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Layers, ChevronRight, Pencil, Trash2, FolderOpen, CheckSquare, ListChecks, Bot } from 'lucide-react'
+import { Plus, Layers, ChevronRight, Pencil, Trash2, FolderOpen, CheckSquare, ListChecks, Bot, Search, X } from 'lucide-react'
 import { useState } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
+import HomeConversation from './HomeConversation'
 import type { Workspace, WorkspaceColor } from '../types'
 
 const COLOR_BG: Record<WorkspaceColor, string> = {
@@ -175,8 +176,8 @@ function WorkspaceCard({
 }
 
 export default function WorkspaceHome() {
-  const { workspaces, setActiveWorkspace, loading } = useWorkspaceStore()
-  const { setTemplatePickerOpen, homeSearchQuery } = useUIStore()
+  const { workspaces, setActiveWorkspace, loading, homeMessages } = useWorkspaceStore()
+  const { setTemplatePickerOpen, homeSearchQuery, setHomeSearchQuery } = useUIStore()
   const t = useT()
 
   const filtered = homeSearchQuery.trim()
@@ -201,8 +202,12 @@ export default function WorkspaceHome() {
   ]
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-1 flex flex-col items-center px-8 overflow-y-auto">
+    <div className="flex-1 flex flex-col overflow-hidden relative">
+      <div
+        className={`flex-1 flex flex-col items-center px-8 overflow-y-auto ${
+          homeMessages.length > 0 ? 'pb-44 sm:pb-48' : 'pb-4'
+        }`}
+      >
         <div className="my-auto py-16 w-full flex flex-col items-center">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -247,6 +252,33 @@ export default function WorkspaceHome() {
           </motion.div>
         )}
 
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12, duration: 0.35 }}
+          className="relative w-full max-w-4xl mb-6"
+        >
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary pointer-events-none" />
+          <input
+            type="search"
+            value={homeSearchQuery}
+            onChange={(e) => setHomeSearchQuery(e.target.value)}
+            placeholder={t('homeDash.searchWorkspaces')}
+            autoComplete="off"
+            className="w-full h-10 pl-10 pr-10 rounded-xl border border-border-subtle bg-surface-2/40 text-sm text-text-primary placeholder:text-text-tertiary/70 outline-none focus:border-accent/35 focus:ring-1 focus:ring-accent/15 transition-colors"
+          />
+          {homeSearchQuery ? (
+            <button
+              type="button"
+              onClick={() => setHomeSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-3/80 transition-colors cursor-pointer"
+              title={t('homeDash.clearSearch')}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : null}
+        </motion.div>
+
         {loading && workspaces.length === 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl w-full mb-8">
             {[0, 1, 2].map((i) => (
@@ -287,6 +319,13 @@ export default function WorkspaceHome() {
           </motion.button>
         </motion.div>
         )}
+        </div>
+      </div>
+
+      {/* NLP session: anchored in home canvas, separate from CommandBar */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-6 sm:px-10 pb-1">
+        <div className="pointer-events-auto w-full max-w-2xl">
+          <HomeConversation />
         </div>
       </div>
     </div>

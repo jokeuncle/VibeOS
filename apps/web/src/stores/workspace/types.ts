@@ -130,4 +130,9 @@ export interface WorkspaceState {
   loadOlderMessages: () => void
   messagesCursor: string | null
   messagesHasMore: boolean
+
+  homeMessages: Message[]
+  homeNlpLoading: boolean
+  sendHomeNLPStream: (input: string) => void
+  clearHomeMessages: () => void
 }

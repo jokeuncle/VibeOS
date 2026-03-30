@@ -122,6 +122,9 @@ interface UIState {
     agentType?: string | null
   } | null) => void
 
+  homeConversationVisible: boolean
+  setHomeConversationVisible: (visible: boolean) => void
+
   // WebSocket connection status
   wsConnected: boolean
   setWsConnected: (connected: boolean) => void
@@ -239,6 +242,9 @@ export const useUIStore = create<UIState>((set, get) => ({
       agentType: ctx.agentType ?? null,
     } : null,
   }),
+
+  homeConversationVisible: false,
+  setHomeConversationVisible: (visible) => set({ homeConversationVisible: visible }),
 
   // WebSocket connection status
   wsConnected: false,

@@ -392,6 +392,13 @@ export interface ExecutionStep {
   detail?: string
 }
 
+export type NlpActionType =
+  | 'workspace_create'
+  | 'task_execute'
+  | 'phase_execute'
+  | 'confirm'
+  | 'navigate'
+
 export interface RichBlock {
   type:
     | 'action_card' | 'progress' | 'code' | 'task_card' | 'checklist'
@@ -401,6 +408,7 @@ export interface RichBlock {
     | 'error_card'
     | 'cta_actions'
     | 'execution_timeline'
+    | 'nlp_action'
   title?: string
   description?: string
   actions?: RichAction[]
@@ -433,6 +441,11 @@ export interface RichBlock {
   ctaActions?: RichAction[]
   // execution_timeline fields
   steps?: ExecutionStep[]
+  // nlp_action fields
+  actionType?: NlpActionType
+  actionPayload?: Record<string, unknown>
+  actionLabel?: string
+  actionVariant?: 'primary' | 'secondary' | 'danger'
 }
 
 export interface Message {

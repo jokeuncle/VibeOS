@@ -206,6 +206,8 @@ const workspace = {
   'homeDash.completedTasks': 'Completed',
   'homeDash.activeAgents': 'Active Agents',
   'homeDash.overview': 'Overview',
+  'homeDash.searchWorkspaces': 'Search workspaces by name or description…',
+  'homeDash.clearSearch': 'Clear search',
 } as const
 
 export default workspace

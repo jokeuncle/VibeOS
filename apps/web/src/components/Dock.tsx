@@ -25,6 +25,7 @@ export default function Dock() {
     viewMode,
     setViewMode,
     nlpContext,
+    homeConversationVisible,
   } = useUIStore()
   const t = useT()
 
@@ -105,8 +106,12 @@ export default function Dock() {
 
   const items = activeRequirementId ? reqDetailItems : workspaceItems
 
-  // Clear StatusBar (h-7) + CommandBar (form + margins); extra offset when NLP context pill is shown
-  const dockBottom = nlpContext ? 'bottom-[148px]' : 'bottom-[104px]'
+  // Clear StatusBar (h-7) + CommandBar (form + margins); extra offset when NLP context pill or home conversation is shown
+  const dockBottom = homeConversationVisible
+    ? 'bottom-[280px]'
+    : nlpContext
+      ? 'bottom-[148px]'
+      : 'bottom-[104px]'
 
   return (
     <motion.div

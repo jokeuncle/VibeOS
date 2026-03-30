@@ -206,6 +206,8 @@ const workspace = {
   'homeDash.completedTasks': '已完成',
   'homeDash.activeAgents': '活跃 Agent',
   'homeDash.overview': '概览',
+  'homeDash.searchWorkspaces': '按名称或描述搜索工作空间…',
+  'homeDash.clearSearch': '清除搜索',
 }
 
 export default workspace

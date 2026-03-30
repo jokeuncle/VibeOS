@@ -10,6 +10,7 @@ import {
   ErrorCardBlock,
   CTAActionsBlock,
   ExecutionTimelineBlock,
+  NlpActionBlock,
 } from './NlpInteractionBlocks'
 import type { RichBlock, RichAction, PhaseStatus, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
@@ -111,6 +112,9 @@ export function RichBlockRenderer({ block }: { block: RichBlock }) {
 
     case 'execution_timeline':
       return <ExecutionTimelineBlock block={block} />
+
+    case 'nlp_action':
+      return <NlpActionBlock block={block} />
 
     case 'requirement_preview':
       return <RequirementPreviewCard block={block} />

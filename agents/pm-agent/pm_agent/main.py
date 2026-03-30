@@ -35,7 +35,7 @@ from .context import enrich_context_with_gitlab
 from .dispatch import Dispatcher
 from .handlers import execute_pm_intent
 from .intent import INTENT_LABELS, parse_intent
-from .stream import yield_text_as_deltas
+from .stream import build_action_event, yield_text_as_deltas
 from .workflow import WorkflowEngine
 
 AGENT_LABELS: dict[str, dict[str, str]] = {
@@ -93,11 +93,6 @@ def _build_error_event(error_type: str, message: str, hints: list[str] | None = 
     if actions:
         payload["actions"] = actions
     return f"event: error_card\ndata: {json.dumps(payload)}\n\n"
-
-
-def _build_cta_event(actions: list[dict[str, str]]) -> str:
-    """Build a CTA (call-to-action) SSE event for post-completion buttons."""
-    return f"event: cta\ndata: {json.dumps({'actions': actions})}\n\n"
 
 
 def _build_timeline_event(step_id: str, label: str, status: str, detail: str = "") -> str:
@@ -308,18 +303,81 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
     ws_client: WorkspaceClient = app.state.ws_client
     workflow: WorkflowEngine = app.state.workflow
 
+    is_home = req.workspace_id == "__home__"
+
     async def event_gen() -> AsyncGenerator[str, None]:
         try:
             # Step 1: Timeline – show "understanding" step
             yield _build_timeline_event("parse", "理解意图 / Understanding intent", "running")
 
-            await ws.publish_log(req.workspace_id, "pm", f"Received message: {req.message[:80]}…")
+            if not is_home:
+                await ws.publish_log(req.workspace_id, "pm", f"Received message: {req.message[:80]}…")
             parsed = await parse_intent(req.message, llm)
-            await ws.publish_log(req.workspace_id, "pm", f"Intent: {parsed.intent} → {parsed.target_agent.value}", level="success")
+            if not is_home:
+                await ws.publish_log(req.workspace_id, "pm", f"Intent: {parsed.intent} → {parsed.target_agent.value}", level="success")
 
             # Step 2: Enriched intent event with confidence + labels
             yield _build_intent_event(parsed)
             yield _build_timeline_event("parse", "理解意图 / Understanding intent", "completed", parsed.summary)
+
+            # --- Home context: classify + stream reply + action card, no workspace-svc ---
+            if is_home:
+                if parsed.intent == "general_chat":
+                    yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
+                    messages = [
+                        {"role": "system", "content": "You are VibeOS, an AI-native software development platform assistant. Greet the user warmly and briefly explain what you can help with. Be concise (2-3 sentences). Respond in the same language as the user."},
+                        {"role": "user", "content": req.message},
+                    ]
+                    async for chunk in llm.chat_stream(messages):
+                        delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if delta:
+                            yield f"data: {json.dumps({'delta': delta})}\n\n"
+                    yield _build_timeline_event("exec", "生成回复 / Generating reply", "completed")
+                    yield build_action_event(
+                        "navigate", label="开始新项目", variant="primary",
+                        payload={"target": "create_workspace"},
+                    )
+                    yield "data: [DONE]\n\n"
+                    return
+
+                # Task intent on home page → stream intro text + workspace_create action
+                agent_val = parsed.target_agent.value
+                intent_label = INTENT_LABELS.get(parsed.intent, {})
+                agent_label = AGENT_LABELS.get(agent_val, {})
+                suggested_name = parsed.summary[:40] or "新工作空间"
+
+                yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
+                messages = [
+                    {"role": "system", "content": (
+                        "You are VibeOS PM assistant. The user described a task on the home page. "
+                        "Write a brief (2-3 sentence) acknowledgement of their request, explain that "
+                        "you'll create a workspace and the relevant agent will handle it. "
+                        "Respond in the same language as the user."
+                    )},
+                    {"role": "user", "content": req.message},
+                ]
+                async for chunk in llm.chat_stream(messages):
+                    delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    if delta:
+                        yield f"data: {json.dumps({'delta': delta})}\n\n"
+                yield _build_timeline_event("exec", "生成回复 / Generating reply", "completed")
+
+                yield build_action_event(
+                    "workspace_create",
+                    payload={
+                        "suggested_name": suggested_name,
+                        "intent": parsed.intent,
+                        "intent_label": intent_label,
+                        "agent": agent_val,
+                        "agent_label": agent_label,
+                        "confidence": parsed.confidence,
+                        "original_query": req.message,
+                    },
+                    label="创建工作空间并开始",
+                    variant="primary",
+                )
+                yield "data: [DONE]\n\n"
+                return
 
             # Step 3: Ambiguous intent → send clarification instead of silent fallback
             if parsed.is_ambiguous:
@@ -378,9 +436,9 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                         if delta:
                             yield f"data: {json.dumps({'delta': delta})}\n\n"
                     yield _build_timeline_event("exec", "生成回复 / Generating reply", "completed")
-                    yield _build_cta_event([
-                        {"id": "followup", "label": "继续追问", "variant": "secondary"},
-                    ])
+                    yield build_action_event(
+                        "confirm", label="继续追问", variant="secondary",
+                    )
                     yield "data: [DONE]\n\n"
                     return
 
@@ -408,22 +466,28 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 
                 yield _build_timeline_event("exec", "执行中 / Executing", "completed")
 
-                # CTA actions based on result type
-                cta: list[dict[str, str]] = []
                 action = result.get("action", "")
                 if action in ("requirement_preview", "requirement_created"):
-                    cta = [
-                        {"id": "view_detail", "label": "查看详情", "variant": "primary"},
-                        {"id": "continue_refine", "label": "继续优化", "variant": "secondary"},
-                    ]
+                    yield build_action_event(
+                        "navigate", label="查看详情", variant="primary",
+                        payload={"target": "requirement_detail"},
+                    )
+                    yield build_action_event(
+                        "confirm", label="继续优化", variant="secondary",
+                    )
                 elif result.get("created_tasks"):
-                    cta = [
-                        {"id": "view_tasks", "label": "查看任务", "variant": "primary"},
-                        {"id": "proceed", "label": "开始执行", "variant": "secondary"},
-                    ]
+                    yield build_action_event(
+                        "navigate", label="查看任务", variant="primary",
+                        payload={"target": "task_list"},
+                    )
+                    yield build_action_event(
+                        "phase_execute", label="开始执行", variant="secondary",
+                        payload={"phase": "requirement"},
+                    )
                 else:
-                    cta = [{"id": "followup", "label": "继续追问", "variant": "secondary"}]
-                yield _build_cta_event(cta)
+                    yield build_action_event(
+                        "confirm", label="继续追问", variant="secondary",
+                    )
                 yield "data: [DONE]\n\n"
                 return
 
@@ -444,7 +508,6 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             async for chunk in dispatcher.dispatch_stream(parsed.target_agent, task):
                 chunk_type = chunk.get("type", "")
 
-                # Detect agent-level errors
                 if chunk.get("error"):
                     err_msg = chunk["error"]
                     if "未启动" in err_msg or "not running" in err_msg.lower():
@@ -481,10 +544,13 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 
             if has_result:
                 yield _build_timeline_event("dispatch", f"分发到 {parsed.target_agent.value} Agent", "completed")
-                yield _build_cta_event([
-                    {"id": "view_detail", "label": "查看详情", "variant": "primary"},
-                    {"id": "followup", "label": "继续追问", "variant": "secondary"},
-                ])
+                yield build_action_event(
+                    "navigate", label="查看详情", variant="primary",
+                    payload={"target": "detail"},
+                )
+                yield build_action_event(
+                    "confirm", label="继续追问", variant="secondary",
+                )
 
             yield "data: [DONE]\n\n"
         except Exception as exc:
@@ -510,10 +576,11 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             yield f"event: error\ndata: {json.dumps({'error': error_str})}\n\n"
             yield "data: [DONE]\n\n"
         finally:
-            try:
-                await ws.publish_agent_status(req.workspace_id, AgentType.PM, AgentStatus.IDLE)
-            except Exception:
-                pass
+            if not is_home:
+                try:
+                    await ws.publish_agent_status(req.workspace_id, AgentType.PM, AgentStatus.IDLE)
+                except Exception:
+                    pass
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 

@@ -3,11 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Target, Bot, Zap, AlertTriangle, XCircle, ServerOff,
   HelpCircle, Lightbulb, RotateCcw, ArrowRight,
-  CheckCircle2, Loader2, Circle, ChevronRight,
+  CheckCircle2, Loader2, Circle, ChevronRight, Sparkles, Play,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import type { RichBlock, RichAction, ClarificationOption, ExecutionStep } from '../types'
+import { workspaceApi } from '../lib/api'
+import type { RichBlock, RichAction, ClarificationOption, ExecutionStep, NlpActionType } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 // ---------------------------------------------------------------------------
@@ -307,6 +309,99 @@ export function CTAActionsBlock({ block }: { block: RichBlock }) {
         </motion.button>
       ))}
     </motion.div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// NlpActionBlock: data-driven contextual action buttons
+// ---------------------------------------------------------------------------
+
+const ACTION_ICON: Record<string, React.ReactNode> = {
+  workspace_create: <Sparkles className="w-3.5 h-3.5" />,
+  task_execute: <Play className="w-3.5 h-3.5" />,
+  phase_execute: <ArrowRight className="w-3.5 h-3.5" />,
+  navigate: <ChevronRight className="w-3.5 h-3.5" />,
+  confirm: <ArrowRight className="w-3.5 h-3.5" />,
+}
+
+export function NlpActionBlock({ block }: { block: RichBlock }) {
+  const t = useT()
+  const [loading, setLoading] = useState(false)
+  const [done, setDone] = useState(false)
+  const { setActiveWorkspace, sendNLPMessageStream, runPhase } = useWorkspaceStore()
+
+  const actionType = block.actionType as NlpActionType | undefined
+  if (!actionType) return null
+
+  const label = block.actionLabel || t(`nlp.action.${actionType}` as TranslationKey) || actionType
+  const variant = block.actionVariant || 'primary'
+  const icon = ACTION_ICON[actionType] || <ArrowRight className="w-3.5 h-3.5" />
+
+  async function handleClick() {
+    if (loading || done) return
+    setLoading(true)
+    try {
+      const payload = block.actionPayload || {}
+      switch (actionType) {
+        case 'workspace_create': {
+          const name = (payload.suggested_name as string) || '新工作空间'
+          const ws = await workspaceApi.create(name, '', 'indigo')
+          useWorkspaceStore.setState((s) => ({ workspaces: [...s.workspaces, ws] }))
+          setActiveWorkspace(ws.id)
+          const query = (payload.original_query as string) || ''
+          if (query) {
+            setTimeout(() => useWorkspaceStore.getState().sendNLPMessageStream(query), 300)
+          }
+          useWorkspaceStore.getState().clearHomeMessages()
+          useUIStore.getState().setHomeConversationVisible(false)
+          break
+        }
+        case 'task_execute': {
+          const taskId = payload.taskId as string
+          if (taskId) sendNLPMessageStream(`execute task ${taskId}`)
+          break
+        }
+        case 'phase_execute': {
+          const phase = payload.phase as string
+          if (phase) runPhase(phase)
+          break
+        }
+        case 'navigate': {
+          break
+        }
+        case 'confirm': {
+          break
+        }
+      }
+      setDone(true)
+    } catch (err) {
+      console.error('NlpActionBlock error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const variantClass =
+    variant === 'primary'
+      ? 'bg-accent hover:bg-accent-hover text-white'
+      : variant === 'danger'
+        ? 'bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20'
+        : 'bg-surface-2 hover:bg-surface-3 text-text-secondary border border-border-subtle'
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+      onClick={handleClick}
+      disabled={loading || done}
+      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+        done ? 'opacity-50 cursor-default' : variantClass
+      }`}
+    >
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icon}
+      {loading ? t('nlp.action.creating' as TranslationKey) : label}
+    </motion.button>
   )
 }
 
