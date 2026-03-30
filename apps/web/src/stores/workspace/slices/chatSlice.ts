@@ -485,14 +485,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
 
             if (evt.event === 'intent' && data.target_agent) {
               agentType = data.target_agent as AgentType
-              richBlocks.push({
-                type: 'intent_feedback',
-                intentLabel: data.intent_label?.zh || data.intent,
-                intentId: data.intent,
-                agentLabel: data.agent_label?.zh || data.target_agent,
-                agentId: data.target_agent,
-                confidence: data.confidence,
-              })
               updateMsg()
               continue
             }

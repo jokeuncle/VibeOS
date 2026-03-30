@@ -5,7 +5,26 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import { RichBlockRenderer } from './RichBlockRenderer'
+import type { RichBlock } from '../types'
 import type { TranslationKey } from '../i18n/en'
+
+/** Home panel: chat-style Q&A only — no intent routing or timeline chrome; cards stack under the reply. */
+const HOME_SUPPRESSED_TYPES = new Set<RichBlock['type']>(['intent_feedback', 'execution_timeline'])
+const HOME_CARD_TYPES = new Set<RichBlock['type']>([
+  'nlp_action',
+  'task_card',
+  'action_card',
+  'cta_actions',
+  'requirement_preview',
+])
+
+function partitionHomeRichBlocks(blocks: RichBlock[] | undefined) {
+  if (!blocks?.length) return { inlineBlocks: [], cardBlocks: [] }
+  const visible = blocks.filter((b) => !HOME_SUPPRESSED_TYPES.has(b.type))
+  const cardBlocks = visible.filter((b) => HOME_CARD_TYPES.has(b.type))
+  const inlineBlocks = visible.filter((b) => !HOME_CARD_TYPES.has(b.type))
+  return { inlineBlocks, cardBlocks }
+}
 
 const QUICK_START = [
   { id: 'ecommerce', key: 'nlp.quickStart.ecommerce' as TranslationKey },
@@ -108,11 +127,27 @@ export default function HomeConversation() {
                           </p>
                         </div>
                       )}
-                      {msg.richBlocks?.map((block, i) => (
-                        <div key={i} className={block.type === 'nlp_action' ? 'inline-block mr-1.5' : ''}>
-                          <RichBlockRenderer block={block} />
-                        </div>
-                      ))}
+                      {(() => {
+                        const { inlineBlocks, cardBlocks } = partitionHomeRichBlocks(msg.richBlocks)
+                        return (
+                          <>
+                            {inlineBlocks.map((block, i) => (
+                              <div key={`i-${i}`}>
+                                <RichBlockRenderer block={block} />
+                              </div>
+                            ))}
+                            {cardBlocks.length > 0 && (
+                              <div className="mt-1 w-full max-w-full space-y-2">
+                                {cardBlocks.map((block, i) => (
+                                  <div key={`c-${i}`} className="w-full min-w-0">
+                                    <RichBlockRenderer block={block} richLayout="home" />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -134,7 +169,7 @@ export default function HomeConversation() {
                     <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                     <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </span>
-                  <span className="text-[11px] text-text-tertiary">{t('nlp.classifying' as TranslationKey)}</span>
+                  <span className="text-[11px] text-text-tertiary">{t('nlp.generatingReply' as TranslationKey)}</span>
                 </div>
               </motion.div>
             )}

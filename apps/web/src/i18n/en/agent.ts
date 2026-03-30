@@ -54,6 +54,7 @@ const agent = {
   'nlp.homeGreeting': "Hi! I'm the VibeOS assistant. Tell me what project or feature you'd like to build, and I'll create a workspace with an AI agent team to make it happen.\n\nTry something like \"Build me an e-commerce platform\"",
   'nlp.classifyError': 'Intent recognition is temporarily unavailable. Please try again.',
   'nlp.classifying': 'Understanding your intent…',
+  'nlp.generatingReply': 'Generating reply…',
   'nlp.intentDetected': 'Intent detected',
   'nlp.workspaceName': 'Workspace name',
   'nlp.createAndStart': 'Create & Start',

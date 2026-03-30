@@ -54,6 +54,7 @@ const agent = {
   'nlp.homeGreeting': '你好！我是 VibeOS 助手。告诉我你想构建什么项目或功能，我会帮你创建工作空间并协调 Agent 团队来实现。\n\n试试输入具体需求，例如「帮我做一个电商平台」',
   'nlp.classifyError': '意图识别暂时不可用，请稍后重试。',
   'nlp.classifying': '正在理解你的意图…',
+  'nlp.generatingReply': '正在生成回复…',
   'nlp.intentDetected': '意图已识别',
   'nlp.workspaceName': '工作空间名称',
   'nlp.createAndStart': '创建并开始',

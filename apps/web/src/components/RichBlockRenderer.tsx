@@ -52,7 +52,13 @@ const PRIORITY_STYLE: Record<TaskPriority, string> = {
   p3: 'bg-blue-500/10 text-blue-400',
 }
 
-export function RichBlockRenderer({ block }: { block: RichBlock }) {
+export function RichBlockRenderer({
+  block,
+  richLayout = 'default',
+}: {
+  block: RichBlock
+  richLayout?: 'default' | 'home'
+}) {
   const { addToast } = useUIStore()
   const { addTask, activeWorkspaceId, workspaces, sendNLPMessageStream } = useWorkspaceStore()
   const t = useT()
@@ -108,20 +114,29 @@ export function RichBlockRenderer({ block }: { block: RichBlock }) {
       return <ErrorCardBlock block={block} />
 
     case 'cta_actions':
-      return <CTAActionsBlock block={block} />
+      return (
+        <CTAActionsBlock
+          block={block}
+          layout={richLayout === 'home' ? 'stack' : 'inline'}
+        />
+      )
 
     case 'execution_timeline':
       return <ExecutionTimelineBlock block={block} />
 
     case 'nlp_action':
-      return <NlpActionBlock block={block} />
+      return <NlpActionBlock block={block} layout={richLayout === 'home' ? 'card' : 'chip'} />
 
     case 'requirement_preview':
       return <RequirementPreviewCard block={block} />
 
-    case 'action_card':
+    case 'action_card': {
+      const acSurface =
+        richLayout === 'home'
+          ? 'rounded-xl border border-border-subtle bg-surface-2/40 p-3.5'
+          : 'rounded-lg border border-border-subtle bg-surface-2/50 p-3'
       return (
-        <div className="rounded-lg border border-border-subtle bg-surface-2/50 p-3 space-y-2">
+        <div className={`${acSurface} space-y-2`}>
           {block.title && <p className="text-xs font-semibold text-text-primary">{block.title}</p>}
           {block.description && <p className="text-[11px] text-text-secondary leading-relaxed">{block.description}</p>}
           {block.actions && (
@@ -143,6 +158,7 @@ export function RichBlockRenderer({ block }: { block: RichBlock }) {
           )}
         </div>
       )
+    }
 
     case 'progress':
       return (
@@ -170,15 +186,23 @@ export function RichBlockRenderer({ block }: { block: RichBlock }) {
         </div>
       )
 
-    case 'task_card':
+    case 'task_card': {
+      const tcWrap =
+        richLayout === 'home'
+          ? 'rounded-xl border border-border-subtle bg-surface-2/40 p-3.5'
+          : 'rounded-lg border border-accent/20 bg-accent/[0.03] p-3'
+      const tcIcon =
+        richLayout === 'home'
+          ? 'w-9 h-9 rounded-xl bg-surface-3/80 border border-border-subtle'
+          : 'w-8 h-8 rounded-lg bg-accent/10'
       return (
-        <div className="rounded-lg border border-accent/20 bg-accent/[0.03] p-3 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-            <Play className="w-3.5 h-3.5 text-accent" />
+        <div className={`${tcWrap} flex items-center gap-3`}>
+          <div className={`${tcIcon} flex items-center justify-center shrink-0`}>
+            <Play className={`w-3.5 h-3.5 ${richLayout === 'home' ? 'text-text-secondary' : 'text-accent'}`} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-text-primary truncate">{block.taskTitle}</p>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               {block.taskStatus && <TaskStatusBadge status={block.taskStatus} />}
               {block.taskPriority && PRIORITY_STYLE[block.taskPriority] && (
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${PRIORITY_STYLE[block.taskPriority]}`}>
@@ -189,6 +213,7 @@ export function RichBlockRenderer({ block }: { block: RichBlock }) {
           </div>
         </div>
       )
+    }
 
     case 'checklist':
       return (

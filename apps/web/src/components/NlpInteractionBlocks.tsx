@@ -261,7 +261,13 @@ export function ErrorCardBlock({ block }: { block: RichBlock }) {
 // CTAActions: post-completion action buttons
 // ---------------------------------------------------------------------------
 
-export function CTAActionsBlock({ block }: { block: RichBlock }) {
+export function CTAActionsBlock({
+  block,
+  layout = 'inline',
+}: {
+  block: RichBlock
+  layout?: 'inline' | 'stack'
+}) {
   const { sendNLPMessageStream } = useWorkspaceStore()
   const [clicked, setClicked] = useState<string | null>(null)
 
@@ -285,7 +291,11 @@ export function CTAActionsBlock({ block }: { block: RichBlock }) {
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
-      className="flex flex-wrap gap-1.5 pt-1"
+      className={
+        layout === 'stack'
+          ? 'flex flex-col gap-2 pt-1 w-full'
+          : 'flex flex-wrap gap-1.5 pt-1'
+      }
     >
       {block.ctaActions.map((a, i) => (
         <motion.button
@@ -295,7 +305,9 @@ export function CTAActionsBlock({ block }: { block: RichBlock }) {
           transition={{ delay: 0.25 + i * 0.05 }}
           onClick={() => handleCTA(a)}
           disabled={clicked !== null}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+          className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+            layout === 'stack' ? 'w-full' : ''
+          } ${
             clicked === a.id
               ? 'bg-accent/20 text-accent border border-accent/30'
               : a.variant === 'primary'
@@ -324,7 +336,13 @@ const ACTION_ICON: Record<string, React.ReactNode> = {
   confirm: <ArrowRight className="w-3.5 h-3.5" />,
 }
 
-export function NlpActionBlock({ block }: { block: RichBlock }) {
+export function NlpActionBlock({
+  block,
+  layout = 'chip',
+}: {
+  block: RichBlock
+  layout?: 'chip' | 'card'
+}) {
   const t = useT()
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -388,16 +406,30 @@ export function NlpActionBlock({ block }: { block: RichBlock }) {
         ? 'bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20'
         : 'bg-surface-2 hover:bg-surface-3 text-text-secondary border border-border-subtle'
 
+  const cardVariantClass =
+    variant === 'primary'
+      ? 'border-accent/25 bg-accent/[0.08] text-accent hover:bg-accent/[0.14]'
+      : variant === 'danger'
+        ? 'border-danger/25 bg-danger/[0.06] text-danger hover:bg-danger/[0.1]'
+        : 'border-border-subtle bg-surface-2/45 text-text-secondary hover:bg-surface-2/70'
+
+  const layoutClass =
+    layout === 'card'
+      ? `flex w-full items-center justify-center gap-2 px-4 py-3 rounded-xl border text-[12px] font-medium shadow-sm ${cardVariantClass} ${
+        done ? 'opacity-50 cursor-default' : ''
+      }`
+      : `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-medium ${
+        done ? 'opacity-50 cursor-default' : variantClass
+      }`
+
   return (
     <motion.button
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: layout === 'card' ? 1 : 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.2 }}
       onClick={handleClick}
       disabled={loading || done}
-      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
-        done ? 'opacity-50 cursor-default' : variantClass
-      }`}
+      className={`transition-all cursor-pointer ${layoutClass}`}
     >
       {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icon}
       {loading ? t('nlp.action.creating' as TranslationKey) : label}
