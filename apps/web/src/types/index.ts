@@ -377,7 +377,7 @@ export interface RichAction {
 }
 
 export interface RichBlock {
-  type: 'action_card' | 'progress' | 'code' | 'task_card' | 'checklist'
+  type: 'action_card' | 'progress' | 'code' | 'task_card' | 'checklist' | 'requirement_preview'
   title?: string
   description?: string
   actions?: RichAction[]
@@ -389,6 +389,10 @@ export interface RichBlock {
   taskStatus?: PhaseStatus
   taskPriority?: TaskPriority
   items?: { text: string; checked: boolean }[]
+  // requirement_preview fields
+  reqTitle?: string
+  reqDescription?: string
+  reqPriority?: string
 }
 
 export interface Message {

@@ -106,6 +106,8 @@ export function buildNlpPhaseContext(get: () => WorkspaceState): Record<string, 
   if (activePhaseType) ctx.phase_type = activePhaseType
   if (nlpCtxState?.agentType) ctx.target_agent = nlpCtxState.agentType
   if (nlpCtxState?.requirementId) ctx.requirement_id = nlpCtxState.requirementId
+  const reqCount = ws?.requirements?.length ?? 0
+  if (reqCount === 0) ctx.zero_requirements = true
   if (phaseRepos.length) {
     ctx.gitlab_repos = phaseRepos.map((r) => ({
       projectId: r.projectId,

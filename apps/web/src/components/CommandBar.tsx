@@ -79,6 +79,9 @@ export default function CommandBar() {
   const { setHomeSearchQuery, nlpContext, setNlpContext } = useUIStore()
   const t = useT()
 
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  const isZeroRequirements = !!activeWorkspaceId && (activeWorkspace?.requirements?.length ?? 0) === 0
+
   useEffect(() => {
     if (!activeWorkspaceId) setHomeSearchQuery(input)
   }, [input, activeWorkspaceId, setHomeSearchQuery])
@@ -233,7 +236,9 @@ export default function CommandBar() {
   const placeholder = activeWorkspaceId
     ? nlpContext
       ? `${t('command.contextPlaceholder' as TranslationKey)} ${agentLabel}…`
-      : t('command.placeholderNLP')
+      : isZeroRequirements
+        ? t('command.placeholderDiscovery' as TranslationKey)
+        : t('command.placeholderNLP')
     : t('command.placeholderHome')
 
   return (

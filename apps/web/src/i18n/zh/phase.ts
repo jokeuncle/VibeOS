@@ -84,11 +84,11 @@ const phase = {
   'phase.suggestHint': '点击下方建议快速创建任务，或运行分析自动生成',
 
   'emptyState.title': '从需求到交付，由 AI 驱动',
-  'emptyState.desc':
-    '请用右上角的「创建需求」填写表单；也可与 Agent 说明想法。在列表视图下，页面下方的对话同样可以帮助把讨论落成需求。',
+  'emptyState.desc': '在下方输入框描述你的想法，Agent 会帮你提炼成需求。',
   'emptyState.addTask': '新建需求',
   'emptyState.talkAgent': '与 Agent 对话',
   'emptyState.newTaskTitle': '新需求',
+  'emptyState.inputHint': '在下方输入框描述想法即可开始',
 
   'reqSubView.list': '列表',
   'reqSubView.kanban': '看板',

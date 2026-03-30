@@ -49,6 +49,11 @@ const requirement = {
   'requirement.noneAssigned': '未分配',
   'requirement.aiSummary': 'AI 进展总结',
   'requirement.aiSummaryLoading': '正在生成总结…',
+  'requirement.preview.label': '需求草稿',
+  'requirement.preview.confirm': '确认创建',
+  'requirement.preview.created': '需求已创建',
+  'requirement.titlePlaceholder': '需求标题…',
+  'requirement.descPlaceholder': '描述需求内容…',
 }
 
 export default requirement

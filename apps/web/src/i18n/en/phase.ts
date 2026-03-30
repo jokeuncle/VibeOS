@@ -84,11 +84,11 @@ const phase = {
   'phase.suggestHint': 'Click a suggestion below or run analysis to generate tasks',
 
   'emptyState.title': 'AI runs the path from requirement to delivery',
-  'emptyState.desc':
-    'Use Create Requirement in the header for the form, or talk to an agent with your idea. On list view, the thread below can help turn chat into a requirement.',
+  'emptyState.desc': 'Describe your idea in the input below — the agent will help shape it into a requirement.',
   'emptyState.addTask': 'New requirement',
   'emptyState.talkAgent': 'Chat with an agent',
   'emptyState.newTaskTitle': 'New requirement',
+  'emptyState.inputHint': 'Describe your idea below to get started',
 
   'reqSubView.list': 'List',
   'reqSubView.kanban': 'Board',

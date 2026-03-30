@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, MessageCircle, Sparkles, FileStack, LayoutGrid, GitBranch, ChevronLeft, ListChecks } from 'lucide-react'
+import { Plus, Sparkles, FileStack, LayoutGrid, GitBranch, ChevronLeft, ListChecks } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -194,7 +194,7 @@ export default function WorkspaceView() {
                 </div>
               </div>
 
-              {/* List-only onboarding: create is always in toolbar; here we surface agent chat */}
+              {/* Zero-requirement onboarding hero */}
               {reqCount === 0 && reqSubView === 'list' && (
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
@@ -205,18 +205,13 @@ export default function WorkspaceView() {
                     <Sparkles className="w-6 h-6 text-accent" />
                   </div>
                   <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
-                  <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto leading-relaxed">{t('emptyState.desc')}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const pmAgent = workspace.agents.find((a) => a.type === 'pm') || workspace.agents[0]
-                      if (pmAgent) openAgentChat(pmAgent.id)
-                    }}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-sm font-medium cursor-pointer transition-colors"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    {t('emptyState.talkAgent')}
-                  </button>
+                  <p className="text-sm text-text-tertiary mb-6 max-w-sm mx-auto leading-relaxed">{t('emptyState.desc')}</p>
+                  <div className="flex items-center justify-center gap-2 text-xs text-text-tertiary">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2/60 border border-border-subtle">
+                      <Sparkles className="w-3 h-3 text-accent" />
+                      {t('emptyState.inputHint')}
+                    </span>
+                  </div>
                 </motion.div>
               )}
             </div>

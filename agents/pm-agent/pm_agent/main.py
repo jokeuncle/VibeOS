@@ -479,6 +479,71 @@ async def _handle_run_project(
     }
 
 
+_REQ_EXTRACT_PROMPT = (
+    "You are a requirement analyst. Extract a clean requirement from the user's message.\n"
+    "Reply with ONLY a JSON object:\n"
+    '{"title": "<concise title, max 80 chars>", "description": "<clear 1-3 sentence description>", '
+    '"priority": "<high|medium|low>", "sufficient": <true|false>}\n'
+    '"sufficient" is true only when the message contains a clear feature/problem to build.\n'
+    "Do NOT include anything else."
+)
+
+_REQ_DISCOVERY_PROMPT = (
+    "You are VibeOS PM assistant helping a user define their first requirement.\n"
+    "The user has not created any requirements yet. Ask ONE concise follow-up question "
+    "to better understand what they want to build. Focus on: the core problem, target users, "
+    "or key feature. Keep your reply under 2 sentences. Respond in the same language as the user."
+)
+
+
+async def _handle_discovery_or_preview(
+    workspace_id: str,
+    summary: str,
+    user_message: str,
+    llm: LLMGatewayClient,
+    ws_client: WorkspaceClient,
+) -> dict[str, Any]:
+    """In zero-requirement mode: extract requirement and return a preview instead of creating directly."""
+    messages = [
+        {"role": "system", "content": _REQ_EXTRACT_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
+    result = await llm.chat(messages, temperature=0.0)
+    raw = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    from .intent import _extract_json
+    req_data = _extract_json(raw)
+
+    sufficient = req_data.get("sufficient", False)
+    if not sufficient:
+        disc_messages = [
+            {"role": "system", "content": _REQ_DISCOVERY_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+        disc_result = await llm.chat(disc_messages, temperature=0.3)
+        question = disc_result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return {
+            "handled_by": "pm",
+            "action": "discovery_question",
+            "summary": question or summary,
+        }
+
+    title = req_data.get("title", summary[:80])
+    description = req_data.get("description", user_message)
+    priority = req_data.get("priority", "medium")
+
+    return {
+        "handled_by": "pm",
+        "action": "requirement_preview",
+        "summary": f"I've drafted a requirement based on your idea. Please review and confirm:",
+        "requirement_preview": {
+            "title": title,
+            "description": description,
+            "priority": priority,
+        },
+    }
+
+
 async def _handle_create_requirement(
     workspace_id: str, summary: str, user_message: str, ws_client: WorkspaceClient
 ) -> dict[str, Any]:
@@ -496,14 +561,28 @@ async def _execute_pm_intent(
     dispatcher: "Dispatcher | None" = None,
 ) -> dict[str, Any]:
     """Execute PM-handled intents (create_task, query_progress, execute_task, execute_phase, etc.)."""
+    zero_reqs = bool((req.context or {}).get("zero_requirements"))
+
     if parsed.intent == "create_task":
         return await _handle_create_task(
             req.workspace_id, req.message, parsed.summary, llm, ws_client, ws,
         )
     if parsed.intent == "create_requirement":
+        if zero_reqs:
+            return await _handle_discovery_or_preview(
+                req.workspace_id, parsed.summary, req.message, llm, ws_client,
+            )
         return await _handle_create_requirement(
             req.workspace_id, parsed.summary, req.message, ws_client,
         )
+    if zero_reqs and parsed.intent == "general_chat":
+        disc_messages = [
+            {"role": "system", "content": _REQ_DISCOVERY_PROMPT},
+            {"role": "user", "content": req.message},
+        ]
+        disc_result = await llm.chat(disc_messages, temperature=0.3)
+        question = disc_result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return {"handled_by": "pm", "action": "discovery_question", "summary": question or parsed.summary}
     if parsed.intent == "query_progress":
         return await _handle_query_progress(req.workspace_id, llm, ws_client)
     if parsed.intent == "execute_task" and dispatcher:
@@ -666,6 +745,11 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                     parsed, req, llm, ws, ws_client, workflow, dispatcher,
                 )
                 summary = result.get("summary", parsed.summary)
+
+                if result.get("action") == "requirement_preview" and result.get("requirement_preview"):
+                    preview = result["requirement_preview"]
+                    yield f"event: requirement_preview\ndata: {json.dumps(preview)}\n\n"
+
                 async for evt in _yield_text_as_deltas(summary):
                     yield evt
 

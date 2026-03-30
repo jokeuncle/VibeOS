@@ -219,6 +219,24 @@ export function buildChatSlice(set: SetState, get: GetState) {
               agentType = data.target_agent as AgentType
             }
 
+            if (evt.event === 'requirement_preview') {
+              // Remove any existing preview block before adding a new one
+              const existingIdx = richBlocks.findIndex((b) => b.type === 'requirement_preview')
+              if (existingIdx !== -1) richBlocks.splice(existingIdx, 1)
+              richBlocks.push({
+                type: 'requirement_preview',
+                reqTitle: data.title,
+                reqDescription: data.description,
+                reqPriority: data.priority,
+              })
+              set((s) => ({
+                messages: s.messages.map((m) =>
+                  m.id === msgId ? { ...m, agentType, richBlocks: [...richBlocks] } : m,
+                ),
+              }))
+              continue
+            }
+
             if (data.delta) {
               content += data.delta
             } else if (data.summary || data.payload?.summary) {

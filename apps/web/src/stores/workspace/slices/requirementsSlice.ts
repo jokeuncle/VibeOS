@@ -37,6 +37,8 @@ export function buildRequirementsSlice(set: SetState, get: GetState) {
             requirements: [...(w.requirements ?? []), req],
           })),
         }))
+        // Auto-navigate to the new requirement detail
+        get().setActiveRequirement(req.id)
       } catch (e) {
         console.error('Failed to create requirement:', e)
         get().refreshActiveWorkspace()

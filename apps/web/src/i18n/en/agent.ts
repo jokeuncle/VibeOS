@@ -28,6 +28,7 @@ const agent = {
   'command.placeholder': 'Ask anything… "Deploy to staging" "Current progress?"',
   'command.placeholderHome': 'Search workspaces or create a new one…',
   'command.placeholderNLP': '@ Agent · / Command · or ask anything…',
+  'command.placeholderDiscovery': 'Describe your idea or feature to build…',
   'command.contextPlaceholder': 'Ask',
   'command.title': 'Command Palette',
   'command.navigation': 'Navigation',

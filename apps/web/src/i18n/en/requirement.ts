@@ -49,6 +49,11 @@ const requirement = {
   'requirement.noneAssigned': 'Unassigned',
   'requirement.aiSummary': 'AI Summary',
   'requirement.aiSummaryLoading': 'Generating summary…',
+  'requirement.preview.label': 'Requirement Draft',
+  'requirement.preview.confirm': 'Create Requirement',
+  'requirement.preview.created': 'Requirement created',
+  'requirement.titlePlaceholder': 'Requirement title…',
+  'requirement.descPlaceholder': 'Describe the requirement…',
 } as const
 
 export default requirement
