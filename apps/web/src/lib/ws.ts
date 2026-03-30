@@ -1,6 +1,9 @@
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 
+/** Stop scheduling reconnects after this many failed connect/close cycles for the same workspace. */
+const MAX_RECONNECT_ATTEMPTS = 8
+
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -8,11 +11,29 @@ let intentionalClose = false
 let currentWorkspaceId: string | null = null
 let refreshDebounce: ReturnType<typeof setTimeout> | null = null
 
+/** Workspace we're trying to keep a socket for (retry budget resets when this id changes). */
+let activeConnectionTargetId: string | null = null
+let consecutiveReconnectFailures = 0
+let gaveUpLogged = false
+
 export function connectWebSocket(workspaceId: string | null) {
   if (workspaceId === currentWorkspaceId && socket?.readyState === WebSocket.OPEN) return
 
+  if (!workspaceId || workspaceId.startsWith('ws-temp-')) {
+    disconnectWebSocket()
+    activeConnectionTargetId = null
+    consecutiveReconnectFailures = 0
+    gaveUpLogged = false
+    return
+  }
+
+  if (workspaceId !== activeConnectionTargetId) {
+    activeConnectionTargetId = workspaceId
+    consecutiveReconnectFailures = 0
+    gaveUpLogged = false
+  }
+
   disconnectWebSocket()
-  if (!workspaceId || workspaceId.startsWith('ws-temp-')) return
 
   intentionalClose = false
   currentWorkspaceId = workspaceId
@@ -24,6 +45,8 @@ export function connectWebSocket(workspaceId: string | null) {
 
   socket.onopen = () => {
     console.log('[WS] connected', workspaceId)
+    consecutiveReconnectFailures = 0
+    gaveUpLogged = false
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -49,7 +72,18 @@ export function connectWebSocket(workspaceId: string | null) {
     socket = null
     if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
     if (intentionalClose) return
-    console.log('[WS] disconnected, reconnecting in 3s')
+    consecutiveReconnectFailures += 1
+    if (consecutiveReconnectFailures >= MAX_RECONNECT_ATTEMPTS) {
+      if (!gaveUpLogged) {
+        gaveUpLogged = true
+        console.warn(
+          `[WS] gave up after ${MAX_RECONNECT_ATTEMPTS} failed attempts (ws-gateway unreachable?).`,
+          'Switch workspace or refresh to retry.',
+        )
+      }
+      return
+    }
+    console.log(`[WS] disconnected, reconnecting in 3s (${consecutiveReconnectFailures}/${MAX_RECONNECT_ATTEMPTS})`)
     reconnectTimer = setTimeout(() => connectWebSocket(currentWorkspaceId), 3000)
   }
 

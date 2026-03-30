@@ -46,7 +46,7 @@ Modals follow this structure: fixed backdrop (`bg-black/50`), `motion.div` conta
 
 ## Zustand Stores
 
-- One `create<StateInterface>()` call per store with state + actions in a single object
+- One `create<StateInterface>()` call per store; **`useWorkspaceStore`** is composed in `stores/workspace/index.ts` from `slices/*` (core, tasks, chat, logs, workflow, requirements) — import still `from '../stores/workspace'`.
 - Naming: `useWorkspaceStore`, `useUIStore`, `useI18nStore`
 - Action naming conventions:
   - `fetch*` / `refresh*` — server sync

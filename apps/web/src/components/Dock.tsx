@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Home, Search, Plus, Settings, LayoutDashboard, FileStack,
+  Home, Search, LayoutDashboard, FileStack,
   Sparkles, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -20,8 +20,6 @@ export default function Dock() {
   const { setActiveWorkspace, activeWorkspaceId, activeRequirementId } = useWorkspaceStore()
   const {
     setCommandPaletteOpen,
-    setTemplatePickerOpen,
-    setSettingsOpen,
     dockVisible,
     toggleDock,
     viewMode,
@@ -30,31 +28,13 @@ export default function Dock() {
   } = useUIStore()
   const t = useT()
 
-  // Global items — always shown when no workspace
+  // Global (home) — avoid duplicating TitleBar settings, WorkspaceHome "new", or a no-op home icon
   const globalItems: DockItem[] = [
-    {
-      id: 'home',
-      icon: <Home className="w-5 h-5" />,
-      label: t('breadcrumb.home'),
-      action: () => setActiveWorkspace(null),
-    },
     {
       id: 'search',
       icon: <Search className="w-5 h-5" />,
       label: t('command.title'),
       action: () => setCommandPaletteOpen(true),
-    },
-    {
-      id: 'new',
-      icon: <Plus className="w-5 h-5" />,
-      label: t('workspace.new'),
-      action: () => setTemplatePickerOpen(true),
-    },
-    {
-      id: 'settings',
-      icon: <Settings className="w-5 h-5" />,
-      label: t('settings.title'),
-      action: () => setSettingsOpen(true),
     },
   ]
 
@@ -85,12 +65,6 @@ export default function Dock() {
       icon: <Search className="w-5 h-5" />,
       label: t('command.title'),
       action: () => setCommandPaletteOpen(true),
-    },
-    {
-      id: 'settings',
-      icon: <Settings className="w-5 h-5" />,
-      label: t('settings.title'),
-      action: () => setSettingsOpen(true),
     },
   ] : globalItems
 
@@ -126,12 +100,6 @@ export default function Dock() {
       icon: <Search className="w-5 h-5" />,
       label: t('command.title'),
       action: () => setCommandPaletteOpen(true),
-    },
-    {
-      id: 'settings',
-      icon: <Settings className="w-5 h-5" />,
-      label: t('settings.title'),
-      action: () => setSettingsOpen(true),
     },
   ] : workspaceItems
 

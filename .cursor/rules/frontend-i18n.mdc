@@ -51,5 +51,5 @@ const label = t(`phase.${phase.type}` as TranslationKey)
 
 ## Important
 
-- The `friendlyError()` helper in `stores/workspace.ts` currently returns hardcoded Chinese strings — these should ideally migrate to i18n keys in the future.
+- The `friendlyError()` helper in `stores/workspace/helpers.ts` maps raw errors to i18n `error.*` keys.
 - Error message keys use the `error.*` namespace.
