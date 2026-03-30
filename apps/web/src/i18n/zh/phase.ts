@@ -85,7 +85,7 @@ const phase = {
 
   'emptyState.title': '从需求到交付，由 AI 驱动',
   'emptyState.desc':
-    '你来明确要做什么；智能体负责分阶段拆解与执行。新建一条需求，或与 Agent 对话把想法落成可执行项。',
+    '请用右上角的「创建需求」填写表单；也可与 Agent 说明想法。在列表视图下，页面下方的对话同样可以帮助把讨论落成需求。',
   'emptyState.addTask': '新建需求',
   'emptyState.talkAgent': '与 Agent 对话',
   'emptyState.newTaskTitle': '新需求',

@@ -87,8 +87,8 @@ export default function RequirementGraph() {
 
   if (requirements.length === 0) {
     return (
-      <div className="text-center py-16">
-        <div className="w-12 h-12 rounded-2xl bg-surface-2 border border-border-subtle flex items-center justify-center mx-auto mb-4">
+      <div className="text-center py-14 px-4">
+        <div className="w-12 h-12 rounded-2xl bg-surface-2/80 border border-border-subtle flex items-center justify-center mx-auto mb-4">
           <GitBranch className="w-5 h-5 text-text-tertiary opacity-60" />
         </div>
         <p className="text-sm text-text-tertiary">{t('requirement.empty' as any)}</p>
@@ -98,7 +98,7 @@ export default function RequirementGraph() {
 
   return (
     <div>
-      <div className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-auto">
+      <div className="overflow-auto rounded-lg bg-surface-2/15">
         {/* Legend */}
         <div className="flex items-center gap-4 px-4 py-2.5 border-b border-border-subtle">
           <span className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">

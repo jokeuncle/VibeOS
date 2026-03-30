@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Plus, FileText, Palette, Blocks, Code2, FlaskConical,
+  FileText, Palette, Blocks, Code2, FlaskConical,
   Rocket, Activity, Link2,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -87,19 +86,9 @@ function KanbanCard({ req, index }: { req: Requirement; index: number }) {
 
 export default function RequirementKanban() {
   const t = useT()
-  const { workspaces, activeWorkspaceId, createRequirement } = useWorkspaceStore()
-  const [creating, setCreating] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-
-  const workspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const { workspaces, activeWorkspaceId } = useWorkspaceStore()
+  const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const requirements = workspace?.requirements || []
-
-  const handleCreate = () => {
-    if (!activeWorkspaceId || !newTitle.trim()) return
-    createRequirement(activeWorkspaceId, newTitle.trim(), '')
-    setNewTitle('')
-    setCreating(false)
-  }
 
   return (
     <div className="grid grid-cols-3 gap-4">
@@ -120,31 +109,7 @@ export default function RequirementKanban() {
                 <KanbanCard key={req.id} req={req} index={i} />
               ))}
 
-              {col.status === 'draft' && (
-                creating ? (
-                  <div className="p-2">
-                    <input
-                      autoFocus
-                      value={newTitle}
-                      onChange={e => setNewTitle(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setCreating(false); setNewTitle('') } }}
-                      onBlur={() => { if (!newTitle.trim()) { setCreating(false); setNewTitle('') } }}
-                      placeholder={t('requirement.create.placeholder.title' as any)}
-                      className="w-full bg-surface-2 border border-accent/30 rounded-lg px-2.5 py-2 text-[11px] text-text-primary placeholder:text-text-tertiary focus:outline-none"
-                    />
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setCreating(true)}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] text-text-tertiary hover:text-text-secondary border border-dashed border-border-subtle hover:border-accent/30 rounded-xl transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    {t('requirement.create' as any)}
-                  </button>
-                )
-              )}
-
-              {items.length === 0 && col.status !== 'draft' && (
+              {items.length === 0 && (
                 <div className="flex items-center justify-center py-8 text-[10px] text-text-tertiary">
                   {t('requirement.kanban.emptyColumn' as any)}
                 </div>

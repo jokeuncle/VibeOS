@@ -190,6 +190,10 @@ export default function RequirementList() {
 
   let globalIdx = 0
 
+  if (requirements.length === 0 && !reqCreating) {
+    return null
+  }
+
   return (
     <div className="space-y-5">
       {/* Create form */}
@@ -238,9 +242,9 @@ export default function RequirementList() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.12 }}
-          className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden"
+          className="space-y-0"
         >
-          <div className="p-4">
+          <div>
             {groups.map((group) => (
               <div key={group.key} className="mb-5 last:mb-0">
                 <div className="flex items-center gap-2 mb-3">

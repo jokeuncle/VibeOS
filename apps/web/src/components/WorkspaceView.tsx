@@ -81,7 +81,7 @@ function ViewContent() {
 
 export default function WorkspaceView() {
   const { activeWorkspaceId, workspaces, activeRequirementId, requirementDetail, setActiveRequirement } = useWorkspaceStore()
-  const { viewMode, reqSubView, setReqSubView, setReqCreating, openAgentChat, setNlpContext } = useUIStore()
+  const { viewMode, reqSubView, setReqSubView, setReqCreating, openAgentChat, setNlpContext, reqCreating } = useUIStore()
   const t = useT()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
@@ -99,6 +99,8 @@ export default function WorkspaceView() {
   const currentViewMode = (viewMode as ViewMode) || 'requirements'
   const inReqDetail = currentViewMode === 'requirements' && !!activeRequirementId
   const showReqToolbar = currentViewMode === 'requirements' && !activeRequirementId
+  const listEmptyIdle =
+    showReqToolbar && reqSubView === 'list' && reqCount === 0 && !reqCreating
 
   const wideWorkspaceViews =
     currentViewMode === 'requirements' ||
@@ -179,6 +181,7 @@ export default function WorkspaceView() {
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => {
                       if (reqSubView !== 'list') setReqSubView('list')
                       setReqCreating(true)
@@ -191,8 +194,8 @@ export default function WorkspaceView() {
                 </div>
               </div>
 
-              {/* Empty state — shown below header when no requirements exist */}
-              {reqCount === 0 && (
+              {/* List-only onboarding: create is always in toolbar; here we surface agent chat */}
+              {reqCount === 0 && reqSubView === 'list' && (
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -203,32 +206,32 @@ export default function WorkspaceView() {
                   </div>
                   <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
                   <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto leading-relaxed">{t('emptyState.desc')}</p>
-                  <div className="flex items-center justify-center gap-3">
-                    <button
-                      onClick={() => { setReqSubView('list'); setReqCreating(true) }}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium cursor-pointer transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      {t('requirement.create')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const pmAgent = workspace.agents.find((a) => a.type === 'pm') || workspace.agents[0]
-                        if (pmAgent) openAgentChat(pmAgent.id)
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-sm font-medium cursor-pointer transition-colors"
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      {t('emptyState.talkAgent')}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pmAgent = workspace.agents.find((a) => a.type === 'pm') || workspace.agents[0]
+                      if (pmAgent) openAgentChat(pmAgent.id)
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-sm font-medium cursor-pointer transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    {t('emptyState.talkAgent')}
+                  </button>
                 </motion.div>
               )}
             </div>
           )}
 
           <div className="space-y-6">
-            <ViewContent />
+            {currentViewMode === 'requirements' && !activeRequirementId && !listEmptyIdle ? (
+              <div className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden">
+                <div className="p-4 sm:p-5">
+                  <ViewContent />
+                </div>
+              </div>
+            ) : (
+              <ViewContent />
+            )}
             <MessageThread />
           </div>
           <div className="h-20" />

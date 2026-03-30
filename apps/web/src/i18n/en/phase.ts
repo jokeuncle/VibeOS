@@ -85,7 +85,7 @@ const phase = {
 
   'emptyState.title': 'AI runs the path from requirement to delivery',
   'emptyState.desc':
-    'You define what to build; agents decompose it into phases and execute. Add a requirement or chat with an agent to shape the work.',
+    'Use Create Requirement in the header for the form, or talk to an agent with your idea. On list view, the thread below can help turn chat into a requirement.',
   'emptyState.addTask': 'New requirement',
   'emptyState.talkAgent': 'Chat with an agent',
   'emptyState.newTaskTitle': 'New requirement',
