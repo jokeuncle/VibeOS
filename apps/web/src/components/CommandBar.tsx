@@ -160,9 +160,8 @@ export default function CommandBar() {
   const isZeroRequirements = !!activeWorkspaceId && (activeWorkspace?.requirements?.length ?? 0) === 0
   const activeRequirement = activeWorkspace?.requirements?.find((r) => r.id === activeRequirementId)
 
-  /** Align input strip with home assistant panel (`WorkspaceHome` uses max-w-2xl + px-6 sm:px-10). */
-  const isHomeShell = !activeWorkspaceId
-  const barPopOverInset = isHomeShell ? 'left-0 right-0' : 'left-4 right-4'
+  /** Match `WorkspaceHome` NLP strip: max-w-2xl + px-6 sm:px-10 (same in workspace / requirement detail). */
+  const barPopOverInset = 'left-0 right-0'
 
   useEffect(() => {
     setInput('')
@@ -385,13 +384,7 @@ export default function CommandBar() {
   const placeholder = getPlaceholder()
 
   return (
-    <div
-      className={
-        isHomeShell
-          ? 'relative z-[55] w-full max-w-2xl mx-auto px-6 sm:px-10'
-          : 'relative z-[55]'
-      }
-    >
+    <div className="relative z-[55] w-full max-w-2xl mx-auto px-6 sm:px-10">
       {/* Suggestion dropdown (above input) */}
       <AnimatePresence>
         {showSuggestions && (
@@ -468,7 +461,7 @@ export default function CommandBar() {
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: 6, height: 0 }}
             transition={{ duration: 0.18 }}
-            className="mx-4 mb-1 overflow-hidden"
+            className="mb-1 overflow-hidden"
           >
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-2/80 border border-border-subtle backdrop-blur-sm">
               <FileText className="w-3 h-3 text-text-tertiary shrink-0" />
@@ -511,7 +504,7 @@ export default function CommandBar() {
       <form
         onSubmit={handleSubmit}
         className={`
-          ${isHomeShell ? 'w-full' : 'mx-4'} mb-3 flex items-center gap-3 px-4 h-12 rounded-2xl border transition-all duration-300
+          w-full mb-3 flex items-center gap-3 px-4 h-12 rounded-2xl border transition-all duration-300
           ${
             focused
               ? 'border-accent/40 bg-surface-2 shadow-[0_0_30px_rgba(99,102,241,0.08)]'
