@@ -93,3 +93,7 @@ Services use `module github.com/vibeos/<service>` with `replace github.com/vibeo
 ## Python Package Structure
 
 All Python packages use **hatchling** build system, **Python >= 3.12**. Domain agents depend on the `vibeos-agent` distribution from `agents/shared/`. Use `vibeos_agent.*` imports for shared code.
+
+## File Rows Limit
+
+One file with not too much rows of code. e.g. 300 - 500 rows is best.

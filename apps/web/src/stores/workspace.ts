@@ -149,6 +149,10 @@ interface WorkspaceState {
   requirementDetail: Requirement | null
   setActiveRequirement: (id: string | null) => void
   createRequirement: (wsId: string, title: string, description: string) => void
+  updateRequirement: (wsId: string, reqId: string, updates: Partial<{
+    title: string; description: string; status: string; currentPhase: string;
+    priority: string; iteration: string; progress: number; sortOrder: number
+  }>) => void
   deleteRequirement: (wsId: string, reqId: string) => void
   runRequirement: (reqId: string, phaseType?: string, userMessage?: string) => void
   resetRequirementPhase: (reqId: string, phaseType: string) => void
@@ -426,8 +430,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       name: 'Untitled Workspace',
       description: '',
       progress: 0,
-      currentPhaseId: '',
+      currentPhaseId: null,
       color: 'indigo',
+      status: 'active',
       phases: [],
       agents: [],
       activities: [],
@@ -471,13 +476,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   addTask: (workspaceId, phaseId, title) => {
     const tempId = `t-${Date.now()}`
+    const now = new Date().toISOString()
     set((s) => ({
       workspaces: patchWorkspace(s.workspaces, workspaceId, (w) => ({
         ...w,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
         phases: w.phases.map((p) =>
           p.id === phaseId
-            ? { ...p, tasks: [...p.tasks, { id: tempId, title, status: 'pending' as PhaseStatus }] }
+            ? {
+                ...p,
+                tasks: [...p.tasks, {
+                  id: tempId, title, status: 'pending' as PhaseStatus,
+                  phaseId, workspaceId, sortOrder: p.tasks.length,
+                  createdAt: now, updatedAt: now,
+                }],
+              }
             : p,
         ),
       })),
@@ -593,7 +606,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       description,
       color,
       progress: 0,
-      currentPhaseId: '',
+      currentPhaseId: null,
+      status: 'active',
       phases: [],
       agents: [],
       activities: [],
@@ -1084,10 +1098,50 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   createRequirement: async (wsId, title, description) => {
     try {
-      await workspaceApi.createRequirement(wsId, { title, description })
-      get().refreshActiveWorkspace()
+      const req = await workspaceApi.createRequirement(wsId, { title, description })
+      set((s) => ({
+        workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({
+          ...w,
+          requirements: [...(w.requirements ?? []), req],
+        })),
+      }))
     } catch (e) {
       console.error('Failed to create requirement:', e)
+      get().refreshActiveWorkspace()
+    }
+  },
+
+  updateRequirement: async (wsId, reqId, updates) => {
+    const prevWorkspaces = get().workspaces
+    set((s) => ({
+      workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({
+        ...w,
+        requirements: (w.requirements ?? []).map((r) =>
+          r.id === reqId
+            ? {
+                ...r,
+                ...updates,
+                status: (updates.status as import('../types').RequirementStatus | undefined) ?? r.status,
+                currentPhase: (updates.currentPhase as import('../types').PhaseType | undefined) ?? r.currentPhase,
+                priority: (updates.priority as import('../types').TaskPriority | undefined) ?? r.priority,
+                updatedAt: new Date().toISOString(),
+              }
+            : r
+        ),
+      })),
+    }))
+    try {
+      const updated = await workspaceApi.updateRequirement(wsId, reqId, updates)
+      set((s) => ({
+        workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({
+          ...w,
+          requirements: (w.requirements ?? []).map((r) => (r.id === reqId ? updated : r)),
+        })),
+        requirementDetail: s.activeRequirementId === reqId ? updated : s.requirementDetail,
+      }))
+    } catch (e) {
+      console.error('Failed to update requirement:', e)
+      set({ workspaces: prevWorkspaces })
     }
   },
 

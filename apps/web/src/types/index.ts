@@ -40,7 +40,7 @@ export interface Task {
   status: PhaseStatus
   description?: string
   priority?: TaskPriority
-  labels?: string[]
+  labels?: LabelColor[]
   dueDate?: string
   assignedAgent?: AgentType
   requirementId?: string
@@ -214,6 +214,41 @@ export interface Requirement {
   relations?: RequirementRelation[]
   createdAt: string
   updatedAt: string
+}
+
+export interface FeedbackSignal {
+  id: string
+  workspaceId: string
+  agentType: string
+  actionType: string
+  originalOutput?: string
+  modifiedOutput?: string
+  context?: string
+  createdAt: string
+}
+
+export interface ConversationSummary {
+  id: string
+  workspaceId: string
+  sessionId?: string
+  agentType?: string
+  summary: string
+  keyDecisions: string
+  timeRangeFrom: string
+  timeRangeTo: string
+  messageCount: number
+  createdAt: string
+}
+
+export interface ActivitySummary {
+  id: string
+  workspaceId: string
+  summary: string
+  keyEvents: string
+  timeRangeFrom: string
+  timeRangeTo: string
+  activityCount: number
+  createdAt: string
 }
 
 export type WorkflowEventType =

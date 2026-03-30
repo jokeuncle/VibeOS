@@ -1,4 +1,10 @@
-import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo, User, WorkspaceMember, Requirement, RequirementRelation, Task, Phase, Agent, Artifact, ArtifactMeta } from '../types'
+import type {
+  Workspace, Message, RichBlock, AgentType, ActivityItem,
+  GitLabCredential, WorkspaceRepo, User, WorkspaceMember,
+  Requirement, RequirementRelation, Task, Phase, Agent,
+  Artifact, ArtifactMeta, FeedbackSignal, ConversationSummary, ActivitySummary,
+  LabelColor,
+} from '../types'
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('vibeos_token')
@@ -88,7 +94,7 @@ export const workspaceApi = {
 
   updateTask: (wsId: string, taskId: string, updates: Partial<{
     title: string; description: string; status: string;
-    priority: string; labels: string[]; dueDate: string; assignedAgent: string
+    priority: string; labels: LabelColor[]; dueDate: string; assignedAgent: string
   }>) =>
     request<{ data: Task }>(`/api/workspaces/${wsId}/tasks/${taskId}`, {
       method: 'PATCH',
@@ -157,24 +163,24 @@ export const workspaceApi = {
 
   // AI-generated summaries
   listConversationSummaries: (wsId: string) =>
-    request<{ data: any[] }>(`/api/workspaces/${wsId}/summaries/conversations`).then(unwrap),
+    request<{ data: ConversationSummary[] }>(`/api/workspaces/${wsId}/summaries/conversations`).then(unwrap),
 
   createConversationSummary: (wsId: string, body: {
     summary: string; keyDecisions: string; messageCount: number;
     sessionId?: string; agentType?: string
   }) =>
-    request<{ data: any }>(`/api/workspaces/${wsId}/summaries/conversations`, {
+    request<{ data: ConversationSummary }>(`/api/workspaces/${wsId}/summaries/conversations`, {
       method: 'POST',
       body: JSON.stringify(body),
     }).then(unwrap),
 
   listActivitySummaries: (wsId: string) =>
-    request<{ data: any[] }>(`/api/workspaces/${wsId}/summaries/activities`).then(unwrap),
+    request<{ data: ActivitySummary[] }>(`/api/workspaces/${wsId}/summaries/activities`).then(unwrap),
 
   createActivitySummary: (wsId: string, body: {
     summary: string; keyEvents: string; activityCount: number
   }) =>
-    request<{ data: any }>(`/api/workspaces/${wsId}/summaries/activities`, {
+    request<{ data: ActivitySummary }>(`/api/workspaces/${wsId}/summaries/activities`, {
       method: 'POST',
       body: JSON.stringify(body),
     }).then(unwrap),
