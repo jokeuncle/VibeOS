@@ -4,6 +4,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import { WORKSPACE_TAB_DOT, WORKSPACE_TAB_TOP, workspaceColorFallback } from '../lib/workspaceColors'
+import { preventMouseDownFocus } from '../lib/preventMouseFocus'
 
 export default function WorkspaceTabs() {
   const t = useT()
@@ -40,6 +41,8 @@ export default function WorkspaceTabs() {
               />
               <span className="truncate max-w-[120px]">{ws.name || t('workspace.untitled')}</span>
               <button
+                type="button"
+                onMouseDown={preventMouseDownFocus}
                 onClick={(e) => {
                   e.stopPropagation()
                   removeTab(tabId)

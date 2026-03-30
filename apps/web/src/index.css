@@ -110,6 +110,20 @@ html, body, #root {
   box-shadow: 0 0 20px var(--color-accent-glow), 0 0 60px var(--color-accent-dim);
 }
 
+/* Buttons: remove UA blue ring on all :focus, then restore only for :focus-visible
+   (WebKit/Safari sometimes still drew a ring with :focus:not(:focus-visible) alone). */
+@layer base {
+  button:focus,
+  [role="button"]:focus {
+    outline: none;
+  }
+  button:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
 input, textarea {
   user-select: text;
 }

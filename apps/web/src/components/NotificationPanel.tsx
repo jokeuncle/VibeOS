@@ -5,6 +5,7 @@ import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
+import { preventMouseDownFocus } from '../lib/preventMouseFocus'
 
 function timeAgo(dateStr: string, t: (k: TranslationKey) => string) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -36,8 +37,10 @@ export default function NotificationPanel() {
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
+        onMouseDown={preventMouseDownFocus}
         onClick={() => setNotificationsOpen(!notificationsOpen)}
-        className="p-2 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer relative"
+        className="p-2 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer relative outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
       >
         <Bell className="w-4 h-4" />
         {unreadCount > 0 && (

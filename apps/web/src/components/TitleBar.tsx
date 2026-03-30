@@ -5,6 +5,7 @@ import { useUIStore } from '../stores/ui'
 import { useI18nStore, useT } from '../i18n'
 import NotificationPanel from './NotificationPanel'
 import type { TranslationKey } from '../i18n/en'
+import { preventMouseDownFocus } from '../lib/preventMouseFocus'
 
 export default function TitleBar() {
   const t = useT()
@@ -34,16 +35,20 @@ export default function TitleBar() {
           {workspace ? (
             <>
               <button
+                type="button"
+                onMouseDown={preventMouseDownFocus}
                 onClick={() => setActiveWorkspace(null)}
-                className="flex items-center gap-1 text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
               >
                 <Home className="w-3.5 h-3.5" />
                 <span className="text-xs font-medium hidden sm:inline">{t('breadcrumb.home')}</span>
               </button>
               <ChevronRight className="w-3 h-3 text-text-tertiary/40" />
               <button
+                type="button"
+                onMouseDown={preventMouseDownFocus}
                 onClick={() => setActivePhase(null)}
-                className="text-sm font-semibold tracking-tight text-text-primary hover:text-accent transition-colors cursor-pointer"
+                className="text-sm font-semibold tracking-tight text-text-primary hover:text-accent transition-colors cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
               >
                 Vibe<span className="text-accent">OS</span>
                 <span className="text-text-tertiary text-xs mx-1.5">/</span>
@@ -74,16 +79,20 @@ export default function TitleBar() {
 
       <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <button
+          type="button"
+          onMouseDown={preventMouseDownFocus}
           onClick={toggleLocale}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer text-[11px] font-mono"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer text-[11px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
         >
           <Languages className="w-3.5 h-3.5" />
           {locale === 'en' ? '中文' : 'EN'}
         </button>
         <NotificationPanel />
         <button
+          type="button"
+          onMouseDown={preventMouseDownFocus}
           onClick={() => setSettingsOpen(true)}
-          className="p-2 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer"
+          className="p-2 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-3 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
         >
           <Settings className="w-4 h-4" />
         </button>

@@ -81,13 +81,17 @@ export default function CommandPalette() {
           setTemplatePickerOpen(true)
         },
       },
-      {
-        id: 'toggle-sidebar',
-        label: t('command.toggleSidebar'),
-        icon: <PanelLeftClose className="w-4 h-4" />,
-        category: t('command.actions'),
-        action: toggleSidebar,
-      },
+      ...(activeWorkspaceId
+        ? [
+            {
+              id: 'toggle-sidebar',
+              label: t('command.toggleSidebar'),
+              icon: <PanelLeftClose className="w-4 h-4" />,
+              category: t('command.actions'),
+              action: toggleSidebar,
+            } satisfies Command,
+          ]
+        : []),
       {
         id: 'open-settings',
         label: t('command.openSettings'),

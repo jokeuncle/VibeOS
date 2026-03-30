@@ -6,6 +6,7 @@ import {
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import { preventMouseDownFocus } from '../lib/preventMouseFocus'
 
 interface DockItem {
   id: string
@@ -133,6 +134,8 @@ export default function Dock() {
             {items.map((item) => (
               <motion.button
                 key={item.id}
+                type="button"
+                onMouseDown={preventMouseDownFocus}
                 onClick={item.action}
                 whileHover={{ scale: 1.18, x: -4 }}
                 whileTap={{ scale: 0.9 }}
@@ -163,6 +166,8 @@ export default function Dock() {
 
             {/* Collapse button */}
             <motion.button
+              type="button"
+              onMouseDown={preventMouseDownFocus}
               onClick={toggleDock}
               whileHover={{ scale: 1.15 }}
               whileTap={{ scale: 0.9 }}
@@ -174,10 +179,12 @@ export default function Dock() {
         ) : (
           <motion.button
             key="dock-collapsed"
+            type="button"
             initial={{ x: 8, opacity: 0, scale: 0.9 }}
             animate={{ x: 0, opacity: 1, scale: 1 }}
             exit={{ x: 8, opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
+            onMouseDown={preventMouseDownFocus}
             onClick={toggleDock}
             whileHover={{ scale: 1.1, x: -2 }}
             whileTap={{ scale: 0.95 }}
