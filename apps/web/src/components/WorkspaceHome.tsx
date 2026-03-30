@@ -250,6 +250,7 @@ export default function WorkspaceHome() {
           </motion.div>
         )}
 
+        {(workspaces.length > 0 || loading) && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -257,12 +258,15 @@ export default function WorkspaceHome() {
           className="relative w-full max-w-4xl mb-6"
         >
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary pointer-events-none" />
+          {/* type="text": native `search` inputs add a second clear control in WebKit/Chromium. */}
           <input
-            type="search"
+            type="text"
+            role="searchbox"
             value={homeSearchQuery}
             onChange={(e) => setHomeSearchQuery(e.target.value)}
             placeholder={t('homeDash.searchWorkspaces')}
             autoComplete="off"
+            aria-label={t('homeDash.searchWorkspaces')}
             className="w-full h-10 pl-10 pr-10 rounded-xl border border-border-subtle bg-surface-2/40 text-sm text-text-primary placeholder:text-text-tertiary/70 outline-none focus:border-accent/35 focus:ring-1 focus:ring-accent/15 transition-colors"
           />
           {homeSearchQuery ? (
@@ -276,6 +280,7 @@ export default function WorkspaceHome() {
             </button>
           ) : null}
         </motion.div>
+        )}
 
         {loading && workspaces.length === 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl w-full mb-8">

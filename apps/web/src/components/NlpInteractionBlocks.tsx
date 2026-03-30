@@ -363,6 +363,7 @@ export function NlpActionBlock({
   async function handleClick() {
     if (loading || done) return
     setLoading(true)
+    let markDoneAfter = true
     try {
       switch (actionType) {
         case 'workspace_create': {
@@ -409,6 +410,7 @@ export function NlpActionBlock({
 
           if (target === 'create_workspace') {
             ui.setTemplatePickerOpen(true)
+            markDoneAfter = false
             break
           }
 
@@ -439,7 +441,7 @@ export function NlpActionBlock({
           break
         }
       }
-      setDone(true)
+      if (markDoneAfter) setDone(true)
     } catch (err) {
       console.error('NlpActionBlock error:', err)
     } finally {
