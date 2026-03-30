@@ -488,6 +488,13 @@ export function NlpActionBlock({
 // ExecutionTimeline: multi-step progress visualization
 // ---------------------------------------------------------------------------
 
+function _timelineLabelDisplay(label: string, zhOnly: boolean) {
+  if (!zhOnly) return label
+  const sep = ' / '
+  const i = label.indexOf(sep)
+  return i >= 0 ? label.slice(0, i).trim() : label
+}
+
 const STEP_ICON: Record<string, React.ReactNode> = {
   pending: <Circle className="w-3 h-3 text-text-tertiary/40" />,
   running: <Loader2 className="w-3 h-3 text-accent animate-spin" />,
@@ -495,26 +502,57 @@ const STEP_ICON: Record<string, React.ReactNode> = {
   error: <XCircle className="w-3 h-3 text-danger" />,
 }
 
-export function ExecutionTimelineBlock({ block }: { block: RichBlock }) {
+export function ExecutionTimelineBlock({
+  block,
+  compact = false,
+  /** Home assistant: show only the Chinese half of "中文 / English" labels */
+  zhOnlyLabels = false,
+  /** No outer frame — sits inside another container */
+  bare = false,
+}: {
+  block: RichBlock
+  compact?: boolean
+  zhOnlyLabels?: boolean
+  bare?: boolean
+}) {
   const steps = block.steps || []
   if (steps.length === 0) return null
 
+  const shell =
+    bare
+      ? 'p-0 border-0 bg-transparent'
+      : compact
+        ? 'rounded-lg border border-border-subtle/50 bg-surface-2/15 p-2'
+        : 'rounded-xl border border-border-subtle bg-surface-1/30 p-3'
+
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="rounded-xl border border-border-subtle bg-surface-1/30 p-3"
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={shell}>
       <div className="space-y-0">
         {steps.map((step, i) => (
-          <TimelineStep key={step.id} step={step} isLast={i === steps.length - 1} index={i} />
+          <TimelineStep
+            key={step.id}
+            step={step}
+            isLast={i === steps.length - 1}
+            index={i}
+            zhOnlyLabels={zhOnlyLabels}
+          />
         ))}
       </div>
     </motion.div>
   )
 }
 
-function TimelineStep({ step, isLast, index }: { step: ExecutionStep; isLast: boolean; index: number }) {
+function TimelineStep({
+  step,
+  isLast,
+  index,
+  zhOnlyLabels = false,
+}: {
+  step: ExecutionStep
+  isLast: boolean
+  index: number
+  zhOnlyLabels?: boolean
+}) {
   const lineColor =
     step.status === 'completed' ? 'bg-success/30' :
     step.status === 'running' ? 'bg-accent/30' :
@@ -546,10 +584,12 @@ function TimelineStep({ step, isLast, index }: { step: ExecutionStep; isLast: bo
           step.status === 'completed' ? 'text-text-secondary' :
           step.status === 'error' ? 'text-danger' : 'text-text-tertiary'
         }`}>
-          {step.label}
+          {_timelineLabelDisplay(step.label, zhOnlyLabels)}
         </span>
         {step.detail && (
-          <span className="text-[10px] text-text-tertiary ml-1.5">— {step.detail}</span>
+          <span className="text-[10px] text-text-tertiary ml-1.5">
+            — {zhOnlyLabels ? _timelineLabelDisplay(step.detail, true) : step.detail}
+          </span>
         )}
       </div>
     </motion.div>

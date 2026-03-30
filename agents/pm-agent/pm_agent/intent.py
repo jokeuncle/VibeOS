@@ -124,6 +124,22 @@ def _structured_nlu_prompt() -> str:
         },
         ensure_ascii=False,
     )
+    example_pleasant = json.dumps(
+        {
+            "intent": "create_workspace",
+            "summary": "想要一个好听的工作空间名称",
+            "confidence": 0.95,
+            "slots": {
+                "workspace_create": {
+                    "naming": "unspecified",
+                    "title": "听澜斋",
+                    "description": None,
+                },
+            },
+            "alternatives": [],
+        },
+        ensure_ascii=False,
+    )
     return (
         "You are an NLU module. Given the user message, reply with ONLY one JSON object (no markdown).\n"
         "Schema:\n"
@@ -137,17 +153,23 @@ def _structured_nlu_prompt() -> str:
         "slots rules:\n"
         '- For almost all intents use "slots": {}.\n'
         '- For create_workspace ONLY, set slots.workspace_create:\n'
-        '    { "naming": "explicit", "title": "<exact name>" } when the user gives a name '
+        '    { "naming": "explicit", "title": "<exact name>" } when the user gives a concrete name '
         '(e.g. 名字叫X, named X, 「X」).\n'
-        '    { "naming": "random", "title": null } when they ask for 随机/随便/random name.\n'
-        '    { "naming": "unspecified", "title": null } when they want a new workspace but no name preference.\n'
-        "- Optional string field \"description\": user's stated purpose — 描述/用途/用来/用于/for doing X/to build X. "
-        "Use null if they only gave a name with no purpose. Do NOT duplicate the title; keep it a concise purpose line.\n"
-        "- Never put the full user message into title; only the extracted workspace name.\n"
+        '    { "naming": "random", "title": null } when they want a machine-picked name: '
+        "随机、随便、随机取、random、起个名就行（不要求好听或文艺）等。\n"
+        '    { "naming": "unspecified", "title": "<short invented name>" } when they want a new workspace and ask you '
+        "to come up with a pleasant/creative name but do NOT give exact characters: e.g. 好听、好听一点、文艺、诗意、"
+        "有意思、帮我想个名字、起个好听的名字. Invent 2–10 Chinese characters only, no full sentence.\n"
+        '    { "naming": "unspecified", "title": null } ONLY when they want a blank new workspace with no naming '
+        "hint at all (e.g. just「新建工作空间」).\n"
+        "- Optional \"description\": purpose — 描述/用途/用来/用于/做… 项目. Use null if they mention only naming style, "
+        "no project goal.\n"
+        "- Never copy the full user message into title; extracted or invented short name only.\n"
         "confidence: 1.0 = sure; use alternatives when 0.5-0.8.\n\n"
         f"INTENT_TYPES: {', '.join(INTENT_TYPES)}\n\n"
         f"Intent guide:\n{intent_guide}\n\n"
-        f"Example:\n{example}\n"
+        f"Example (explicit name + purpose):\n{example}\n"
+        f"Example (user wants a nice name, you invent title):\n{example_pleasant}\n"
         "Reply with JSON only."
     )
 
@@ -251,6 +273,7 @@ def resolve_home_workspace_suggested_name(
         return random_title()
     if title:
         return title[:80]
+    # LLM returned create_workspace but no title (e.g. misclassified「好听」as blank) — not model-chosen text
     return "新工作空间"
 
 

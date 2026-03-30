@@ -5,11 +5,12 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import { RichBlockRenderer } from './RichBlockRenderer'
+import { HomeReasoningPanel } from './HomeReasoningPanel'
 import type { RichBlock } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
-/** Home panel: chat-style Q&A only — no intent routing or timeline chrome; cards stack under the reply. */
-const HOME_SUPPRESSED_TYPES = new Set<RichBlock['type']>(['intent_feedback', 'execution_timeline'])
+/** Shown inside collapsible CoT panel instead of inline with the reply. */
+const HOME_REASONING_TYPES = new Set<RichBlock['type']>(['intent_feedback', 'execution_timeline'])
 const HOME_CARD_TYPES = new Set<RichBlock['type']>([
   'nlp_action',
   'task_card',
@@ -19,11 +20,20 @@ const HOME_CARD_TYPES = new Set<RichBlock['type']>([
 ])
 
 function partitionHomeRichBlocks(blocks: RichBlock[] | undefined) {
-  if (!blocks?.length) return { inlineBlocks: [], cardBlocks: [] }
-  const visible = blocks.filter((b) => !HOME_SUPPRESSED_TYPES.has(b.type))
+  if (!blocks?.length) {
+    return {
+      reasoningTimeline: undefined as RichBlock | undefined,
+      reasoningIntent: undefined as RichBlock | undefined,
+      inlineBlocks: [] as RichBlock[],
+      cardBlocks: [] as RichBlock[],
+    }
+  }
+  const reasoningTimeline = blocks.find((b) => b.type === 'execution_timeline')
+  const reasoningIntent = blocks.find((b) => b.type === 'intent_feedback')
+  const visible = blocks.filter((b) => !HOME_REASONING_TYPES.has(b.type))
   const cardBlocks = visible.filter((b) => HOME_CARD_TYPES.has(b.type))
   const inlineBlocks = visible.filter((b) => !HOME_CARD_TYPES.has(b.type))
-  return { inlineBlocks, cardBlocks }
+  return { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks }
 }
 
 const QUICK_START = [
@@ -123,9 +133,14 @@ export default function HomeConversation() {
                     </div>
                     <div className="flex-1 space-y-2 min-w-0">
                       {(() => {
-                        const { inlineBlocks, cardBlocks } = partitionHomeRichBlocks(msg.richBlocks)
+                        const { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks } =
+                          partitionHomeRichBlocks(msg.richBlocks)
+                        const showReasoning = !!(reasoningTimeline || reasoningIntent)
                         const hasVisible =
-                          !!(msg.content && msg.content.trim()) || inlineBlocks.length > 0 || cardBlocks.length > 0
+                          !!(msg.content && msg.content.trim()) ||
+                          inlineBlocks.length > 0 ||
+                          cardBlocks.length > 0 ||
+                          showReasoning
                         const agentRowStreaming =
                           isStreaming && msg.role === 'agent' && msg.id === lastAgentId
 
@@ -144,6 +159,13 @@ export default function HomeConversation() {
 
                         return (
                           <>
+                            {showReasoning && (
+                              <HomeReasoningPanel
+                                timelineBlock={reasoningTimeline}
+                                intentBlock={reasoningIntent}
+                                isStreaming={agentRowStreaming}
+                              />
+                            )}
                             {msg.content && (
                               <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
                                 <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">

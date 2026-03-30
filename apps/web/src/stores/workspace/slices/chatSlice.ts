@@ -488,6 +488,20 @@ export function buildChatSlice(set: SetState, get: GetState) {
 
             if (evt.event === 'intent' && data.target_agent) {
               agentType = data.target_agent as AgentType
+              const intentBlock: RichBlock = {
+                type: 'intent_feedback',
+                intentLabel: data.intent_label?.zh || data.intent,
+                intentId: data.intent,
+                agentLabel: data.agent_label?.zh || data.target_agent,
+                agentId: data.target_agent,
+                confidence: data.confidence,
+                ...(data.slots && Object.keys(data.slots).length > 0
+                  ? { nluSlots: data.slots as Record<string, unknown> }
+                  : {}),
+              }
+              const iidx = richBlocks.findIndex((b) => b.type === 'intent_feedback')
+              if (iidx !== -1) richBlocks[iidx] = intentBlock
+              else richBlocks.push(intentBlock)
               updateMsg()
               continue
             }
