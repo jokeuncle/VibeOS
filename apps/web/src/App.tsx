@@ -28,15 +28,20 @@ export default function App() {
   const restoreSession = useAuthStore((s) => s.restoreSession)
 
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
+  const refreshActiveWorkspace = useWorkspaceStore((s) => s.refreshActiveWorkspace)
 
   useEffect(() => {
     restoreSession()
   }, [restoreSession])
 
   useEffect(() => {
-    fetchWorkspaces()
+    fetchWorkspaces().then(() => {
+      if (useWorkspaceStore.getState().activeWorkspaceId) {
+        refreshActiveWorkspace()
+      }
+    })
     return () => disconnectWebSocket()
-  }, [fetchWorkspaces])
+  }, [fetchWorkspaces, refreshActiveWorkspace])
 
   useEffect(() => {
     connectWebSocket(activeWorkspaceId)
