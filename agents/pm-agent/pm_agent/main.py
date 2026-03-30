@@ -35,13 +35,12 @@ from vibeos_agent import (
 from .context import enrich_context_with_gitlab
 from .dispatch import Dispatcher
 from .handlers import execute_pm_intent
+from .home_actions import yield_home_events
 from .intent import (
     INTENT_LABELS,
     parse_intent,
-    resolve_home_workspace_description,
-    resolve_home_workspace_suggested_name,
 )
-from .stream import build_action_event, yield_text_as_deltas
+from .stream import build_action_event, build_error_event, build_timeline_event, yield_text_as_deltas
 from .workflow import WorkflowEngine
 
 AGENT_LABELS: dict[str, dict[str, str]] = {
@@ -91,25 +90,8 @@ def _build_intent_event(parsed: Any) -> str:
     return f"event: intent\ndata: {json.dumps(payload)}\n\n"
 
 
-def _build_error_event(error_type: str, message: str, hints: list[str] | None = None, actions: list[dict] | None = None) -> str:
-    """Build a structured error SSE event."""
-    payload: dict[str, Any] = {
-        "error_type": error_type,
-        "message": message,
-    }
-    if hints:
-        payload["hints"] = hints
-    if actions:
-        payload["actions"] = actions
-    return f"event: error_card\ndata: {json.dumps(payload)}\n\n"
-
-
-def _build_timeline_event(step_id: str, label: str, status: str, detail: str = "") -> str:
-    """Build an execution timeline step SSE event."""
-    payload = {"step_id": step_id, "label": label, "status": status}
-    if detail:
-        payload["detail"] = detail
-    return f"event: timeline\ndata: {json.dumps(payload)}\n\n"
+_build_error_event = build_error_event
+_build_timeline_event = build_timeline_event
 
 
 _HOME_WS_PREFIXES_ZH = ("雾屿", "星澜", "云洲", "青谷", "极客", "灵境", "数智", "光年")
@@ -347,72 +329,14 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             yield _build_intent_event(parsed)
             yield _build_timeline_event("parse", "理解意图 / Understanding intent", "completed", parsed.summary)
 
-            # --- Home context: classify + stream reply + action card, no workspace-svc ---
+            # --- Home context: delegate to home_actions registry ---
             if is_home:
-                if parsed.intent == "general_chat":
-                    yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
-                    messages = [
-                        {"role": "system", "content": (
-                            "You are VibeOS, an AI-native software development platform assistant. "
-                            "Greet the user warmly and briefly explain what you can help with. "
-                            "Be concise (2-3 sentences). Never claim you already created a workspace, "
-                            "project, or any resource — that only happens after the user uses the button "
-                            "below or the sidebar. Respond in the same language as the user."
-                        )},
-                        {"role": "user", "content": req.message},
-                    ]
-                    async for chunk in llm.chat_stream(messages):
-                        delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        if delta:
-                            yield f"data: {json.dumps({'delta': delta})}\n\n"
-                    yield _build_timeline_event("exec", "生成回复 / Generating reply", "completed")
-                    yield build_action_event(
-                        "navigate", label="开始新项目", variant="primary",
-                        payload={"target": "create_workspace"},
-                    )
-                    yield "data: [DONE]\n\n"
-                    return
-
-                # Task / new-workspace intent on home → stream intro + workspace_create (real create on click)
-                agent_val = parsed.target_agent.value
-                intent_label = INTENT_LABELS.get(parsed.intent, {})
-                agent_label = AGENT_LABELS.get(agent_val, {})
-                suggested_name = resolve_home_workspace_suggested_name(parsed, _random_workspace_title)
-                suggested_description = resolve_home_workspace_description(parsed)
-
-                yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
-                messages = [
-                    {"role": "system", "content": (
-                        "You are VibeOS PM assistant. The user is on the home page. "
-                        "Write a brief (2-3 sentence) acknowledgement. The workspace is NOT created yet — "
-                        "only after they click the button below; do not say it already exists or is already created. "
-                        "Explain that the button will create the workspace and the relevant agent will take it from there. "
-                        "Respond in the same language as the user."
-                    )},
-                    {"role": "user", "content": req.message},
-                ]
-                async for chunk in llm.chat_stream(messages):
-                    delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                    if delta:
-                        yield f"data: {json.dumps({'delta': delta})}\n\n"
-                yield _build_timeline_event("exec", "生成回复 / Generating reply", "completed")
-
-                yield build_action_event(
-                    "workspace_create",
-                    payload={
-                        "suggested_name": suggested_name,
-                        "suggested_description": suggested_description,
-                        "intent": parsed.intent,
-                        "intent_label": intent_label,
-                        "agent": agent_val,
-                        "agent_label": agent_label,
-                        "confidence": parsed.confidence,
-                        "original_query": req.message,
-                        "slots": parsed.slots,
-                    },
-                    label="创建工作空间并开始",
-                    variant="primary",
-                )
+                async for event in yield_home_events(
+                    parsed, llm, req.message,
+                    random_title=_random_workspace_title,
+                    agent_labels=AGENT_LABELS,
+                ):
+                    yield event
                 yield "data: [DONE]\n\n"
                 return
 

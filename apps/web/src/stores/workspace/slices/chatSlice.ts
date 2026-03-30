@@ -8,6 +8,11 @@ import {
   streamSSE,
 } from '../../../lib/api'
 import {
+  parseSseToBlock,
+  parseIntentBlock,
+  parseTimelineStep,
+} from '../../../lib/sseEventParsers'
+import {
   friendlyError,
   buildNlpPhaseContext,
   safeParseRichBlocks,
@@ -238,111 +243,46 @@ export function buildChatSlice(set: SetState, get: GetState) {
 
             // --- Timeline events ---
             if (evt.event === 'timeline') {
-              const existing = timelineSteps.find((s) => s.id === data.step_id)
+              const step = parseTimelineStep(data)
+              const existing = timelineSteps.find((s) => s.id === step.id)
               if (existing) {
-                existing.status = data.status
-                if (data.detail) existing.detail = data.detail
+                existing.status = step.status
+                if (step.detail) existing.detail = step.detail
               } else {
-                timelineSteps.push({ id: data.step_id, label: data.label, status: data.status, detail: data.detail })
+                timelineSteps.push(step)
               }
               upsertTimeline()
               updateMsg()
               continue
             }
 
-            // --- Intent event (enriched with confidence + labels) ---
+            // --- Intent event ---
             if (evt.event === 'intent' && data.target_agent) {
-              agentType = data.target_agent as AgentType
-              const intentBlock: RichBlock = {
-                type: 'intent_feedback',
-                intentLabel: data.intent_label?.zh || data.intent,
-                intentId: data.intent,
-                agentLabel: data.agent_label?.zh || data.target_agent,
-                agentId: data.target_agent,
-                confidence: data.confidence,
-                ...(data.slots && Object.keys(data.slots).length > 0
-                  ? { nluSlots: data.slots as Record<string, unknown> }
-                  : {}),
-              }
+              const { block: intentBlock, agentType: at } = parseIntentBlock(data)
+              agentType = at
               richBlocks.push(intentBlock)
               updateMsg()
               continue
             }
 
-            // --- Clarification event ---
-            if (evt.event === 'clarification') {
-              richBlocks.push({
-                type: 'clarification',
-                clarifyPrompt: data.prompt,
-                clarifyOptions: data.options?.map((o: any) => ({
-                  id: o.id,
-                  label: o.label,
-                  intent: o.intent,
-                  agentType: o.agent_type,
-                })),
-              })
-              updateMsg()
-              continue
-            }
-
-            // --- Structured error card ---
-            if (evt.event === 'error_card') {
-              richBlocks.push({
-                type: 'error_card',
-                errorSeverity: data.error_type,
-                errorMessage: data.message,
-                errorHints: data.hints,
-                errorActions: data.actions?.map((a: any) => ({
-                  id: a.id,
-                  label: a.label,
-                  variant: a.variant || 'secondary',
-                })),
-              })
-              updateMsg()
-              continue
-            }
-
-            // --- CTA actions (legacy) ---
-            if (evt.event === 'cta') {
-              richBlocks.push({
-                type: 'cta_actions',
-                ctaActions: data.actions?.map((a: any) => ({
-                  id: a.id,
-                  label: a.label,
-                  variant: a.variant || 'secondary',
-                })),
-              })
-              updateMsg()
-              continue
-            }
-
-            // --- NLP action (structured) ---
-            if (evt.event === 'nlp_action') {
-              richBlocks.push({
-                type: 'nlp_action',
-                actionType: data.action_type,
-                actionPayload: data.action_payload,
-                actionLabel: data.action_label,
-                actionVariant: data.action_variant || 'primary',
-                title: data.title,
-                description: data.description,
-              })
-              updateMsg()
-              continue
-            }
-
-            // --- Requirement preview ---
+            // --- Requirement preview (upsert) ---
             if (evt.event === 'requirement_preview') {
               const existingIdx = richBlocks.findIndex((b) => b.type === 'requirement_preview')
               if (existingIdx !== -1) richBlocks.splice(existingIdx, 1)
-              richBlocks.push({
-                type: 'requirement_preview',
-                reqTitle: data.title,
-                reqDescription: data.description,
-                reqPriority: data.priority,
-              })
+              const rpBlock = parseSseToBlock(evt.event, data)
+              if (rpBlock) richBlocks.push(rpBlock)
               updateMsg()
               continue
+            }
+
+            // --- Registry-based block parsers (clarification, error_card, cta, nlp_action, etc.) ---
+            {
+              const parsed = parseSseToBlock(evt.event, data)
+              if (parsed) {
+                richBlocks.push(parsed)
+                updateMsg()
+                continue
+              }
             }
 
             // --- Content deltas ---
@@ -473,32 +413,25 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
+            // --- Timeline ---
             if (evt.event === 'timeline') {
-              const existing = timelineSteps.find((s) => s.id === data.step_id)
+              const step = parseTimelineStep(data)
+              const existing = timelineSteps.find((s) => s.id === step.id)
               if (existing) {
-                existing.status = data.status
-                if (data.detail) existing.detail = data.detail
+                existing.status = step.status
+                if (step.detail) existing.detail = step.detail
               } else {
-                timelineSteps.push({ id: data.step_id, label: data.label, status: data.status, detail: data.detail })
+                timelineSteps.push(step)
               }
               upsertTimeline()
               updateMsg()
               continue
             }
 
+            // --- Intent (upsert mode for home) ---
             if (evt.event === 'intent' && data.target_agent) {
-              agentType = data.target_agent as AgentType
-              const intentBlock: RichBlock = {
-                type: 'intent_feedback',
-                intentLabel: data.intent_label?.zh || data.intent,
-                intentId: data.intent,
-                agentLabel: data.agent_label?.zh || data.target_agent,
-                agentId: data.target_agent,
-                confidence: data.confidence,
-                ...(data.slots && Object.keys(data.slots).length > 0
-                  ? { nluSlots: data.slots as Record<string, unknown> }
-                  : {}),
-              }
+              const { block: intentBlock, agentType: at } = parseIntentBlock(data)
+              agentType = at
               const iidx = richBlocks.findIndex((b) => b.type === 'intent_feedback')
               if (iidx !== -1) richBlocks[iidx] = intentBlock
               else richBlocks.push(intentBlock)
@@ -506,32 +439,14 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            if (evt.event === 'nlp_action') {
-              richBlocks.push({
-                type: 'nlp_action',
-                actionType: data.action_type,
-                actionPayload: data.action_payload,
-                actionLabel: data.action_label,
-                actionVariant: data.action_variant || 'primary',
-                title: data.title,
-                description: data.description,
-              })
-              updateMsg()
-              continue
-            }
-
-            if (evt.event === 'error_card') {
-              richBlocks.push({
-                type: 'error_card',
-                errorSeverity: data.error_type,
-                errorMessage: data.message,
-                errorHints: data.hints,
-                errorActions: data.actions?.map((a: any) => ({
-                  id: a.id, label: a.label, variant: a.variant || 'secondary',
-                })),
-              })
-              updateMsg()
-              continue
+            // --- Registry-based block parsers (nlp_action, error_card, etc.) ---
+            {
+              const parsed = parseSseToBlock(evt.event, data)
+              if (parsed) {
+                richBlocks.push(parsed)
+                updateMsg()
+                continue
+              }
             }
 
             if (data.delta) {

@@ -1,4 +1,8 @@
-"""SSE streaming helpers for the PM agent."""
+"""SSE streaming helpers for the PM agent.
+
+All SSE event builders live here so they can be imported by both ``main.py``
+(the core NLP flow) and ``home_actions.py`` (the home-page action registry).
+"""
 
 from __future__ import annotations
 
@@ -54,3 +58,26 @@ def build_action_event(
     if description:
         data["description"] = description
     return f"event: nlp_action\ndata: {json.dumps(data)}\n\n"
+
+
+def build_timeline_event(step_id: str, label: str, status: str, detail: str = "") -> str:
+    """Build an execution timeline step SSE event."""
+    payload: dict[str, str] = {"step_id": step_id, "label": label, "status": status}
+    if detail:
+        payload["detail"] = detail
+    return f"event: timeline\ndata: {json.dumps(payload)}\n\n"
+
+
+def build_error_event(
+    error_type: str,
+    message: str,
+    hints: list[str] | None = None,
+    actions: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build a structured error card SSE event."""
+    payload: dict[str, Any] = {"error_type": error_type, "message": message}
+    if hints:
+        payload["hints"] = hints
+    if actions:
+        payload["actions"] = actions
+    return f"event: error_card\ndata: {json.dumps(payload)}\n\n"

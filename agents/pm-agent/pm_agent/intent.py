@@ -4,7 +4,8 @@ Adding a new intent with parameters:
 1. Append ``IntentDef`` to ``INTENT_REGISTRY``.
 2. Define a Pydantic model for that intent's slot object (e.g. ``CreateTaskSlots``).
 3. Document the key under ``slots`` in ``STRUCTURED_NLU_PROMPT``.
-4. Validate in ``_normalize_slots_for_intent`` and consume in handlers / home flow.
+4. Validate in ``_normalize_slots_for_intent`` and consume in handlers / home flow
+   (e.g. ``WorkspaceCreateSlots.initial_requirements`` → home ``workspace_create`` payload).
 """
 
 from __future__ import annotations
@@ -66,6 +67,35 @@ INTENT_LABELS: dict[str, dict[str, str]] = {
 # Slot models (extend per intent)
 # ---------------------------------------------------------------------------
 
+class RequirementDraftSlot(BaseModel):
+    """One draft requirement on workspace create (home NLP). At most 3 total on ``WorkspaceCreateSlots``."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = Field(default="", description="Short requirement title")
+    description: str = Field(default="", description="Optional one-line detail")
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _title(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, str):
+            s = v.strip()
+            return s[:200] if s else ""
+        return ""
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _desc(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, str):
+            s = v.strip()
+            return s[:2000] if s else ""
+        return ""
+
+
 class WorkspaceCreateSlots(BaseModel):
     """Parameters when ``intent == create_workspace``."""
 
@@ -101,6 +131,22 @@ class WorkspaceCreateSlots(BaseModel):
             return s[:2000] if s else None
         return None
 
+    initial_requirements: list[RequirementDraftSlot] = Field(
+        default_factory=list,
+        description="1–3 draft requirements when user names distinct features / epics",
+    )
+
+    @field_validator("initial_requirements", mode="before")
+    @classmethod
+    def _initial_requirements(cls, v: Any) -> list[Any]:
+        if not isinstance(v, list):
+            return []
+        out: list[Any] = []
+        for item in v[:3]:
+            if isinstance(item, dict):
+                out.append(dict(item))
+        return out
+
 
 # ---------------------------------------------------------------------------
 # Structured NLU prompt (JSON-only response)
@@ -118,6 +164,10 @@ def _structured_nlu_prompt() -> str:
                     "naming": "explicit",
                     "title": "钱磊",
                     "description": "电商后台相关协作与交付",
+                    "initial_requirements": [
+                        {"title": "商品与库存管理", "description": "SKU、上下架、库存同步"},
+                        {"title": "订单与支付", "description": "下单、支付回调、对账"},
+                    ],
                 },
             },
             "alternatives": [],
@@ -164,6 +214,10 @@ def _structured_nlu_prompt() -> str:
         "hint at all (e.g. just「新建工作空间」).\n"
         "- Optional \"description\": purpose — 描述/用途/用来/用于/做… 项目. Use null if they mention only naming style, "
         "no project goal.\n"
+        '- Optional \"initial_requirements\": array of 1–3 objects {\"title\": \"...\", \"description\": \"...\"} when the '
+        "user names distinct features, epics, or bullets (e.g. 「先做A再做B」, login + payment, 包括…和…). "
+        "Titles short; description optional one line. Use [] or omit if they only want a workspace shell "
+        "(no separate requirement breakdown).\n"
         "- Never copy the full user message into title; extracted or invented short name only.\n"
         "confidence: 1.0 = sure; use alternatives when 0.5-0.8.\n\n"
         f"INTENT_TYPES: {', '.join(INTENT_TYPES)}\n\n"
@@ -295,6 +349,33 @@ def resolve_home_workspace_description(parsed: ParsedIntent) -> str:
         return ""
 
     return text[:2000]
+
+
+def resolve_home_initial_requirements(parsed: ParsedIntent) -> list[dict[str, str]]:
+    """1–3 draft requirements for home ``workspace_create`` action payload (non-empty titles only)."""
+    if parsed.intent != "create_workspace":
+        return []
+
+    wc = parsed.slots.get("workspace_create") or {}
+    if not isinstance(wc, dict):
+        return []
+
+    raw = wc.get("initial_requirements")
+    if not isinstance(raw, list):
+        return []
+
+    out: list[dict[str, str]] = []
+    for item in raw[:3]:
+        if not isinstance(item, dict):
+            continue
+        title_raw = item.get("title")
+        if not isinstance(title_raw, str) or not title_raw.strip():
+            continue
+        desc_raw = item.get("description")
+        ds = desc_raw.strip() if isinstance(desc_raw, str) else ""
+        out.append({"title": title_raw.strip()[:200], "description": ds[:2000]})
+
+    return out
 
 
 async def parse_intent(

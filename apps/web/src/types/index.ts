@@ -398,6 +398,7 @@ export type NlpActionType =
   | 'phase_execute'
   | 'confirm'
   | 'navigate'
+  | (string & {})
 
 export interface RichBlock {
   type:

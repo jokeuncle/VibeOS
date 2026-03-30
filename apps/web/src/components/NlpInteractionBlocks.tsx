@@ -3,14 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Target, Bot, Zap, AlertTriangle, XCircle, ServerOff,
   HelpCircle, Lightbulb, RotateCcw, ArrowRight,
-  CheckCircle2, Loader2, Circle, ChevronRight, Sparkles, Play,
-  LayoutTemplate,
+  CheckCircle2, Loader2, Circle, ChevronRight,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
-import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import { workspaceApi } from '../lib/api'
-import type { RichBlock, RichAction, ClarificationOption, ExecutionStep, NlpActionType } from '../types'
+import { getNlpAction } from '../lib/nlpActions'
+import type { RichBlock, RichAction, ClarificationOption, ExecutionStep } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 // ---------------------------------------------------------------------------
@@ -329,16 +327,8 @@ export function CTAActionsBlock({
 }
 
 // ---------------------------------------------------------------------------
-// NlpActionBlock: data-driven contextual action buttons
+// NlpActionBlock: registry-driven contextual action buttons
 // ---------------------------------------------------------------------------
-
-const ACTION_ICON: Record<string, React.ReactNode> = {
-  workspace_create: <Sparkles className="w-3.5 h-3.5" />,
-  task_execute: <Play className="w-3.5 h-3.5" />,
-  phase_execute: <ArrowRight className="w-3.5 h-3.5" />,
-  navigate: <ChevronRight className="w-3.5 h-3.5" />,
-  confirm: <ArrowRight className="w-3.5 h-3.5" />,
-}
 
 export function NlpActionBlock({
   block,
@@ -350,98 +340,24 @@ export function NlpActionBlock({
   const t = useT()
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
-  const { setActiveWorkspace, sendNLPMessageStream, sendHomeNLPStream, runPhase } = useWorkspaceStore()
+  const [localPayload, setLocalPayload] = useState<Record<string, unknown>>(
+    block.actionPayload || {},
+  )
 
-  const actionType = block.actionType as NlpActionType | undefined
+  const actionType = block.actionType as string | undefined
   if (!actionType) return null
 
-  const payload = block.actionPayload || {}
+  const def = getNlpAction(actionType)
   const label = block.actionLabel || t(`nlp.action.${actionType}` as TranslationKey) || actionType
   const variant = block.actionVariant || 'primary'
-  const icon = ACTION_ICON[actionType] || <ArrowRight className="w-3.5 h-3.5" />
+  const icon = def?.icon || <ArrowRight className="w-3.5 h-3.5" />
 
   async function handleClick() {
-    if (loading || done) return
+    if (loading || done || !def) return
     setLoading(true)
-    let markDoneAfter = true
     try {
-      switch (actionType) {
-        case 'workspace_create': {
-          const name = (payload.suggested_name as string) || '新工作空间'
-          const description =
-            typeof payload.suggested_description === 'string' ? payload.suggested_description : ''
-          const ws = await workspaceApi.create(name, description, 'indigo')
-          useWorkspaceStore.setState((s) => ({ workspaces: [...s.workspaces, ws] }))
-          setActiveWorkspace(ws.id)
-          const query = (payload.original_query as string) || ''
-          if (query) {
-            setTimeout(() => useWorkspaceStore.getState().sendNLPMessageStream(query), 300)
-          }
-          useWorkspaceStore.getState().clearHomeMessages()
-          useUIStore.getState().setHomeConversationVisible(false)
-          break
-        }
-        case 'task_execute': {
-          const taskId = payload.taskId as string
-          if (!taskId) break
-          const wsId = useWorkspaceStore.getState().activeWorkspaceId
-          if (wsId) sendNLPMessageStream(`execute task ${taskId}`)
-          else sendHomeNLPStream(`execute task ${taskId}`)
-          break
-        }
-        case 'phase_execute': {
-          const phase = payload.phase as string
-          if (!phase) break
-          const wsId = useWorkspaceStore.getState().activeWorkspaceId
-          if (wsId) runPhase(phase)
-          else {
-            useUIStore.getState().addToast({
-              type: 'info',
-              message: t('workspace.selectFirst'),
-            })
-          }
-          break
-        }
-        case 'navigate': {
-          const target = payload.target as string | undefined
-          const ui = useUIStore.getState()
-          const ws = useWorkspaceStore.getState()
-          const wsId = ws.activeWorkspaceId
-
-          if (target === 'create_workspace') {
-            ui.setTemplatePickerOpen(true)
-            markDoneAfter = false
-            break
-          }
-
-          if (!wsId) {
-            ui.addToast({ type: 'info', message: t('workspace.selectFirst') })
-            break
-          }
-
-          if (target === 'requirement_detail') {
-            const rid = (payload.requirementId as string | undefined) || ws.activeRequirementId
-            if (rid) ws.setActiveRequirement(rid)
-            ui.setViewMode('requirements')
-          } else if (target === 'task_list') {
-            ws.setActiveRequirement(null)
-            ui.setViewMode('requirements')
-          }
-          break
-        }
-        case 'confirm': {
-          const text =
-            (payload.message as string) ||
-            (payload.followUp as string) ||
-            (payload.prompt as string) ||
-            '请继续'
-          const wsId = useWorkspaceStore.getState().activeWorkspaceId
-          if (wsId) sendNLPMessageStream(text)
-          else sendHomeNLPStream(text)
-          break
-        }
-      }
-      if (markDoneAfter) setDone(true)
+      const result = await def.execute(localPayload, { t, layout })
+      if (result.markDone !== false) setDone(true)
     } catch (err) {
       console.error('NlpActionBlock error:', err)
     } finally {
@@ -456,98 +372,118 @@ export function NlpActionBlock({
         ? 'bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20'
         : 'bg-surface-2 hover:bg-surface-3 text-text-secondary border border-border-subtle'
 
-  const layoutClass =
-    layout === 'chip'
-      ? `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-medium ${
-        done ? 'opacity-50 cursor-default' : variantClass
-      }`
-      : ''
-
-  if (layout === 'card') {
-    const navTarget = payload.target as string | undefined
-    let cardSubtitle: string | undefined = block.description
-    if (!cardSubtitle) {
-      if (actionType === 'navigate' && navTarget === 'create_workspace') {
-        cardSubtitle = t('nlp.homeNavigateCreateHint' as TranslationKey)
-      } else if (actionType === 'workspace_create') {
-        const name = typeof payload.suggested_name === 'string' ? payload.suggested_name : ''
-        const desc = typeof payload.suggested_description === 'string' ? payload.suggested_description : ''
-        const bits: string[] = []
-        if (name) bits.push(`${t('nlp.homeWorkspaceNameLine' as TranslationKey)} ${name}`)
-        if (desc) bits.push(desc.length > 56 ? `${desc.slice(0, 56)}…` : desc)
-        cardSubtitle =
-          bits.length > 0 ? bits.join(' · ') : t('nlp.homeWorkspaceCreateHint' as TranslationKey)
-      }
-    }
-    const cardHeadline = (block.title && block.title.trim()) || label
-
-    const rowIcon =
-      actionType === 'navigate' && navTarget === 'create_workspace' ? (
-        <LayoutTemplate className="w-4 h-4" />
-      ) : (
-        icon
-      )
-
-    const iconWrapTint =
-      actionType === 'workspace_create'
-        ? 'bg-accent/12 text-accent'
-        : 'bg-surface-3/70 text-text-secondary group-hover:text-accent'
-
+  // --- Chip layout ---
+  if (layout === 'chip') {
+    const chipClass = `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-medium ${
+      done ? 'opacity-50 cursor-default' : variantClass
+    }`
     return (
       <motion.button
         type="button"
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.2 }}
         onClick={handleClick}
         disabled={loading || done}
-        className={
-          `group w-full text-left rounded-2xl border transition-all duration-200 cursor-pointer ` +
-          `border-border-subtle/45 bg-surface-2/20 hover:bg-surface-2/40 hover:border-accent/22 ` +
-          `shadow-[0_2px_14px_-5px_rgba(0,0,0,.07)] hover:shadow-[0_8px_28px_-10px_rgba(0,0,0,.09)] ` +
-          `${done ? 'opacity-55 pointer-events-none' : ''} ${loading ? 'pointer-events-none' : ''}`
-        }
+        className={`transition-all cursor-pointer ${chipClass}`}
+      >
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icon}
+        {loading ? t('nlp.action.creating' as TranslationKey) : label}
+      </motion.button>
+    )
+  }
+
+  // --- Card layout ---
+  const cardSubtitle = block.description || def?.buildSubtitle?.(localPayload, t)
+  const cardHeadline = block.title?.trim() || def?.cardHeadline?.(localPayload, t) || label
+  const cardIcon = def?.cardIcon?.(localPayload) ?? icon
+  const iconTint = def?.cardIconTint?.(localPayload) ?? 'bg-surface-3/70 text-text-secondary group-hover:text-accent'
+  const HasBody = def?.CardBody
+
+  const cardShell =
+    `rounded-2xl border transition-all duration-200 border-border-subtle/45 bg-surface-2/20 ` +
+    `shadow-[0_2px_14px_-5px_rgba(0,0,0,.07)] ` +
+    `${done ? 'opacity-55' : ''}`
+
+  const iconSlot = loading
+    ? <Loader2 className="w-4 h-4 animate-spin opacity-90" />
+    : <span className="[&_svg]:shrink-0">{cardIcon}</span>
+
+  const headlineSlot = loading ? t('nlp.action.creating' as TranslationKey) : cardHeadline
+
+  if (HasBody) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className={`group w-full text-left ${cardShell} ${loading || done ? 'pointer-events-none' : ''}`}
       >
         <div className="flex items-center gap-3 px-3.5 py-3">
-          <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconWrapTint}`}
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin opacity-90" />
-            ) : (
-              <span className="[&_svg]:shrink-0">{rowIcon}</span>
-            )}
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconTint}`}>
+            {iconSlot}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-medium text-text-primary leading-snug">
-              {loading ? t('nlp.action.creating' as TranslationKey) : cardHeadline}
-            </div>
+            <div className="text-[12px] font-medium text-text-primary leading-snug">{headlineSlot}</div>
             {!loading && cardSubtitle ? (
-              <p className="text-[11px] text-text-tertiary mt-1 leading-relaxed line-clamp-2">
-                {cardSubtitle}
-              </p>
+              <p className="text-[11px] text-text-tertiary mt-1 leading-relaxed line-clamp-2">{cardSubtitle}</p>
             ) : null}
           </div>
+        </div>
+
+        {!loading ? <HasBody payload={localPayload} onPayloadChange={setLocalPayload} t={t} /> : null}
+
+        <button
+          type="button"
+          onClick={handleClick}
+          disabled={loading || done}
+          className={
+            `w-full flex items-center gap-3 px-3.5 py-3 border-t border-border-subtle/35 ` +
+            `rounded-b-2xl transition-colors cursor-pointer text-left ` +
+            `hover:bg-surface-2/50 hover:border-accent/20 ` +
+            `${loading || done ? 'cursor-default opacity-80' : ''}`
+          }
+        >
+          <span className="flex-1 text-[11px] font-medium text-accent">
+            {loading ? t('nlp.action.creating' as TranslationKey) : label}
+          </span>
           {!loading ? (
             <ChevronRight className="w-4 h-4 text-text-tertiary group-hover:text-accent shrink-0 transition-colors" />
           ) : null}
-        </div>
-      </motion.button>
+        </button>
+      </motion.div>
     )
   }
 
   return (
     <motion.button
       type="button"
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
       onClick={handleClick}
       disabled={loading || done}
-      className={`transition-all cursor-pointer ${layoutClass}`}
+      className={
+        `group w-full text-left rounded-2xl border transition-all duration-200 cursor-pointer ` +
+        `border-border-subtle/45 bg-surface-2/20 hover:bg-surface-2/40 hover:border-accent/22 ` +
+        `shadow-[0_2px_14px_-5px_rgba(0,0,0,.07)] hover:shadow-[0_8px_28px_-10px_rgba(0,0,0,.09)] ` +
+        `${done ? 'opacity-55 pointer-events-none' : ''} ${loading ? 'pointer-events-none' : ''}`
+      }
     >
-      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icon}
-      {loading ? t('nlp.action.creating' as TranslationKey) : label}
+      <div className="flex items-center gap-3 px-3.5 py-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconTint}`}>
+          {iconSlot}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] font-medium text-text-primary leading-snug">{headlineSlot}</div>
+          {!loading && cardSubtitle ? (
+            <p className="text-[11px] text-text-tertiary mt-1 leading-relaxed line-clamp-2">{cardSubtitle}</p>
+          ) : null}
+        </div>
+        {!loading ? (
+          <ChevronRight className="w-4 h-4 text-text-tertiary group-hover:text-accent shrink-0 transition-colors" />
+        ) : null}
+      </div>
     </motion.button>
   )
 }

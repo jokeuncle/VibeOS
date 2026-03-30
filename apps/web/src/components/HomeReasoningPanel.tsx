@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { ExecutionTimelineBlock } from './NlpInteractionBlocks'
 import type { RichBlock } from '../types'
+import { useT } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
 
 type WorkspaceCreateSlots = {
   naming?: string
   title?: string | null
   description?: string | null
+  initial_requirements?: { title?: string; description?: string }[]
 }
 
 /** 首页助手：轻量「过程」折叠，中文文案，避免厚重卡片感 */
@@ -20,6 +23,7 @@ export function HomeReasoningPanel({
   isStreaming: boolean
 }) {
   const [open, setOpen] = useState(isStreaming)
+  const t = useT()
 
   const steps = timelineBlock?.steps ?? []
   const wc = intentBlock?.nluSlots?.workspace_create as WorkspaceCreateSlots | undefined
@@ -36,6 +40,15 @@ export function HomeReasoningPanel({
     parts.push(intentBlock.intentLabel || '')
     if (wc?.title) parts.push(`名叫「${wc.title}」`)
     if (wc?.description) parts.push(wc.description)
+    const draftN =
+      Array.isArray(wc?.initial_requirements)
+        ? wc.initial_requirements.filter((x) => x?.title && String(x.title).trim()).length
+        : 0
+    if (draftN > 0) {
+      parts.push(
+        t('nlp.homeDraftRequirementsCount' as TranslationKey).replace(/\{count\}/g, String(draftN)),
+      )
+    }
     const body = parts.filter(Boolean).join('，')
     if (!body) return null
     return `大概是：${body}。`
