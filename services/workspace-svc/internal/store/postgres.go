@@ -1362,6 +1362,54 @@ func (s *PostgresStore) ListRequirements(ctx context.Context, wsID string) ([]mo
 	if reqs == nil {
 		reqs = []models.Requirement{}
 	}
+	if len(reqs) == 0 {
+		return reqs, nil
+	}
+
+	byID := make(map[string]*models.Requirement, len(reqs))
+	for i := range reqs {
+		byID[reqs[i].ID] = &reqs[i]
+	}
+
+	relRows, err := s.pool.Query(ctx, `
+		SELECT rr.id, rr.workspace_id, rr.source_id, rr.target_id, rr.relation_type,
+		       rr.description, rr.created_at,
+		       st.title, tt.title
+		FROM requirement_relations rr
+		INNER JOIN requirements st ON st.id = rr.source_id AND st.workspace_id = rr.workspace_id
+		INNER JOIN requirements tt ON tt.id = rr.target_id AND tt.workspace_id = rr.workspace_id
+		WHERE rr.workspace_id = $1`, wsID)
+	if err != nil {
+		return nil, fmt.Errorf("query requirement relations for workspace: %w", err)
+	}
+	defer relRows.Close()
+
+	for relRows.Next() {
+		var id, wid, srcID, tgtID, relType, desc string
+		var createdAt time.Time
+		var srcTitle, tgtTitle string
+		if err := relRows.Scan(&id, &wid, &srcID, &tgtID, &relType, &desc, &createdAt, &srcTitle, &tgtTitle); err != nil {
+			return nil, fmt.Errorf("scan workspace requirement relation: %w", err)
+		}
+		rt := models.RelationType(relType)
+
+		if src := byID[srcID]; src != nil {
+			src.Relations = append(src.Relations, models.RequirementRelation{
+				ID: id, WorkspaceID: wid, SourceID: srcID, TargetID: tgtID,
+				RelationType: rt, Description: desc, TargetTitle: tgtTitle, CreatedAt: createdAt,
+			})
+		}
+		if tgt := byID[tgtID]; tgt != nil {
+			tgt.Relations = append(tgt.Relations, models.RequirementRelation{
+				ID: id, WorkspaceID: wid, SourceID: srcID, TargetID: tgtID,
+				RelationType: rt, Description: desc, TargetTitle: srcTitle, CreatedAt: createdAt,
+			})
+		}
+	}
+	if err := relRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace requirement relations: %w", err)
+	}
+
 	return reqs, nil
 }
 

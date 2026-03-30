@@ -132,6 +132,7 @@ export default function RequirementDetail() {
       setAddingRelation(false); setNewRelTarget('')
       const { useWorkspaceStore: gs } = await import('../../stores/workspace')
       gs.getState().loadRequirementDetail(activeWorkspaceId, req.id)
+      gs.getState().refreshActiveWorkspace()
     } catch { addToast({ type: 'error', message: 'Failed to add relation' }) }
   }
 
@@ -142,6 +143,7 @@ export default function RequirementDetail() {
       await workspaceApi.removeRequirementRelation(activeWorkspaceId, req.id, rel.id)
       const { useWorkspaceStore: gs } = await import('../../stores/workspace')
       gs.getState().loadRequirementDetail(activeWorkspaceId, req.id)
+      gs.getState().refreshActiveWorkspace()
     } catch { addToast({ type: 'error', message: 'Failed to remove relation' }) }
   }
 

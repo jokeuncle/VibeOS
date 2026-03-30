@@ -4,7 +4,7 @@ import { GitBranch } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import type { Requirement, RequirementStatus, RelationType } from '../types'
+import type { Requirement, RequirementRelation, RequirementStatus, RelationType } from '../types'
 
 const STATUS_ORDER: RequirementStatus[] = ['draft', 'designing', 'ready', 'in_progress', 'completed']
 const STATUS_FILL: Record<RequirementStatus, string> = {
@@ -51,8 +51,8 @@ export default function RequirementGraph() {
   const workspace = workspaces.find(w => w.id === activeWorkspaceId)
   const requirements = workspace?.requirements || []
 
-  const { nodes, width, height } = useMemo(() => {
-    if (requirements.length === 0) return { nodes: [], width: 600, height: 300 }
+  const { nodes, width, height, edges } = useMemo(() => {
+    if (requirements.length === 0) return { nodes: [], width: 600, height: 300, edges: [] as RequirementRelation[] }
 
     const COL_GAP = 80
     const ROW_GAP = 24
@@ -64,7 +64,8 @@ export default function RequirementGraph() {
     requirements.forEach(r => columns[r.status].push(r))
 
     const maxRows = Math.max(1, ...Object.values(columns).map(c => c.length))
-    const totalWidth = 3 * NODE_W + 2 * COL_GAP + 2 * PAD
+    const numCols = STATUS_ORDER.length
+    const totalWidth = numCols * NODE_W + (numCols - 1) * COL_GAP + 2 * PAD
     const totalHeight = maxRows * NODE_H + (maxRows - 1) * ROW_GAP + 2 * PAD
 
     const positions: NodePos[] = []
@@ -81,7 +82,14 @@ export default function RequirementGraph() {
       })
     })
 
-    return { nodes: positions, width: totalWidth, height: totalHeight }
+    const edgesMap = new Map<string, RequirementRelation>()
+    for (const p of positions) {
+      for (const rel of p.req.relations ?? []) {
+        if (!edgesMap.has(rel.id)) edgesMap.set(rel.id, rel)
+      }
+    }
+
+    return { nodes: positions, width: totalWidth, height: totalHeight, edges: [...edgesMap.values()] }
   }, [requirements])
 
   const handleClick = useCallback((id: string) => {
@@ -124,31 +132,30 @@ export default function RequirementGraph() {
           style={{ minHeight: height, maxHeight: 500 }}
           viewBox={`0 0 ${width} ${height}`}
         >
-          {/* Relation edges — drawn beneath nodes */}
-          {nodes.map(node =>
-            (node.req.relations || []).map((rel, ri) => {
-              const target = nodes.find(n => n.id === rel.targetId)
-              if (!target) return null
-              const x1 = node.x + NODE_W
-              const y1 = node.y + 32
-              const x2 = target.x
-              const y2 = target.y + 32
-              const mx = (x1 + x2) / 2
-              const color = EDGE_COLORS[rel.relationType] ?? 'var(--color-text-tertiary)'
-              return (
-                <g key={`${node.id}-${rel.targetId}-${ri}`}>
-                  <path
-                    d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={1.5}
-                    strokeOpacity={0.55}
-                    markerEnd={`url(#arrow-${rel.relationType})`}
-                  />
-                </g>
-              )
-            })
-          )}
+          {/* Relation edges — source → target (deduped); list API attaches rels to both endpoints */}
+          {edges.map((rel) => {
+            const from = nodes.find(n => n.id === rel.sourceId)
+            const to = nodes.find(n => n.id === rel.targetId)
+            if (!from || !to) return null
+            const x1 = from.x + NODE_W
+            const y1 = from.y + NODE_H / 2
+            const x2 = to.x
+            const y2 = to.y + NODE_H / 2
+            const mx = (x1 + x2) / 2
+            const color = EDGE_COLORS[rel.relationType] ?? 'var(--color-text-tertiary)'
+            return (
+              <g key={rel.id}>
+                <path
+                  d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={1.5}
+                  strokeOpacity={0.55}
+                  markerEnd={`url(#arrow-${rel.relationType})`}
+                />
+              </g>
+            )
+          })}
 
           {/* Arrow markers */}
           <defs>
