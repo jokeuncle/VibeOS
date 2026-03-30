@@ -12,6 +12,7 @@ import type { TranslationKey } from '../i18n/en'
 import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
 import { workspaceApi, agentApi } from '../lib/api'
 import type { Agent } from '../types'
+import TypewriterText from './TypewriterText'
 
 interface Suggestion {
   id: string
@@ -87,6 +88,12 @@ const PHASE_CONTEXT_LABEL: Record<string, TranslationKey> = {
   monitoring:   'requirement.phase.monitoring',
 }
 
+const QUICK_START = [
+  { id: 'ecommerce', key: 'nlp.quickStart.ecommerce' as TranslationKey },
+  { id: 'blog', key: 'nlp.quickStart.blog' as TranslationKey },
+  { id: 'dashboard', key: 'nlp.quickStart.dashboard' as TranslationKey },
+]
+
 const INTENT_KEYWORDS: { keywords: RegExp; intent: string; label: string; agent: string }[] = [
   { keywords: /创建.{0,4}需求|新需求|新功能|feature|create.*req/i, intent: 'create_requirement', label: '创建需求', agent: 'PM Agent' },
   { keywords: /创建.{0,4}任务|新任务|create.*task/i, intent: 'create_task', label: '创建任务', agent: 'PM Agent' },
@@ -155,6 +162,8 @@ export default function CommandBar() {
   const [pendingCreate, setPendingCreate] = useState<PendingWorkspaceCreate | null>(null)
   const [wsNameInput, setWsNameInput] = useState('')
   const [intentHint, setIntentHint] = useState<IntentHint | null>(null)
+  const [homeUserMessage, setHomeUserMessage] = useState<string | null>(null)
+  const [homeTypingDone, setHomeTypingDone] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const wsNameRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -178,6 +187,8 @@ export default function CommandBar() {
     setIntentHint(null)
     setHomeResponse(null)
     setPendingCreate(null)
+    setHomeUserMessage(null)
+    setHomeTypingDone(false)
   }, [activeWorkspaceId, setHomeSearchQuery])
 
   // Debounced intent prediction
@@ -339,33 +350,57 @@ export default function CommandBar() {
     createWorkspaceAndSend(wsNameInput.trim() || pendingCreate.suggestedName, pendingCreate.query)
   }
 
-  async function doSubmit() {
-    if (!input.trim() || nlpLoading || homeCreating || homeClassifying) return
+  function dismissHomeConversation() {
+    setHomeUserMessage(null)
+    setHomeResponse(null)
+    setPendingCreate(null)
+    setHomeTypingDone(false)
+    setHomeClassifying(false)
+  }
+
+  function handleQuickStart(text: string) {
+    doSubmit(text)
+  }
+
+  useEffect(() => {
+    if (homeTypingDone && pendingCreate) {
+      setTimeout(() => wsNameRef.current?.select(), 120)
+    }
+  }, [homeTypingDone, pendingCreate])
+
+  async function doSubmit(overrideInput?: string) {
+    const text = (overrideInput || input).trim()
+    if (!text || nlpLoading || homeCreating || homeClassifying) return
 
     setIntentHint(null)
 
     if (!activeWorkspaceId) {
-      const query = input.trim()
       setInput('')
       setHomeResponse(null)
       setPendingCreate(null)
+      setHomeTypingDone(false)
+      setHomeUserMessage(text)
       setHomeClassifying(true)
 
       try {
-        const cls = await agentApi.classify(query)
+        const cls = await agentApi.classify(text)
+        setHomeClassifying(false)
 
         if (cls.intent === 'general_chat') {
-          setHomeClassifying(false)
           setHomeResponse(t('nlp.homeGreeting' as TranslationKey))
           return
         }
 
-        setHomeClassifying(false)
         const intentLabel = cls.intent_label?.zh || cls.intent_label?.en || cls.summary
         const agentLbl = cls.agent_label?.zh || cls.agent_label?.en || cls.target_agent
         const suggestedName = cls.summary.slice(0, 40) || '新工作空间'
+        setHomeResponse(
+          t('nlp.homeTaskIntro' as TranslationKey)
+            .replace('{intent}', intentLabel)
+            .replace('{agent}', agentLbl)
+        )
         setPendingCreate({
-          query,
+          query: text,
           intent: cls.intent,
           intentLabel,
           agentLabel: agentLbl,
@@ -373,21 +408,24 @@ export default function CommandBar() {
           confidence: cls.confidence,
         })
         setWsNameInput(suggestedName)
-        setTimeout(() => wsNameRef.current?.select(), 80)
       } catch {
         setHomeClassifying(false)
-        const fallbackHint = predictIntent(query)
+        const fallbackHint = predictIntent(text)
         if (fallbackHint) {
+          setHomeResponse(
+            t('nlp.homeTaskIntro' as TranslationKey)
+              .replace('{intent}', fallbackHint.label)
+              .replace('{agent}', fallbackHint.agent)
+          )
           setPendingCreate({
-            query,
+            query: text,
             intent: fallbackHint.intent,
             intentLabel: fallbackHint.label,
             agentLabel: fallbackHint.agent,
-            suggestedName: query.slice(0, 40) || '新工作空间',
+            suggestedName: text.slice(0, 40) || '新工作空间',
             confidence: 0.6,
           })
-          setWsNameInput(query.slice(0, 40) || '新工作空间')
-          setTimeout(() => wsNameRef.current?.select(), 80)
+          setWsNameInput(text.slice(0, 40) || '新工作空间')
         } else {
           setHomeResponse(t('nlp.homeGreeting' as TranslationKey))
         }
@@ -399,8 +437,8 @@ export default function CommandBar() {
       const targetPhase = nlpContext?.phaseType || 'requirement'
       const nonRequirementPhases = ['architecture', 'design', 'development', 'testing', 'deployment', 'monitoring']
       const mentionsNonRequirementPhase = nonRequirementPhases.some(phase =>
-        input.toLowerCase().includes(phase) ||
-        input.toLowerCase().includes(t(`requirement.phase.${phase}` as TranslationKey).toLowerCase())
+        text.toLowerCase().includes(phase) ||
+        text.toLowerCase().includes(t(`requirement.phase.${phase}` as TranslationKey).toLowerCase())
       )
       if (mentionsNonRequirementPhase && targetPhase !== 'requirement') {
         alert(t('requirement.notReadyAlert' as TranslationKey))
@@ -409,7 +447,7 @@ export default function CommandBar() {
       }
     }
 
-    sendNLPMessage(input.trim())
+    sendNLPMessage(text)
     setInput('')
   }
 
@@ -566,160 +604,184 @@ export default function CommandBar() {
         )}
       </AnimatePresence>
 
-      {/* Home: rich workspace creation confirmation card */}
+      {/* Home: Conversational NLP response area */}
       <AnimatePresence>
-        {pendingCreate && !activeWorkspaceId && (
+        {!activeWorkspaceId && homeUserMessage && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.97 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            className="mx-4 mb-2"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.25 }}
+            className="mx-4 mb-2 space-y-2.5"
           >
-            <div className="rounded-xl border border-accent/20 bg-surface-1/80 backdrop-blur-md shadow-xl shadow-black/10 p-4 space-y-3">
-              {/* Intent header */}
-              <div className="flex items-center gap-2">
-                <motion.div
-                  initial={{ rotate: -90, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  transition={{ delay: 0.05, type: 'spring', stiffness: 200 }}
-                  className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center"
-                >
-                  <Target className="w-3.5 h-3.5 text-accent" />
-                </motion.div>
-                <span className="text-[11px] font-semibold text-text-secondary">
-                  {t('nlp.intentDetected' as TranslationKey)}
-                </span>
-                <motion.span
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 'auto', opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium border overflow-hidden ${
-                    pendingCreate.confidence >= 0.8
-                      ? 'bg-success/10 border-success/20 text-success'
-                      : 'bg-amber-400/10 border-amber-400/20 text-amber-400'
-                  }`}
-                >
-                  {Math.round(pendingCreate.confidence * 100)}%
-                </motion.span>
-                <div className="flex-1" />
-                <button
-                  onClick={() => setPendingCreate(null)}
-                  className="p-1 rounded-lg text-text-tertiary/50 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+            {/* User message bubble */}
+            <motion.div
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex justify-end"
+            >
+              <div className="px-3.5 py-2 rounded-2xl rounded-tr-sm bg-accent/10 border border-accent/15 text-xs text-text-primary max-w-[80%]">
+                {homeUserMessage}
               </div>
+            </motion.div>
 
-              {/* Intent → Agent routing */}
-              <motion.div
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-                className="flex items-center gap-2 ml-9"
-              >
-                <span className="text-xs font-medium text-accent">{pendingCreate.intentLabel}</span>
-                <ChevronRight className="w-3 h-3 text-text-tertiary/40" />
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-2 border border-border-subtle text-[11px] font-medium text-text-secondary">
-                  <Bot className="w-3 h-3 text-accent" />
-                  {pendingCreate.agentLabel}
-                </span>
-              </motion.div>
-
-              {/* Workspace name input */}
+            {/* AI typing indicator */}
+            {homeClassifying && (
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="ml-9 space-y-1.5"
+                className="flex items-start gap-2"
               >
-                <label className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
-                  {t('nlp.workspaceName' as TranslationKey)}
-                </label>
-                <input
-                  ref={wsNameRef}
-                  type="text"
-                  value={wsNameInput}
-                  onChange={(e) => setWsNameInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); handleConfirmCreate() }
-                    if (e.key === 'Escape') { e.preventDefault(); setPendingCreate(null) }
-                  }}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-2/80 border border-border-subtle text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40 transition-colors"
-                />
-                <p className="text-[10px] text-text-tertiary leading-relaxed">
-                  {t('nlp.willCreateHint' as TranslationKey).replace('{agent}', pendingCreate.agentLabel)}
-                </p>
+                <div className="w-6 h-6 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                  <Bot className="w-3 h-3 text-accent" />
+                </div>
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/60">
+                  <span className="flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </span>
+                  <span className="text-[11px] text-text-tertiary">{t('nlp.classifying' as TranslationKey)}</span>
+                </div>
               </motion.div>
+            )}
 
-              {/* Actions */}
+            {/* AI response with typewriter effect */}
+            {homeResponse && !homeClassifying && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="flex gap-2 justify-end pt-1"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-start gap-2"
               >
+                <div className="w-6 h-6 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="w-3 h-3 text-accent" />
+                </div>
+                <div className="flex-1 space-y-2.5 min-w-0">
+                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10">
+                    <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
+                      <TypewriterText
+                        text={homeResponse}
+                        speed={18}
+                        onComplete={() => setHomeTypingDone(true)}
+                      />
+                    </p>
+                  </div>
+
+                  {/* Task card — workspace creation (slides in after typewriter completes) */}
+                  <AnimatePresence>
+                    {homeTypingDone && pendingCreate && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.3, ease: 'easeOut' }}
+                        className="rounded-xl border border-accent/20 bg-surface-1/80 backdrop-blur-md shadow-lg shadow-black/5 p-3.5 space-y-3"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-accent/10 flex items-center justify-center">
+                            <Target className="w-3 h-3 text-accent" />
+                          </div>
+                          <span className="text-[11px] font-semibold text-text-secondary">
+                            {t('nlp.intentDetected' as TranslationKey)}
+                          </span>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${
+                            pendingCreate.confidence >= 0.8
+                              ? 'bg-success/10 border-success/20 text-success'
+                              : 'bg-amber-400/10 border-amber-400/20 text-amber-400'
+                          }`}>
+                            {Math.round(pendingCreate.confidence * 100)}%
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 ml-8">
+                          <span className="text-xs font-medium text-accent">{pendingCreate.intentLabel}</span>
+                          <ChevronRight className="w-3 h-3 text-text-tertiary/40" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-2 border border-border-subtle text-[11px] font-medium text-text-secondary">
+                            <Bot className="w-3 h-3 text-accent" />
+                            {pendingCreate.agentLabel}
+                          </span>
+                        </div>
+
+                        <div className="ml-8 space-y-1.5">
+                          <label className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
+                            {t('nlp.workspaceName' as TranslationKey)}
+                          </label>
+                          <input
+                            ref={wsNameRef}
+                            type="text"
+                            value={wsNameInput}
+                            onChange={(e) => setWsNameInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); handleConfirmCreate() }
+                              if (e.key === 'Escape') { e.preventDefault(); dismissHomeConversation() }
+                            }}
+                            className="w-full px-3 py-2 rounded-lg bg-surface-2/80 border border-border-subtle text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40 transition-colors"
+                          />
+                          <p className="text-[10px] text-text-tertiary leading-relaxed">
+                            {t('nlp.willCreateHint' as TranslationKey).replace('{agent}', pendingCreate.agentLabel)}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2 justify-end pt-1">
+                          <button
+                            onClick={dismissHomeConversation}
+                            className="px-3.5 py-1.5 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-xs font-medium cursor-pointer transition-colors"
+                          >
+                            {t('confirm.cancel' as TranslationKey)}
+                          </button>
+                          <button
+                            onClick={handleConfirmCreate}
+                            disabled={homeCreating}
+                            className="px-3.5 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                          >
+                            {homeCreating
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Sparkles className="w-3 h-3" />
+                            }
+                            {t('nlp.createAndStart' as TranslationKey)}
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Quick start suggestions (for general_chat, after typewriter completes) */}
+                  <AnimatePresence>
+                    {homeTypingDone && !pendingCreate && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1, duration: 0.25 }}
+                        className="space-y-1.5"
+                      >
+                        <span className="text-[10px] text-text-tertiary font-medium ml-0.5">
+                          {t('nlp.quickStartHint' as TranslationKey)}
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {QUICK_START.map((s) => (
+                            <button
+                              key={s.id}
+                              onClick={() => handleQuickStart(t(s.key))}
+                              className="px-3 py-1.5 rounded-lg bg-surface-2/60 border border-border-subtle text-[11px] text-text-secondary hover:bg-accent/10 hover:border-accent/20 hover:text-accent transition-all cursor-pointer"
+                            >
+                              {t(s.key)}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <button
-                  onClick={() => setPendingCreate(null)}
-                  className="px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-xs font-medium cursor-pointer transition-colors"
+                  onClick={dismissHomeConversation}
+                  className="p-1 rounded-lg text-text-tertiary/30 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer shrink-0"
                 >
-                  {t('confirm.cancel' as TranslationKey)}
-                </button>
-                <button
-                  onClick={handleConfirmCreate}
-                  disabled={homeCreating}
-                  className="px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
-                >
-                  {homeCreating
-                    ? <Loader2 className="w-3 h-3 animate-spin" />
-                    : <Sparkles className="w-3 h-3" />
-                  }
-                  {t('nlp.createAndStart' as TranslationKey)}
+                  <X className="w-3 h-3" />
                 </button>
               </motion.div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Home: general chat response (when no workspace) */}
-      <AnimatePresence>
-        {homeResponse && !pendingCreate && !activeWorkspaceId && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            transition={{ duration: 0.2 }}
-            className="mx-4 mb-2"
-          >
-            <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-surface-2/80 border border-accent/15 backdrop-blur-sm">
-              <Bot className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-              <p className="flex-1 text-xs text-text-secondary leading-relaxed whitespace-pre-line">{homeResponse}</p>
-              <button
-                onClick={() => setHomeResponse(null)}
-                className="p-0.5 rounded text-text-tertiary/50 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Home: intent classifying indicator */}
-      <AnimatePresence>
-        {homeClassifying && !activeWorkspaceId && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 4 }}
-            transition={{ duration: 0.15 }}
-            className="mx-4 mb-1"
-          >
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-2/60 border border-border-subtle">
-              <Loader2 className="w-3 h-3 text-accent animate-spin" />
-              <span className="text-[11px] text-text-tertiary">{t('nlp.classifying' as TranslationKey)}</span>
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -761,7 +823,7 @@ export default function CommandBar() {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             type="button"
-            onClick={doSubmit}
+            onClick={() => doSubmit()}
             disabled={nlpLoading || homeCreating || homeClassifying}
             className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
               nlpLoading || homeCreating || homeClassifying ? 'bg-accent/50 cursor-not-allowed' : 'bg-accent hover:bg-accent-hover'

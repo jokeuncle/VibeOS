@@ -58,6 +58,11 @@ const agent = {
   'nlp.workspaceName': '工作空间名称',
   'nlp.createAndStart': '创建并开始',
   'nlp.willCreateHint': '将创建新的工作空间，并由 {agent} 开始处理你的需求。',
+  'nlp.homeTaskIntro': '好的！我理解你想要「{intent}」。{agent} 将负责处理，让我们先创建一个工作空间来开始。',
+  'nlp.quickStartHint': '试试这些：',
+  'nlp.quickStart.ecommerce': '帮我做一个电商平台',
+  'nlp.quickStart.blog': '创建一个博客系统',
+  'nlp.quickStart.dashboard': '开发一个数据看板',
 
   'statusbar.phase': '阶段',
   'statusbar.agentActive_one': '个 Agent 活跃',

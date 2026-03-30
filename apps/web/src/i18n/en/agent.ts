@@ -58,6 +58,11 @@ const agent = {
   'nlp.workspaceName': 'Workspace name',
   'nlp.createAndStart': 'Create & Start',
   'nlp.willCreateHint': 'A new workspace will be created, and {agent} will start working on your request.',
+  'nlp.homeTaskIntro': 'Got it! I understand you want to "{intent}". {agent} will handle this. Let\'s create a workspace to get started.',
+  'nlp.quickStartHint': 'Try these:',
+  'nlp.quickStart.ecommerce': 'Build an e-commerce platform',
+  'nlp.quickStart.blog': 'Create a blog system',
+  'nlp.quickStart.dashboard': 'Build a data dashboard',
 
   'statusbar.phase': 'Phase',
   'statusbar.agentActive_one': 'agent active',
