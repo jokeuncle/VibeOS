@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Home, Plus, PanelLeftClose, Settings, Languages,
@@ -22,6 +22,7 @@ export default function CommandPalette() {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const { commandPaletteOpen, setCommandPaletteOpen, setSettingsOpen, toggleSidebar, setTemplatePickerOpen, openTaskDetail } = useUIStore()
   const { workspaces, setActiveWorkspace, activeWorkspaceId } = useWorkspaceStore()
   const { toggleLocale } = useI18nStore()
@@ -122,16 +123,38 @@ export default function CommandPalette() {
     return map
   }, [filtered])
 
+  /** Same order as rendered rows (category headers + commands) — must match keyboard selection. */
+  const flatCommands = useMemo(() => {
+    const out: Command[] = []
+    for (const cmds of grouped.values()) {
+      out.push(...cmds)
+    }
+    return out
+  }, [grouped])
+
   useEffect(() => {
     setSelectedIndex(0)
   }, [query])
 
   useEffect(() => {
+    setSelectedIndex((i) =>
+      flatCommands.length === 0 ? 0 : Math.min(i, flatCommands.length - 1),
+    )
+  }, [flatCommands.length])
+
+  useEffect(() => {
     if (commandPaletteOpen) {
       setQuery('')
+      setSelectedIndex(0)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [commandPaletteOpen])
+
+  useLayoutEffect(() => {
+    if (!commandPaletteOpen || flatCommands.length === 0) return
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-palette-row="${selectedIndex}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+  }, [commandPaletteOpen, selectedIndex, flatCommands.length])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -150,20 +173,21 @@ export default function CommandPalette() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    const n = flatCommands.length
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1))
+      if (n === 0) return
+      setSelectedIndex((i) => Math.min(i + 1, n - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
+      if (n === 0) return
       setSelectedIndex((i) => Math.max(i - 1, 0))
-    } else if (e.key === 'Enter' && filtered[selectedIndex]) {
-      runCommand(filtered[selectedIndex])
+    } else if (e.key === 'Enter' && flatCommands[selectedIndex]) {
+      runCommand(flatCommands[selectedIndex])
     } else if (e.key === 'Escape') {
       setCommandPaletteOpen(false)
     }
   }
-
-  let flatIndex = -1
 
   return (
     <AnimatePresence>
@@ -199,40 +223,48 @@ export default function CommandPalette() {
               </kbd>
             </div>
 
-            <div className="max-h-72 overflow-y-auto py-2">
+            <div ref={listRef} className="max-h-72 overflow-y-auto py-2">
               {filtered.length === 0 && (
                 <div className="px-4 py-8 text-center text-sm text-text-tertiary">
                   {t('command.noResults')}
                 </div>
               )}
-              {[...grouped.entries()].map(([category, cmds]) => (
-                <div key={category}>
-                  <div className="px-4 py-1.5 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
-                    {category}
-                  </div>
-                  {cmds.map((cmd) => {
-                    flatIndex++
-                    const isSelected = flatIndex === selectedIndex
-                    const currentIndex = flatIndex
-                    return (
-                      <button
-                        key={cmd.id}
-                        onClick={() => runCommand(cmd)}
-                        onMouseEnter={() => setSelectedIndex(currentIndex)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'bg-accent/10 text-accent'
-                            : 'text-text-secondary hover:bg-surface-2'
-                        }`}
-                      >
-                        <span className={isSelected ? 'text-accent' : 'text-text-tertiary'}>{cmd.icon}</span>
-                        <span className="flex-1 text-left truncate">{cmd.label}</span>
-                        {isSelected && <ArrowRight className="w-3.5 h-3.5 text-accent/50" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              ))}
+              {(() => {
+                let rowBase = 0
+                return [...grouped.entries()].map(([category, cmds]) => {
+                  const start = rowBase
+                  rowBase += cmds.length
+                  return (
+                    <div key={category}>
+                      <div className="px-4 py-1.5 text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
+                        {category}
+                      </div>
+                      {cmds.map((cmd, idxInGroup) => {
+                        const rowIndex = start + idxInGroup
+                        const isSelected = rowIndex === selectedIndex
+                        return (
+                          <button
+                            key={cmd.id}
+                            type="button"
+                            data-palette-row={rowIndex}
+                            onClick={() => runCommand(cmd)}
+                            onMouseEnter={() => setSelectedIndex(rowIndex)}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-accent/10 text-accent'
+                                : 'text-text-secondary hover:bg-surface-2'
+                            }`}
+                          >
+                            <span className={isSelected ? 'text-accent' : 'text-text-tertiary'}>{cmd.icon}</span>
+                            <span className="flex-1 text-left truncate">{cmd.label}</span>
+                            {isSelected && <ArrowRight className="w-3.5 h-3.5 text-accent/50" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </motion.div>
         </>

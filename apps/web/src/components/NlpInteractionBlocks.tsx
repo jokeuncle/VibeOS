@@ -268,7 +268,7 @@ export function CTAActionsBlock({
   block: RichBlock
   layout?: 'inline' | 'stack'
 }) {
-  const { sendNLPMessageStream } = useWorkspaceStore()
+  const { sendNLPMessageStream, sendHomeNLPStream } = useWorkspaceStore()
   const [clicked, setClicked] = useState<string | null>(null)
 
   function handleCTA(action: RichAction) {
@@ -278,10 +278,13 @@ export function CTAActionsBlock({
       view_tasks: '/status tasks',
       continue_refine: '继续优化这个需求',
       proceed: '开始执行',
-      followup: '',
+      followup: '请继续',
     }
     const cmd = commandMap[action.id]
-    if (cmd) sendNLPMessageStream(cmd)
+    if (!cmd) return
+    const wsId = useWorkspaceStore.getState().activeWorkspaceId
+    if (wsId) sendNLPMessageStream(cmd)
+    else sendHomeNLPStream(cmd)
   }
 
   if (!block.ctaActions?.length) return null
@@ -346,7 +349,7 @@ export function NlpActionBlock({
   const t = useT()
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
-  const { setActiveWorkspace, sendNLPMessageStream, runPhase } = useWorkspaceStore()
+  const { setActiveWorkspace, sendNLPMessageStream, sendHomeNLPStream, runPhase } = useWorkspaceStore()
 
   const actionType = block.actionType as NlpActionType | undefined
   if (!actionType) return null
@@ -376,18 +379,60 @@ export function NlpActionBlock({
         }
         case 'task_execute': {
           const taskId = payload.taskId as string
-          if (taskId) sendNLPMessageStream(`execute task ${taskId}`)
+          if (!taskId) break
+          const wsId = useWorkspaceStore.getState().activeWorkspaceId
+          if (wsId) sendNLPMessageStream(`execute task ${taskId}`)
+          else sendHomeNLPStream(`execute task ${taskId}`)
           break
         }
         case 'phase_execute': {
           const phase = payload.phase as string
-          if (phase) runPhase(phase)
+          if (!phase) break
+          const wsId = useWorkspaceStore.getState().activeWorkspaceId
+          if (wsId) runPhase(phase)
+          else {
+            useUIStore.getState().addToast({
+              type: 'info',
+              message: t('workspace.selectFirst'),
+            })
+          }
           break
         }
         case 'navigate': {
+          const target = payload.target as string | undefined
+          const ui = useUIStore.getState()
+          const ws = useWorkspaceStore.getState()
+          const wsId = ws.activeWorkspaceId
+
+          if (target === 'create_workspace') {
+            ui.setTemplatePickerOpen(true)
+            break
+          }
+
+          if (!wsId) {
+            ui.addToast({ type: 'info', message: t('workspace.selectFirst') })
+            break
+          }
+
+          if (target === 'requirement_detail') {
+            const rid = (payload.requirementId as string | undefined) || ws.activeRequirementId
+            if (rid) ws.setActiveRequirement(rid)
+            ui.setViewMode('requirements')
+          } else if (target === 'task_list') {
+            ws.setActiveRequirement(null)
+            ui.setViewMode('requirements')
+          }
           break
         }
         case 'confirm': {
+          const text =
+            (payload.message as string) ||
+            (payload.followUp as string) ||
+            (payload.prompt as string) ||
+            '请继续'
+          const wsId = useWorkspaceStore.getState().activeWorkspaceId
+          if (wsId) sendNLPMessageStream(text)
+          else sendHomeNLPStream(text)
           break
         }
       }

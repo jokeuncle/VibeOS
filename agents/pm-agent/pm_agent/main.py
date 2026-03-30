@@ -12,6 +12,7 @@ Business logic is split into:
 from __future__ import annotations
 
 import json
+import random
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
@@ -34,7 +35,7 @@ from vibeos_agent import (
 from .context import enrich_context_with_gitlab
 from .dispatch import Dispatcher
 from .handlers import execute_pm_intent
-from .intent import INTENT_LABELS, parse_intent
+from .intent import INTENT_LABELS, parse_intent, resolve_home_workspace_suggested_name
 from .stream import build_action_event, yield_text_as_deltas
 from .workflow import WorkflowEngine
 
@@ -79,6 +80,9 @@ def _build_intent_event(parsed: Any) -> str:
             for alt in parsed.alternatives
         ]
 
+    if getattr(parsed, "slots", None):
+        payload["slots"] = parsed.slots
+
     return f"event: intent\ndata: {json.dumps(payload)}\n\n"
 
 
@@ -101,6 +105,14 @@ def _build_timeline_event(step_id: str, label: str, status: str, detail: str = "
     if detail:
         payload["detail"] = detail
     return f"event: timeline\ndata: {json.dumps(payload)}\n\n"
+
+
+_HOME_WS_PREFIXES_ZH = ("雾屿", "星澜", "云洲", "青谷", "极客", "灵境", "数智", "光年")
+_HOME_WS_SUFFIXES_ZH = ("智研空间", "实验室", "工作台", "创新坊", "工作室", "工场")
+
+
+def _random_workspace_title() -> str:
+    return f"{random.choice(_HOME_WS_PREFIXES_ZH)}{random.choice(_HOME_WS_SUFFIXES_ZH)}"
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +207,7 @@ class ClassifyResponse(BaseModel):
     intent_label: dict[str, str]
     agent_label: dict[str, str]
     alternatives: list[dict[str, Any]] = []
+    slots: dict[str, Any] = {}
 
 
 class FeedbackRequest(BaseModel):
@@ -240,6 +253,7 @@ async def handle_classify(req: ClassifyRequest) -> ClassifyResponse:
         intent_label=INTENT_LABELS.get(parsed.intent, {}),
         agent_label=AGENT_LABELS.get(parsed.target_agent.value, {}),
         alternatives=alternatives,
+        slots=parsed.slots,
     )
 
 
@@ -325,7 +339,13 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                 if parsed.intent == "general_chat":
                     yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
                     messages = [
-                        {"role": "system", "content": "You are VibeOS, an AI-native software development platform assistant. Greet the user warmly and briefly explain what you can help with. Be concise (2-3 sentences). Respond in the same language as the user."},
+                        {"role": "system", "content": (
+                            "You are VibeOS, an AI-native software development platform assistant. "
+                            "Greet the user warmly and briefly explain what you can help with. "
+                            "Be concise (2-3 sentences). Never claim you already created a workspace, "
+                            "project, or any resource — that only happens after the user uses the button "
+                            "below or the sidebar. Respond in the same language as the user."
+                        )},
                         {"role": "user", "content": req.message},
                     ]
                     async for chunk in llm.chat_stream(messages):
@@ -340,18 +360,19 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                     yield "data: [DONE]\n\n"
                     return
 
-                # Task intent on home page → stream intro text + workspace_create action
+                # Task / new-workspace intent on home → stream intro + workspace_create (real create on click)
                 agent_val = parsed.target_agent.value
                 intent_label = INTENT_LABELS.get(parsed.intent, {})
                 agent_label = AGENT_LABELS.get(agent_val, {})
-                suggested_name = parsed.summary[:40] or "新工作空间"
+                suggested_name = resolve_home_workspace_suggested_name(parsed, _random_workspace_title)
 
                 yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
                 messages = [
                     {"role": "system", "content": (
-                        "You are VibeOS PM assistant. The user described a task on the home page. "
-                        "Write a brief (2-3 sentence) acknowledgement of their request, explain that "
-                        "you'll create a workspace and the relevant agent will handle it. "
+                        "You are VibeOS PM assistant. The user is on the home page. "
+                        "Write a brief (2-3 sentence) acknowledgement. The workspace is NOT created yet — "
+                        "only after they click the button below; do not say it already exists or is already created. "
+                        "Explain that the button will create the workspace and the relevant agent will take it from there. "
                         "Respond in the same language as the user."
                     )},
                     {"role": "user", "content": req.message},
@@ -372,6 +393,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                         "agent_label": agent_label,
                         "confidence": parsed.confidence,
                         "original_query": req.message,
+                        "slots": parsed.slots,
                     },
                     label="创建工作空间并开始",
                     variant="primary",
