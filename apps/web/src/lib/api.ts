@@ -387,6 +387,7 @@ export const agentApi = {
       intent_label: { zh?: string; en?: string }
       agent_label: { zh?: string; en?: string }
       alternatives: { intent: string; summary: string; target_agent: string; intent_label: { zh?: string; en?: string } }[]
+      slots?: Record<string, unknown>
     }>('/api/nlp/classify', {
       method: 'POST',
       body: JSON.stringify({ message }),
@@ -398,6 +399,7 @@ export const agentApi = {
       summary: string
       target_agent: string
       result: any
+      slots?: Record<string, unknown>
     }>('/api/nlp', {
       method: 'POST',
       body: JSON.stringify({

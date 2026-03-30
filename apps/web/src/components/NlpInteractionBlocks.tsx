@@ -366,7 +366,9 @@ export function NlpActionBlock({
       switch (actionType) {
         case 'workspace_create': {
           const name = (payload.suggested_name as string) || '新工作空间'
-          const ws = await workspaceApi.create(name, '', 'indigo')
+          const description =
+            typeof payload.suggested_description === 'string' ? payload.suggested_description : ''
+          const ws = await workspaceApi.create(name, description, 'indigo')
           useWorkspaceStore.setState((s) => ({ workspaces: [...s.workspaces, ws] }))
           setActiveWorkspace(ws.id)
           const query = (payload.original_query as string) || ''

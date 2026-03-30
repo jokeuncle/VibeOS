@@ -260,6 +260,9 @@ export function buildChatSlice(set: SetState, get: GetState) {
                 agentLabel: data.agent_label?.zh || data.target_agent,
                 agentId: data.target_agent,
                 confidence: data.confidence,
+                ...(data.slots && Object.keys(data.slots).length > 0
+                  ? { nluSlots: data.slots as Record<string, unknown> }
+                  : {}),
               }
               richBlocks.push(intentBlock)
               updateMsg()

@@ -429,6 +429,8 @@ export interface RichBlock {
   agentLabel?: string
   agentId?: string
   confidence?: number
+  /** pm-agent structured NLU slots (e.g. workspace_create) */
+  nluSlots?: Record<string, unknown>
   // clarification fields
   clarifyPrompt?: string
   clarifyOptions?: ClarificationOption[]

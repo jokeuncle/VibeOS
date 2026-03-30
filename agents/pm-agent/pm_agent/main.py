@@ -35,7 +35,12 @@ from vibeos_agent import (
 from .context import enrich_context_with_gitlab
 from .dispatch import Dispatcher
 from .handlers import execute_pm_intent
-from .intent import INTENT_LABELS, parse_intent, resolve_home_workspace_suggested_name
+from .intent import (
+    INTENT_LABELS,
+    parse_intent,
+    resolve_home_workspace_description,
+    resolve_home_workspace_suggested_name,
+)
 from .stream import build_action_event, yield_text_as_deltas
 from .workflow import WorkflowEngine
 
@@ -80,7 +85,7 @@ def _build_intent_event(parsed: Any) -> str:
             for alt in parsed.alternatives
         ]
 
-    if getattr(parsed, "slots", None):
+    if parsed.slots:
         payload["slots"] = parsed.slots
 
     return f"event: intent\ndata: {json.dumps(payload)}\n\n"
@@ -156,6 +161,7 @@ class NLPResponse(BaseModel):
     summary: str
     target_agent: str
     result: dict[str, Any] | None = None
+    slots: dict[str, Any] = {}
 
 
 class ChatRequest(BaseModel):
@@ -285,6 +291,7 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
                 summary=result.get("summary", parsed.summary),
                 target_agent=parsed.target_agent.value,
                 result=result,
+                slots=parsed.slots,
             )
 
         enriched_ctx = await enrich_context_with_gitlab(req.workspace_id, req.context, ws_client)
@@ -297,7 +304,13 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
             context=enriched_ctx,
         )
         result = await dispatcher.dispatch(parsed.target_agent, task)
-        return NLPResponse(intent=parsed.intent, summary=parsed.summary, target_agent=parsed.target_agent.value, result=result)
+        return NLPResponse(
+            intent=parsed.intent,
+            summary=parsed.summary,
+            target_agent=parsed.target_agent.value,
+            result=result,
+            slots=parsed.slots,
+        )
     except Exception:
         await ws.publish_agent_status(req.workspace_id, AgentType.PM, AgentStatus.ERROR, detail="NLP processing failed")
         raise
@@ -365,6 +378,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                 intent_label = INTENT_LABELS.get(parsed.intent, {})
                 agent_label = AGENT_LABELS.get(agent_val, {})
                 suggested_name = resolve_home_workspace_suggested_name(parsed, _random_workspace_title)
+                suggested_description = resolve_home_workspace_description(parsed)
 
                 yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
                 messages = [
@@ -387,6 +401,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                     "workspace_create",
                     payload={
                         "suggested_name": suggested_name,
+                        "suggested_description": suggested_description,
                         "intent": parsed.intent,
                         "intent_label": intent_label,
                         "agent": agent_val,

@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from vibeos_agent import AgentType, LLMGatewayClient
 
@@ -76,6 +76,31 @@ class WorkspaceCreateSlots(BaseModel):
 
     title: str | None = Field(default=None, description="Workspace name when naming is explicit")
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def _clip_title(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s[:80] if s else None
+        return None
+
+    description: str | None = Field(
+        default=None,
+        description="Optional workspace purpose / 描述 / 用途 — not the display name",
+    )
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _clip_description(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s[:2000] if s else None
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Structured NLU prompt (JSON-only response)
@@ -86,10 +111,14 @@ def _structured_nlu_prompt() -> str:
     example = json.dumps(
         {
             "intent": "create_workspace",
-            "summary": "User wants a workspace named 钱磊",
+            "summary": "创建钱磊的工作空间，用于电商后台",
             "confidence": 0.95,
             "slots": {
-                "workspace_create": {"naming": "explicit", "title": "钱磊"},
+                "workspace_create": {
+                    "naming": "explicit",
+                    "title": "钱磊",
+                    "description": "电商后台相关协作与交付",
+                },
             },
             "alternatives": [],
         },
@@ -100,7 +129,7 @@ def _structured_nlu_prompt() -> str:
         "Schema:\n"
         "{\n"
         '  "intent": "<one of INTENT_TYPES>",\n'
-        '  "summary": "<one short line for logs/UI; describe what the user wants, not meta>",\n'
+        '  "summary": "<one short line in the user\'s language; what they want, not system meta>",\n'
         '  "confidence": <number 0.0-1.0>,\n'
         '  "slots": { ... },\n'
         '  "alternatives": [{"intent": "<type>", "summary": "<why>"}]\n'
@@ -112,6 +141,8 @@ def _structured_nlu_prompt() -> str:
         '(e.g. 名字叫X, named X, 「X」).\n'
         '    { "naming": "random", "title": null } when they ask for 随机/随便/random name.\n'
         '    { "naming": "unspecified", "title": null } when they want a new workspace but no name preference.\n'
+        "- Optional string field \"description\": user's stated purpose — 描述/用途/用来/用于/for doing X/to build X. "
+        "Use null if they only gave a name with no purpose. Do NOT duplicate the title; keep it a concise purpose line.\n"
         "- Never put the full user message into title; only the extracted workspace name.\n"
         "confidence: 1.0 = sure; use alternatives when 0.5-0.8.\n\n"
         f"INTENT_TYPES: {', '.join(INTENT_TYPES)}\n\n"
@@ -221,6 +252,26 @@ def resolve_home_workspace_suggested_name(
     if title:
         return title[:80]
     return "新工作空间"
+
+
+def resolve_home_workspace_description(parsed: ParsedIntent) -> str:
+    """Optional workspace description for create API (create_workspace slots only)."""
+    if parsed.intent != "create_workspace":
+        return ""
+
+    wc = parsed.slots.get("workspace_create") or {}
+    if not isinstance(wc, dict):
+        return ""
+
+    raw = wc.get("description")
+    if not isinstance(raw, str):
+        return ""
+
+    text = raw.strip()
+    if not text:
+        return ""
+
+    return text[:2000]
 
 
 async def parse_intent(
