@@ -1,5 +1,5 @@
 import type { StoreApi } from 'zustand'
-import type { AgentType, Message, RichBlock } from '../../../types'
+import type { AgentType, Message, RichBlock, ExecutionStep } from '../../../types'
 import {
   workspaceApi,
   agentApi,
@@ -191,6 +191,25 @@ export function buildChatSlice(set: SetState, get: GetState) {
         let content = ''
         let agentType: AgentType = 'pm'
         const richBlocks: RichBlock[] = []
+        const timelineSteps: ExecutionStep[] = []
+
+        const updateMsg = () => {
+          set((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === msgId
+                ? { ...m, content, agentType, richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined }
+                : m,
+            ),
+          }))
+        }
+
+        const upsertTimeline = () => {
+          const idx = richBlocks.findIndex((b) => b.type === 'execution_timeline')
+          const block: RichBlock = { type: 'execution_timeline', steps: [...timelineSteps] }
+          if (idx !== -1) richBlocks[idx] = block
+          else richBlocks.unshift(block)
+        }
+
         try {
           set((s) => ({
             messages: [
@@ -215,12 +234,85 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            if (evt.event === 'intent' && data.target_agent) {
-              agentType = data.target_agent as AgentType
+            // --- Timeline events ---
+            if (evt.event === 'timeline') {
+              const existing = timelineSteps.find((s) => s.id === data.step_id)
+              if (existing) {
+                existing.status = data.status
+                if (data.detail) existing.detail = data.detail
+              } else {
+                timelineSteps.push({ id: data.step_id, label: data.label, status: data.status, detail: data.detail })
+              }
+              upsertTimeline()
+              updateMsg()
+              continue
             }
 
+            // --- Intent event (enriched with confidence + labels) ---
+            if (evt.event === 'intent' && data.target_agent) {
+              agentType = data.target_agent as AgentType
+              const intentBlock: RichBlock = {
+                type: 'intent_feedback',
+                intentLabel: data.intent_label?.zh || data.intent,
+                intentId: data.intent,
+                agentLabel: data.agent_label?.zh || data.target_agent,
+                agentId: data.target_agent,
+                confidence: data.confidence,
+              }
+              richBlocks.push(intentBlock)
+              updateMsg()
+              continue
+            }
+
+            // --- Clarification event ---
+            if (evt.event === 'clarification') {
+              richBlocks.push({
+                type: 'clarification',
+                clarifyPrompt: data.prompt,
+                clarifyOptions: data.options?.map((o: any) => ({
+                  id: o.id,
+                  label: o.label,
+                  intent: o.intent,
+                  agentType: o.agent_type,
+                })),
+              })
+              updateMsg()
+              continue
+            }
+
+            // --- Structured error card ---
+            if (evt.event === 'error_card') {
+              richBlocks.push({
+                type: 'error_card',
+                errorSeverity: data.error_type,
+                errorMessage: data.message,
+                errorHints: data.hints,
+                errorActions: data.actions?.map((a: any) => ({
+                  id: a.id,
+                  label: a.label,
+                  variant: a.variant || 'secondary',
+                })),
+              })
+              updateMsg()
+              continue
+            }
+
+            // --- CTA actions ---
+            if (evt.event === 'cta') {
+              richBlocks.push({
+                type: 'cta_actions',
+                ctaActions: data.actions?.map((a: any) => ({
+                  id: a.id,
+                  label: a.label,
+                  variant: a.variant || 'secondary',
+                })),
+              })
+              updateMsg()
+              continue
+            }
+
+            // --- Requirement preview ---
             if (evt.event === 'requirement_preview') {
-              // Remove any existing preview block before adding a new one
               const existingIdx = richBlocks.findIndex((b) => b.type === 'requirement_preview')
               if (existingIdx !== -1) richBlocks.splice(existingIdx, 1)
               richBlocks.push({
@@ -229,14 +321,11 @@ export function buildChatSlice(set: SetState, get: GetState) {
                 reqDescription: data.description,
                 reqPriority: data.priority,
               })
-              set((s) => ({
-                messages: s.messages.map((m) =>
-                  m.id === msgId ? { ...m, agentType, richBlocks: [...richBlocks] } : m,
-                ),
-              }))
+              updateMsg()
               continue
             }
 
+            // --- Content deltas ---
             if (data.delta) {
               content += data.delta
             } else if (data.summary || data.payload?.summary) {
@@ -269,20 +358,18 @@ export function buildChatSlice(set: SetState, get: GetState) {
               }
             }
 
-            set((s) => ({
-              messages: s.messages.map((m) =>
-                m.id === msgId
-                  ? { ...m, content, agentType, richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined }
-                  : m,
-              ),
-            }))
+            updateMsg()
           }
         } catch (err: any) {
           if (!content) {
             content = friendlyError(err.message)
-            set((s) => ({
-              messages: s.messages.map((m) => (m.id === msgId ? { ...m, content } : m)),
-            }))
+            richBlocks.push({
+              type: 'error_card',
+              errorSeverity: 'system_error',
+              errorMessage: content,
+              errorActions: [{ id: 'retry', label: '重试', variant: 'primary' }],
+            })
+            updateMsg()
           }
         } finally {
           set({ nlpLoading: false })

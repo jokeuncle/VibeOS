@@ -4,6 +4,13 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import { RequirementPreviewCard } from './RequirementPreviewCard'
+import {
+  IntentFeedbackBlock,
+  ClarificationBlock,
+  ErrorCardBlock,
+  CTAActionsBlock,
+  ExecutionTimelineBlock,
+} from './NlpInteractionBlocks'
 import type { RichBlock, RichAction, PhaseStatus, TaskPriority } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -90,6 +97,21 @@ export function RichBlockRenderer({ block }: { block: RichBlock }) {
   }
 
   switch (block.type) {
+    case 'intent_feedback':
+      return <IntentFeedbackBlock block={block} />
+
+    case 'clarification':
+      return <ClarificationBlock block={block} />
+
+    case 'error_card':
+      return <ErrorCardBlock block={block} />
+
+    case 'cta_actions':
+      return <CTAActionsBlock block={block} />
+
+    case 'execution_timeline':
+      return <ExecutionTimelineBlock block={block} />
+
     case 'requirement_preview':
       return <RequirementPreviewCard block={block} />
 

@@ -376,8 +376,31 @@ export interface RichAction {
   variant: 'primary' | 'secondary' | 'danger'
 }
 
+export interface ClarificationOption {
+  id: string
+  label: string
+  intent: string
+  agentType?: AgentType
+}
+
+export type ErrorSeverity = 'intent_unclear' | 'capability_limit' | 'agent_unavailable' | 'system_error'
+
+export interface ExecutionStep {
+  id: string
+  label: string
+  status: 'pending' | 'running' | 'completed' | 'error'
+  detail?: string
+}
+
 export interface RichBlock {
-  type: 'action_card' | 'progress' | 'code' | 'task_card' | 'checklist' | 'requirement_preview'
+  type:
+    | 'action_card' | 'progress' | 'code' | 'task_card' | 'checklist'
+    | 'requirement_preview'
+    | 'intent_feedback'
+    | 'clarification'
+    | 'error_card'
+    | 'cta_actions'
+    | 'execution_timeline'
   title?: string
   description?: string
   actions?: RichAction[]
@@ -389,10 +412,27 @@ export interface RichBlock {
   taskStatus?: PhaseStatus
   taskPriority?: TaskPriority
   items?: { text: string; checked: boolean }[]
-  // requirement_preview fields
   reqTitle?: string
   reqDescription?: string
   reqPriority?: string
+  // intent_feedback fields
+  intentLabel?: string
+  intentId?: string
+  agentLabel?: string
+  agentId?: string
+  confidence?: number
+  // clarification fields
+  clarifyPrompt?: string
+  clarifyOptions?: ClarificationOption[]
+  // error_card fields
+  errorSeverity?: ErrorSeverity
+  errorMessage?: string
+  errorHints?: string[]
+  errorActions?: RichAction[]
+  // cta_actions fields
+  ctaActions?: RichAction[]
+  // execution_timeline fields
+  steps?: ExecutionStep[]
 }
 
 export interface Message {

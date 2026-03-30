@@ -34,9 +34,78 @@ from vibeos_agent import (
 from .context import enrich_context_with_gitlab
 from .dispatch import Dispatcher
 from .handlers import execute_pm_intent
-from .intent import parse_intent
+from .intent import INTENT_LABELS, parse_intent
 from .stream import yield_text_as_deltas
 from .workflow import WorkflowEngine
+
+AGENT_LABELS: dict[str, dict[str, str]] = {
+    "pm": {"zh": "项目管理 Agent", "en": "PM Agent"},
+    "requirement": {"zh": "需求 Agent", "en": "Req Agent"},
+    "architecture": {"zh": "架构 Agent", "en": "Arch Agent"},
+    "design": {"zh": "设计 Agent", "en": "Design Agent"},
+    "development": {"zh": "开发 Agent", "en": "Dev Agent"},
+    "testing": {"zh": "测试 Agent", "en": "Test Agent"},
+    "cicd": {"zh": "CI/CD Agent", "en": "CI/CD Agent"},
+    "monitoring": {"zh": "监控 Agent", "en": "Mon Agent"},
+}
+
+
+def _build_intent_event(parsed: Any) -> str:
+    """Build the enriched intent SSE event with feedback data."""
+    agent_val = parsed.target_agent.value
+    intent_label = INTENT_LABELS.get(parsed.intent, {})
+    agent_label = AGENT_LABELS.get(agent_val, {})
+
+    payload: dict[str, Any] = {
+        "intent": parsed.intent,
+        "summary": parsed.summary,
+        "target_agent": agent_val,
+        "confidence": parsed.confidence,
+        "is_ambiguous": parsed.is_ambiguous,
+        "is_fallback": parsed.is_fallback,
+        "intent_label": intent_label,
+        "agent_label": agent_label,
+    }
+
+    if parsed.alternatives:
+        payload["alternatives"] = [
+            {
+                "intent": alt.intent,
+                "summary": alt.summary,
+                "target_agent": alt.target_agent.value,
+                "intent_label": INTENT_LABELS.get(alt.intent, {}),
+                "agent_label": AGENT_LABELS.get(alt.target_agent.value, {}),
+            }
+            for alt in parsed.alternatives
+        ]
+
+    return f"event: intent\ndata: {json.dumps(payload)}\n\n"
+
+
+def _build_error_event(error_type: str, message: str, hints: list[str] | None = None, actions: list[dict] | None = None) -> str:
+    """Build a structured error SSE event."""
+    payload: dict[str, Any] = {
+        "error_type": error_type,
+        "message": message,
+    }
+    if hints:
+        payload["hints"] = hints
+    if actions:
+        payload["actions"] = actions
+    return f"event: error_card\ndata: {json.dumps(payload)}\n\n"
+
+
+def _build_cta_event(actions: list[dict[str, str]]) -> str:
+    """Build a CTA (call-to-action) SSE event for post-completion buttons."""
+    return f"event: cta\ndata: {json.dumps({'actions': actions})}\n\n"
+
+
+def _build_timeline_event(step_id: str, label: str, status: str, detail: str = "") -> str:
+    """Build an execution timeline step SSE event."""
+    payload = {"step_id": step_id, "label": label, "status": status}
+    if detail:
+        payload["detail"] = detail
+    return f"event: timeline\ndata: {json.dumps(payload)}\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +187,21 @@ class RunRequirementRequest(BaseModel):
     user_message: str = ""
 
 
+class ClassifyRequest(BaseModel):
+    message: str
+
+
+class ClassifyResponse(BaseModel):
+    intent: str
+    summary: str
+    target_agent: str
+    confidence: float
+    is_ambiguous: bool
+    intent_label: dict[str, str]
+    agent_label: dict[str, str]
+    alternatives: list[dict[str, Any]] = []
+
+
 class FeedbackRequest(BaseModel):
     workspace_id: str
     message_id: str = ""
@@ -125,6 +209,43 @@ class FeedbackRequest(BaseModel):
     action_type: str  # approve | reject
     original_output: str = ""
     context: dict[str, Any] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Intent classification (lightweight, no workspace required)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/nlp/classify", response_model=ClassifyResponse)
+async def handle_classify(req: ClassifyRequest) -> ClassifyResponse:
+    """Classify user intent without requiring a workspace.
+
+    Used by the home page to decide whether to create a workspace
+    or respond with a general chat reply.
+    """
+    llm: LLMGatewayClient = app.state.llm
+    parsed = await parse_intent(req.message, llm)
+
+    alternatives: list[dict[str, Any]] = []
+    for alt in parsed.alternatives:
+        alt_val = alt.target_agent.value
+        alternatives.append({
+            "intent": alt.intent,
+            "summary": alt.summary,
+            "target_agent": alt_val,
+            "intent_label": INTENT_LABELS.get(alt.intent, {}),
+            "agent_label": AGENT_LABELS.get(alt_val, {}),
+        })
+
+    return ClassifyResponse(
+        intent=parsed.intent,
+        summary=parsed.summary,
+        target_agent=parsed.target_agent.value,
+        confidence=parsed.confidence,
+        is_ambiguous=parsed.is_ambiguous,
+        intent_label=INTENT_LABELS.get(parsed.intent, {}),
+        agent_label=AGENT_LABELS.get(parsed.target_agent.value, {}),
+        alternatives=alternatives,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,13 +310,57 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 
     async def event_gen() -> AsyncGenerator[str, None]:
         try:
+            # Step 1: Timeline – show "understanding" step
+            yield _build_timeline_event("parse", "理解意图 / Understanding intent", "running")
+
             await ws.publish_log(req.workspace_id, "pm", f"Received message: {req.message[:80]}…")
             parsed = await parse_intent(req.message, llm)
             await ws.publish_log(req.workspace_id, "pm", f"Intent: {parsed.intent} → {parsed.target_agent.value}", level="success")
-            yield f"event: intent\ndata: {json.dumps({'intent': parsed.intent, 'summary': parsed.summary, 'target_agent': parsed.target_agent.value})}\n\n"
 
+            # Step 2: Enriched intent event with confidence + labels
+            yield _build_intent_event(parsed)
+            yield _build_timeline_event("parse", "理解意图 / Understanding intent", "completed", parsed.summary)
+
+            # Step 3: Ambiguous intent → send clarification instead of silent fallback
+            if parsed.is_ambiguous:
+                options = [
+                    {
+                        "id": parsed.intent,
+                        "label": INTENT_LABELS.get(parsed.intent, {}).get("zh", parsed.intent),
+                        "intent": parsed.intent,
+                        "agent_type": parsed.target_agent.value,
+                    }
+                ]
+                for alt in parsed.alternatives:
+                    options.append({
+                        "id": alt.intent,
+                        "label": INTENT_LABELS.get(alt.intent, {}).get("zh", alt.intent),
+                        "intent": alt.intent,
+                        "agent_type": alt.target_agent.value,
+                    })
+                yield f"event: clarification\ndata: {json.dumps({'prompt': '我不太确定你的意图，请选择最接近的操作：', 'options': options})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # Step 4: Fallback intent → transparent notification
+            if parsed.is_fallback:
+                yield _build_error_event(
+                    "intent_unclear",
+                    "无法精确识别意图，已切换到自由对话模式。",
+                    hints=[
+                        "试试: \"帮我创建一个XXX功能的需求\"",
+                        "试试: \"@design 设计登录页面\"",
+                        "试试: \"/deploy 部署到测试环境\"",
+                    ],
+                )
+
+            # Step 5: Busy workspace check
             if parsed.intent not in ("general_chat", "query_progress") and workflow.is_busy(req.workspace_id):
-                yield f"data: {json.dumps({'delta': '⏳ 当前工作空间正在执行任务，请等待完成后再操作。 / Workspace is busy, please wait.'})}\n\n"
+                yield _build_error_event(
+                    "system_error",
+                    "当前工作空间正在执行任务，请等待完成后再操作。",
+                    actions=[{"id": "wait", "label": "等待", "variant": "secondary"}],
+                )
                 yield "data: [DONE]\n\n"
                 return
 
@@ -203,6 +368,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 
             if parsed.target_agent == AgentType.PM:
                 if parsed.intent == "general_chat" and not (req.context or {}).get("zero_requirements"):
+                    yield _build_timeline_event("exec", "生成回复 / Generating reply", "running")
                     messages = [
                         {"role": "system", "content": "You are VibeOS PM assistant. Help the user with project management, planning, and general questions. Respond in clear natural language."},
                         {"role": "user", "content": req.message},
@@ -211,8 +377,15 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                         delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                         if delta:
                             yield f"data: {json.dumps({'delta': delta})}\n\n"
+                    yield _build_timeline_event("exec", "生成回复 / Generating reply", "completed")
+                    yield _build_cta_event([
+                        {"id": "followup", "label": "继续追问", "variant": "secondary"},
+                    ])
                     yield "data: [DONE]\n\n"
                     return
+
+                # PM intent execution
+                yield _build_timeline_event("exec", "执行中 / Executing", "running")
 
                 result = await execute_pm_intent(
                     parsed, req.workspace_id, req.message, req.context, llm, ws, ws_client, workflow, dispatcher,
@@ -233,8 +406,29 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                 if payload_extras:
                     yield f"data: {json.dumps({'payload': payload_extras})}\n\n"
 
+                yield _build_timeline_event("exec", "执行中 / Executing", "completed")
+
+                # CTA actions based on result type
+                cta: list[dict[str, str]] = []
+                action = result.get("action", "")
+                if action in ("requirement_preview", "requirement_created"):
+                    cta = [
+                        {"id": "view_detail", "label": "查看详情", "variant": "primary"},
+                        {"id": "continue_refine", "label": "继续优化", "variant": "secondary"},
+                    ]
+                elif result.get("created_tasks"):
+                    cta = [
+                        {"id": "view_tasks", "label": "查看任务", "variant": "primary"},
+                        {"id": "proceed", "label": "开始执行", "variant": "secondary"},
+                    ]
+                else:
+                    cta = [{"id": "followup", "label": "继续追问", "variant": "secondary"}]
+                yield _build_cta_event(cta)
                 yield "data: [DONE]\n\n"
                 return
+
+            # Non-PM agent dispatch
+            yield _build_timeline_event("dispatch", f"分发到 {parsed.target_agent.value} Agent", "running")
 
             enriched_ctx = await enrich_context_with_gitlab(req.workspace_id, req.context, ws_client)
             task = AgentTask(
@@ -246,9 +440,32 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                 context=enriched_ctx,
             )
 
+            has_result = False
             async for chunk in dispatcher.dispatch_stream(parsed.target_agent, task):
                 chunk_type = chunk.get("type", "")
+
+                # Detect agent-level errors
+                if chunk.get("error"):
+                    err_msg = chunk["error"]
+                    if "未启动" in err_msg or "not running" in err_msg.lower():
+                        yield _build_error_event(
+                            "agent_unavailable",
+                            err_msg,
+                            hints=["请确保对应的 Agent 服务已启动"],
+                            actions=[
+                                {"id": "retry", "label": "重试", "variant": "primary"},
+                                {"id": "switch_agent", "label": "换个 Agent", "variant": "secondary"},
+                            ],
+                        )
+                    else:
+                        yield _build_error_event("system_error", err_msg, actions=[
+                            {"id": "retry", "label": "重试", "variant": "primary"},
+                        ])
+                    yield _build_timeline_event("dispatch", f"分发到 {parsed.target_agent.value} Agent", "error", err_msg)
+                    break
+
                 if chunk_type == "result":
+                    has_result = True
                     payload = chunk.get("payload", {})
                     summary_text = payload.get("summary", "") or chunk.get("summary", "")
                     if summary_text:
@@ -262,9 +479,35 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                 else:
                     yield f"data: {json.dumps(chunk)}\n\n"
 
+            if has_result:
+                yield _build_timeline_event("dispatch", f"分发到 {parsed.target_agent.value} Agent", "completed")
+                yield _build_cta_event([
+                    {"id": "view_detail", "label": "查看详情", "variant": "primary"},
+                    {"id": "followup", "label": "继续追问", "variant": "secondary"},
+                ])
+
             yield "data: [DONE]\n\n"
         except Exception as exc:
-            yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+            error_str = str(exc)
+            if "rate" in error_str.lower() or "limit" in error_str.lower():
+                yield _build_error_event(
+                    "system_error",
+                    "AI 模型已达到使用限制，请稍后重试。",
+                    actions=[{"id": "retry", "label": "稍后重试", "variant": "primary"}],
+                )
+            elif "timeout" in error_str.lower():
+                yield _build_error_event(
+                    "system_error",
+                    "请求超时，请稍后重试。",
+                    actions=[{"id": "retry", "label": "重试", "variant": "primary"}],
+                )
+            else:
+                yield _build_error_event(
+                    "system_error",
+                    f"处理时发生错误: {error_str}",
+                    actions=[{"id": "retry", "label": "重试", "variant": "primary"}],
+                )
+            yield f"event: error\ndata: {json.dumps({'error': error_str})}\n\n"
             yield "data: [DONE]\n\n"
         finally:
             try:

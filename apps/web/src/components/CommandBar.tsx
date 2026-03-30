@@ -3,13 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles, ArrowUp, Command, Bot, Slash, CheckSquare,
   FileText, Blocks, Palette, Code2, FlaskConical, Rocket, Activity,
-  X, ChevronRight, Loader2, Cpu,
+  X, ChevronRight, Loader2, Target,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
+import { workspaceApi, agentApi } from '../lib/api'
 import type { Agent } from '../types'
 
 interface Suggestion {
@@ -18,6 +19,21 @@ interface Suggestion {
   label: string
   value: string
   description?: string
+}
+
+interface IntentHint {
+  intent: string
+  label: string
+  agent: string
+}
+
+interface PendingWorkspaceCreate {
+  query: string
+  intent: string
+  intentLabel: string
+  agentLabel: string
+  suggestedName: string
+  confidence: number
 }
 
 const AGENT_SUGGESTIONS: { name: string; key: TranslationKey }[] = [
@@ -71,7 +87,32 @@ const PHASE_CONTEXT_LABEL: Record<string, TranslationKey> = {
   monitoring:   'requirement.phase.monitoring',
 }
 
-// Agent activity indicator component
+const INTENT_KEYWORDS: { keywords: RegExp; intent: string; label: string; agent: string }[] = [
+  { keywords: /创建.{0,4}需求|新需求|新功能|feature|create.*req/i, intent: 'create_requirement', label: '创建需求', agent: 'PM Agent' },
+  { keywords: /创建.{0,4}任务|新任务|create.*task/i, intent: 'create_task', label: '创建任务', agent: 'PM Agent' },
+  { keywords: /进度|状态|progress|status/i, intent: 'query_progress', label: '查询进度', agent: 'PM Agent' },
+  { keywords: /执行.{0,4}任务|run.*task|运行.*任务/i, intent: 'execute_task', label: '执行任务', agent: 'PM Agent' },
+  { keywords: /执行.{0,4}阶段|run.*phase|运行.*阶段/i, intent: 'execute_phase', label: '执行阶段', agent: 'PM Agent' },
+  { keywords: /运行.{0,4}项目|全部执行|run.*project|full.*lifecycle/i, intent: 'run_project', label: '运行项目', agent: 'PM Agent' },
+  { keywords: /需求分析|分析.{0,4}需求|analyze|refine.*req/i, intent: 'analyze_requirements', label: '分析需求', agent: '需求 Agent' },
+  { keywords: /架构|architecture|系统设计|tech.*design/i, intent: 'architecture_design', label: '架构设计', agent: '架构 Agent' },
+  { keywords: /ui|ux|界面|设计.*页|wireframe|mockup|页面.*设计/i, intent: 'ui_design', label: 'UI 设计', agent: '设计 Agent' },
+  { keywords: /代码|编码|开发|generate.*code|implement|coding/i, intent: 'generate_code', label: '生成代码', agent: '开发 Agent' },
+  { keywords: /测试|test|qa|质量/i, intent: 'run_tests', label: '运行测试', agent: '测试 Agent' },
+  { keywords: /部署|deploy|ci\/cd|发布|release/i, intent: 'deploy', label: '部署', agent: 'CI/CD Agent' },
+  { keywords: /监控|monitor|alert|告警|dashboard/i, intent: 'setup_monitoring', label: '配置监控', agent: '监控 Agent' },
+]
+
+function predictIntent(text: string): IntentHint | null {
+  if (text.length < 2) return null
+  for (const rule of INTENT_KEYWORDS) {
+    if (rule.keywords.test(text)) {
+      return { intent: rule.intent, label: rule.label, agent: rule.agent }
+    }
+  }
+  return null
+}
+
 function AgentActivityIndicator({ agents, t }: { agents: Agent[]; t: (key: TranslationKey) => string }) {
   const runningAgents = agents.filter((a) => a.status === 'running')
   if (runningAgents.length === 0) return null
@@ -108,15 +149,22 @@ export default function CommandBar() {
   const [input, setInput] = useState('')
   const [focused, setFocused] = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
+  const [homeCreating, setHomeCreating] = useState(false)
+  const [homeClassifying, setHomeClassifying] = useState(false)
+  const [homeResponse, setHomeResponse] = useState<string | null>(null)
+  const [pendingCreate, setPendingCreate] = useState<PendingWorkspaceCreate | null>(null)
+  const [wsNameInput, setWsNameInput] = useState('')
+  const [intentHint, setIntentHint] = useState<IntentHint | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { activeWorkspaceId, activeRequirementId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading } = useWorkspaceStore()
+  const wsNameRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const { activeWorkspaceId, activeRequirementId, workspaces, setActiveWorkspace, sendNLPMessageStream: sendNLPMessage, nlpLoading } = useWorkspaceStore()
   const { setHomeSearchQuery, nlpContext, setNlpContext } = useUIStore()
   const t = useT()
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const workspaceAgents = activeWorkspace?.agents || []
 
-  
   const isZeroRequirements = !!activeWorkspaceId && (activeWorkspace?.requirements?.length ?? 0) === 0
   const activeRequirement = activeWorkspace?.requirements?.find((r) => r.id === activeRequirementId)
 
@@ -127,7 +175,24 @@ export default function CommandBar() {
   useEffect(() => {
     setInput('')
     setHomeSearchQuery('')
+    setIntentHint(null)
+    setHomeResponse(null)
+    setPendingCreate(null)
   }, [activeWorkspaceId, setHomeSearchQuery])
+
+  // Debounced intent prediction
+  useEffect(() => {
+    if (!activeWorkspaceId || !focused) {
+      setIntentHint(null)
+      return
+    }
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      const hint = predictIntent(input)
+      setIntentHint(hint)
+    }, 200)
+    return () => clearTimeout(debounceRef.current)
+  }, [input, focused, activeWorkspaceId])
 
   const suggestions = useMemo<Suggestion[]>(() => {
     if (!activeWorkspaceId || !focused || !input) return []
@@ -226,6 +291,15 @@ export default function CommandBar() {
   }, [handleKeydown])
 
   function handleInputKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (suggestions.length > 0) {
+        applySuggestion(suggestions[selectedIdx])
+      } else {
+        doSubmit()
+      }
+      return
+    }
     if (suggestions.length > 0) {
       if (e.key === 'ArrowUp') {
         e.preventDefault()
@@ -245,24 +319,76 @@ export default function CommandBar() {
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!input.trim() || !activeWorkspaceId || nlpLoading) return
+  async function createWorkspaceAndSend(name: string, query: string) {
+    setPendingCreate(null)
+    setHomeCreating(true)
+    try {
+      const ws = await workspaceApi.create(name || '新工作空间', '', 'indigo')
+      useWorkspaceStore.setState((s) => ({ workspaces: [...s.workspaces, ws] }))
+      setActiveWorkspace(ws.id)
+      useWorkspaceStore.getState().sendNLPMessageStream(query)
+    } catch (err) {
+      console.error('Failed to create workspace:', err)
+    } finally {
+      setHomeCreating(false)
+    }
+  }
 
-    // Check if user is trying to execute non-requirement phase on unpublished requirement
+  function handleConfirmCreate() {
+    if (!pendingCreate) return
+    createWorkspaceAndSend(wsNameInput.trim() || pendingCreate.suggestedName, pendingCreate.query)
+  }
+
+  async function doSubmit() {
+    if (!input.trim() || nlpLoading || homeCreating || homeClassifying) return
+
+    setIntentHint(null)
+
+    if (!activeWorkspaceId) {
+      const query = input.trim()
+      setInput('')
+      setHomeResponse(null)
+      setPendingCreate(null)
+      setHomeClassifying(true)
+
+      try {
+        const cls = await agentApi.classify(query)
+
+        if (cls.intent === 'general_chat') {
+          setHomeClassifying(false)
+          setHomeResponse(t('nlp.homeGreeting' as TranslationKey))
+          return
+        }
+
+        setHomeClassifying(false)
+        const intentLabel = cls.intent_label?.zh || cls.intent_label?.en || cls.summary
+        const agentLbl = cls.agent_label?.zh || cls.agent_label?.en || cls.target_agent
+        const suggestedName = cls.summary.slice(0, 40) || '新工作空间'
+        setPendingCreate({
+          query,
+          intent: cls.intent,
+          intentLabel,
+          agentLabel: agentLbl,
+          suggestedName,
+          confidence: cls.confidence,
+        })
+        setWsNameInput(suggestedName)
+        setTimeout(() => wsNameRef.current?.select(), 80)
+      } catch {
+        setHomeClassifying(false)
+        setHomeResponse(t('nlp.classifyError' as TranslationKey))
+      }
+      return
+    }
+
     if (activeRequirement && (activeRequirement.status === 'draft' || activeRequirement.status === 'designing')) {
       const targetPhase = nlpContext?.phaseType || 'requirement'
-      const currentPhase = activeRequirement.currentPhase || 'requirement'
-
-      // Check if user explicitly asks for non-requirement phase
       const nonRequirementPhases = ['architecture', 'design', 'development', 'testing', 'deployment', 'monitoring']
       const mentionsNonRequirementPhase = nonRequirementPhases.some(phase =>
         input.toLowerCase().includes(phase) ||
         input.toLowerCase().includes(t(`requirement.phase.${phase}` as TranslationKey).toLowerCase())
       )
-
       if (mentionsNonRequirementPhase && targetPhase !== 'requirement') {
-        // Show alert and prevent execution
         alert(t('requirement.notReadyAlert' as TranslationKey))
         setInput('')
         return
@@ -271,6 +397,11 @@ export default function CommandBar() {
 
     sendNLPMessage(input.trim())
     setInput('')
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    doSubmit()
   }
 
   const typeIcon = (type: Suggestion['type']) => {
@@ -282,9 +413,9 @@ export default function CommandBar() {
   }
 
   const showSuggestions = focused && suggestions.length > 0
+  const showIntentHint = focused && intentHint && !showSuggestions && input.trim().length >= 3
   const hasRunningAgents = workspaceAgents.some((a) => a.status === 'running')
 
-  // Derive placeholder and context display
   const agentKey = nlpContext?.agentType ? (AGENT_LABEL_KEY[nlpContext.agentType] || 'agent.name.pm') : 'agent.name.pm'
   const agentLabel = t(agentKey)
   const phaseIcon = nlpContext?.phaseType ? PHASE_ICONS[nlpContext.phaseType] : null
@@ -293,22 +424,15 @@ export default function CommandBar() {
       ? t(PHASE_CONTEXT_LABEL[nlpContext.phaseType])
       : nlpContext?.phaseType ?? null
 
-  // Dynamic placeholder based on requirement status
   const getPlaceholder = () => {
     if (!activeWorkspaceId) return t('command.placeholderHome')
     if (isZeroRequirements) return t('command.placeholderDiscovery' as TranslationKey)
-
-    // Design mode: requirement not published yet
     if (activeRequirement && (activeRequirement.status === 'draft' || activeRequirement.status === 'designing')) {
       return t('requirement.designModeHint' as TranslationKey)
     }
-
-    // Execute mode: requirement published
     if (activeRequirement && (activeRequirement.status === 'ready' || activeRequirement.status === 'in_progress' || activeRequirement.status === 'completed')) {
       return t('requirement.executeModeHint' as TranslationKey)
     }
-
-    // Default NLP placeholder
     if (nlpContext) {
       return `${t('command.contextPlaceholder' as TranslationKey)} ${agentLabel}…`
     }
@@ -359,6 +483,34 @@ export default function CommandBar() {
         )}
       </AnimatePresence>
 
+      {/* Intent prediction hint (above input, when no suggestions) */}
+      <AnimatePresence>
+        {showIntentHint && (
+          <motion.div
+            initial={{ opacity: 0, y: 4, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: 4, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="absolute bottom-full left-4 right-4 mb-1 overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-2/90 border border-accent/15 backdrop-blur-sm">
+              <Target className="w-3 h-3 text-accent/60 shrink-0" />
+              <span className="text-[10px] text-text-tertiary">
+                {t('nlp.intentPredict' as TranslationKey)}
+              </span>
+              <span className="text-[10px] font-medium text-accent">{intentHint.label}</span>
+              <ChevronRight className="w-2.5 h-2.5 text-text-tertiary/40" />
+              <span className="text-[10px] text-text-tertiary">
+                <Bot className="w-2.5 h-2.5 inline -mt-0.5 mr-0.5" />
+                {intentHint.agent}
+              </span>
+              <span className="flex-1" />
+              <kbd className="text-[9px] text-text-tertiary/40 font-mono">Enter ↵</kbd>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Context pill (above form, when in requirement detail) */}
       <AnimatePresence>
         {nlpContext && activeWorkspaceId && (
@@ -370,13 +522,10 @@ export default function CommandBar() {
             className="mx-4 mb-1 overflow-hidden"
           >
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-2/80 border border-border-subtle backdrop-blur-sm">
-              {/* Requirement breadcrumb */}
               <FileText className="w-3 h-3 text-text-tertiary shrink-0" />
               <span className="text-[10px] text-text-tertiary truncate max-w-[140px]">
                 {nlpContext.requirementTitle}
               </span>
-
-              {/* Phase arrow */}
               {nlpContext.phaseType && (
                 <>
                   <ChevronRight className="w-2.5 h-2.5 text-text-tertiary/50 shrink-0" />
@@ -386,16 +535,11 @@ export default function CommandBar() {
                   </span>
                 </>
               )}
-
               <div className="flex-1" />
-
-              {/* Agent badge */}
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/10 border border-accent/20">
                 <Bot className="w-2.5 h-2.5 text-accent" />
                 <span className="text-[10px] font-medium text-accent">{agentLabel}</span>
               </div>
-
-              {/* Clear context */}
               <button
                 onClick={() => setNlpContext(null)}
                 className="p-0.5 rounded text-text-tertiary/50 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer"
@@ -408,7 +552,165 @@ export default function CommandBar() {
         )}
       </AnimatePresence>
 
-      {/* Agent activity indicator - shows when agents are running */}
+      {/* Home: rich workspace creation confirmation card */}
+      <AnimatePresence>
+        {pendingCreate && !activeWorkspaceId && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.97 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="mx-4 mb-2"
+          >
+            <div className="rounded-xl border border-accent/20 bg-surface-1/80 backdrop-blur-md shadow-xl shadow-black/10 p-4 space-y-3">
+              {/* Intent header */}
+              <div className="flex items-center gap-2">
+                <motion.div
+                  initial={{ rotate: -90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  transition={{ delay: 0.05, type: 'spring', stiffness: 200 }}
+                  className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center"
+                >
+                  <Target className="w-3.5 h-3.5 text-accent" />
+                </motion.div>
+                <span className="text-[11px] font-semibold text-text-secondary">
+                  {t('nlp.intentDetected' as TranslationKey)}
+                </span>
+                <motion.span
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 'auto', opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                  className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium border overflow-hidden ${
+                    pendingCreate.confidence >= 0.8
+                      ? 'bg-success/10 border-success/20 text-success'
+                      : 'bg-amber-400/10 border-amber-400/20 text-amber-400'
+                  }`}
+                >
+                  {Math.round(pendingCreate.confidence * 100)}%
+                </motion.span>
+                <div className="flex-1" />
+                <button
+                  onClick={() => setPendingCreate(null)}
+                  className="p-1 rounded-lg text-text-tertiary/50 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Intent → Agent routing */}
+              <motion.div
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
+                className="flex items-center gap-2 ml-9"
+              >
+                <span className="text-xs font-medium text-accent">{pendingCreate.intentLabel}</span>
+                <ChevronRight className="w-3 h-3 text-text-tertiary/40" />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-2 border border-border-subtle text-[11px] font-medium text-text-secondary">
+                  <Bot className="w-3 h-3 text-accent" />
+                  {pendingCreate.agentLabel}
+                </span>
+              </motion.div>
+
+              {/* Workspace name input */}
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="ml-9 space-y-1.5"
+              >
+                <label className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
+                  {t('nlp.workspaceName' as TranslationKey)}
+                </label>
+                <input
+                  ref={wsNameRef}
+                  type="text"
+                  value={wsNameInput}
+                  onChange={(e) => setWsNameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); handleConfirmCreate() }
+                    if (e.key === 'Escape') { e.preventDefault(); setPendingCreate(null) }
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-2/80 border border-border-subtle text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40 transition-colors"
+                />
+                <p className="text-[10px] text-text-tertiary leading-relaxed">
+                  {t('nlp.willCreateHint' as TranslationKey).replace('{agent}', pendingCreate.agentLabel)}
+                </p>
+              </motion.div>
+
+              {/* Actions */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="flex gap-2 justify-end pt-1"
+              >
+                <button
+                  onClick={() => setPendingCreate(null)}
+                  className="px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-xs font-medium cursor-pointer transition-colors"
+                >
+                  {t('confirm.cancel' as TranslationKey)}
+                </button>
+                <button
+                  onClick={handleConfirmCreate}
+                  disabled={homeCreating}
+                  className="px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                >
+                  {homeCreating
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <Sparkles className="w-3 h-3" />
+                  }
+                  {t('nlp.createAndStart' as TranslationKey)}
+                </button>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Home: general chat response (when no workspace) */}
+      <AnimatePresence>
+        {homeResponse && !pendingCreate && !activeWorkspaceId && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.2 }}
+            className="mx-4 mb-2"
+          >
+            <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-surface-2/80 border border-accent/15 backdrop-blur-sm">
+              <Bot className="w-4 h-4 text-accent mt-0.5 shrink-0" />
+              <p className="flex-1 text-xs text-text-secondary leading-relaxed whitespace-pre-line">{homeResponse}</p>
+              <button
+                onClick={() => setHomeResponse(null)}
+                className="p-0.5 rounded text-text-tertiary/50 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Home: intent classifying indicator */}
+      <AnimatePresence>
+        {homeClassifying && !activeWorkspaceId && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            className="mx-4 mb-1"
+          >
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-2/60 border border-border-subtle">
+              <Loader2 className="w-3 h-3 text-accent animate-spin" />
+              <span className="text-[11px] text-text-tertiary">{t('nlp.classifying' as TranslationKey)}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Agent activity indicator */}
       <AnimatePresence>
         {hasRunningAgents && (
           <AgentActivityIndicator agents={workspaceAgents} t={t} />
@@ -440,17 +742,18 @@ export default function CommandBar() {
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary outline-none"
         />
 
-        {input.trim() && activeWorkspaceId ? (
+        {input.trim() ? (
           <motion.button
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            type="submit"
-            disabled={nlpLoading}
+            type="button"
+            onClick={doSubmit}
+            disabled={nlpLoading || homeCreating || homeClassifying}
             className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-              nlpLoading ? 'bg-accent/50 cursor-not-allowed' : 'bg-accent hover:bg-accent-hover'
+              nlpLoading || homeCreating || homeClassifying ? 'bg-accent/50 cursor-not-allowed' : 'bg-accent hover:bg-accent-hover'
             }`}
           >
-            {nlpLoading ? (
+            {nlpLoading || homeCreating || homeClassifying ? (
               <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <ArrowUp className="w-4 h-4 text-white" />

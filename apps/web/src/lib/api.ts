@@ -377,6 +377,21 @@ export const workflowApi = {
 }
 
 export const agentApi = {
+  classify: (message: string) =>
+    request<{
+      intent: string
+      summary: string
+      target_agent: string
+      confidence: number
+      is_ambiguous: boolean
+      intent_label: { zh?: string; en?: string }
+      agent_label: { zh?: string; en?: string }
+      alternatives: { intent: string; summary: string; target_agent: string; intent_label: { zh?: string; en?: string } }[]
+    }>('/api/nlp/classify', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+
   nlp: (workspaceId: string, message: string, context?: Record<string, unknown>) =>
     request<{
       intent: string
