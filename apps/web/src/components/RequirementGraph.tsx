@@ -38,6 +38,10 @@ interface NodePos {
   req: Requirement
 }
 
+const NODE_W = 180
+const NODE_H = 64
+const CARD_RX = 12
+
 export default function RequirementGraph() {
   const t = useT()
   const { workspaces, activeWorkspaceId, setActiveRequirement } = useWorkspaceStore()
@@ -50,8 +54,6 @@ export default function RequirementGraph() {
   const { nodes, width, height } = useMemo(() => {
     if (requirements.length === 0) return { nodes: [], width: 600, height: 300 }
 
-    const NODE_W = 180
-    const NODE_H = 64
     const COL_GAP = 80
     const ROW_GAP = 24
     const PAD = 40
@@ -127,7 +129,7 @@ export default function RequirementGraph() {
             (node.req.relations || []).map((rel, ri) => {
               const target = nodes.find(n => n.id === rel.targetId)
               if (!target) return null
-              const x1 = node.x + 180
+              const x1 = node.x + NODE_W
               const y1 = node.y + 32
               const x2 = target.x
               const y2 = target.y + 32
@@ -202,21 +204,13 @@ export default function RequirementGraph() {
                 <rect
                   x={node.x}
                   y={node.y}
-                  width={180}
-                  height={64}
-                  rx={12}
+                  width={NODE_W}
+                  height={NODE_H}
+                  rx={CARD_RX}
+                  ry={CARD_RX}
                   fill={isHovered ? 'var(--color-surface-3)' : 'var(--color-surface-2)'}
                   stroke={isHovered ? 'var(--color-accent)' : 'var(--color-border-subtle)'}
                   strokeWidth={isHovered ? 1.5 : 1}
-                />
-                {/* Status left bar */}
-                <rect
-                  x={node.x}
-                  y={node.y}
-                  width={3}
-                  height={64}
-                  rx={1.5}
-                  fill={STATUS_FILL[node.req.status]}
                 />
                 {/* Title */}
                 <text
