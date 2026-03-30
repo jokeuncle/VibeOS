@@ -163,7 +163,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
-  viewMode: 'dashboard',
+  viewMode: 'requirements',
   setViewMode: (mode) => set({ viewMode: mode }),
 
   reqSubView: 'list',

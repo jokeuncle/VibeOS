@@ -83,11 +83,12 @@ const phase = {
   'phase.runHint': 'Run analysis to generate tasks for this phase',
   'phase.suggestHint': 'Click a suggestion below or run analysis to generate tasks',
 
-  'emptyState.title': 'Welcome to your workspace',
-  'emptyState.desc': 'Get started by adding your first task or talking to an agent.',
-  'emptyState.addTask': 'Add a task',
-  'emptyState.talkAgent': 'Talk to Agent',
-  'emptyState.newTaskTitle': 'New Task',
+  'emptyState.title': 'AI runs the path from requirement to delivery',
+  'emptyState.desc':
+    'You define what to build; agents decompose it into phases and execute. Add a requirement or chat with an agent to shape the work.',
+  'emptyState.addTask': 'New requirement',
+  'emptyState.talkAgent': 'Chat with an agent',
+  'emptyState.newTaskTitle': 'New requirement',
 
   'reqSubView.list': 'List',
   'reqSubView.kanban': 'Board',

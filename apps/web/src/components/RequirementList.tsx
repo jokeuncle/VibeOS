@@ -232,8 +232,8 @@ export default function RequirementList() {
         )}
       </AnimatePresence>
 
-      {/* List panel */}
-      {(requirements.length > 0 || (!requirements.length && !reqCreating)) && (
+      {/* List panel — empty state lives in WorkspaceView hero; omit shell when there are no rows */}
+      {requirements.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -241,15 +241,6 @@ export default function RequirementList() {
           className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden"
         >
           <div className="p-4">
-            {requirements.length === 0 && !reqCreating && (
-              <div className="text-center py-14">
-                <div className="w-12 h-12 rounded-2xl bg-surface-2/80 border border-border-subtle flex items-center justify-center mx-auto mb-4">
-                  <FileStack className="w-5 h-5 text-text-tertiary opacity-60" />
-                </div>
-                <p className="text-xs text-text-tertiary leading-relaxed">{t('requirement.empty')}</p>
-              </div>
-            )}
-
             {groups.map((group) => (
               <div key={group.key} className="mb-5 last:mb-0">
                 <div className="flex items-center gap-2 mb-3">

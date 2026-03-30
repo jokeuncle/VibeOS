@@ -146,7 +146,7 @@ export default function RequirementKanban() {
 
               {items.length === 0 && col.status !== 'draft' && (
                 <div className="flex items-center justify-center py-8 text-[10px] text-text-tertiary">
-                  {t('requirement.empty' as any)}
+                  {t('requirement.kanban.emptyColumn' as any)}
                 </div>
               )}
             </div>

@@ -83,11 +83,12 @@ const phase = {
   'phase.runHint': '运行分析以为此阶段生成任务',
   'phase.suggestHint': '点击下方建议快速创建任务，或运行分析自动生成',
 
-  'emptyState.title': '欢迎来到你的空间',
-  'emptyState.desc': '添加第一个任务或与 Agent 对话开始吧。',
-  'emptyState.addTask': '添加任务',
+  'emptyState.title': '从需求到交付，由 AI 驱动',
+  'emptyState.desc':
+    '你来明确要做什么；智能体负责分阶段拆解与执行。新建一条需求，或与 Agent 对话把想法落成可执行项。',
+  'emptyState.addTask': '新建需求',
   'emptyState.talkAgent': '与 Agent 对话',
-  'emptyState.newTaskTitle': '新任务',
+  'emptyState.newTaskTitle': '新需求',
 
   'reqSubView.list': '列表',
   'reqSubView.kanban': '看板',

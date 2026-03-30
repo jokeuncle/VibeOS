@@ -4,8 +4,10 @@ const requirement = {
   'requirement.create.description': 'Description',
   'requirement.create.placeholder.title': 'Enter requirement title...',
   'requirement.create.placeholder.desc': 'Describe the requirement...',
-  'requirement.empty': 'No requirements yet. Create one to get started.',
-  'requirement.listDesc': 'All requirements in this workspace. Each drives the full AI development lifecycle.',
+  'requirement.empty': 'No requirements yet. Add one—agents will carry it through the pipeline.',
+  'requirement.kanban.emptyColumn': 'None in this stage',
+  'requirement.listDesc':
+    'Capture goals and constraints here; AI agents orchestrate the workspace pipeline to break down, execute, and deliver each requirement.',
   'requirement.run': 'Run Analysis',
   'requirement.reset': 'Reset & Re-run',
   'requirement.continue': 'Continue',

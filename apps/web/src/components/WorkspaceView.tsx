@@ -47,7 +47,7 @@ function ViewContent() {
   const { activeRequirementId } = useWorkspaceStore()
   const workspace = useWorkspaceStore(s => s.workspaces.find(w => w.id === s.activeWorkspaceId))
   const { viewMode, reqSubView } = useUIStore()
-  const currentMode = (viewMode as ViewMode) || 'dashboard'
+  const currentMode = (viewMode as ViewMode) || 'requirements'
 
   if (!workspace) return null
 
@@ -96,7 +96,7 @@ export default function WorkspaceView() {
 
   const requirements = workspace.requirements || []
   const reqCount = requirements.length
-  const currentViewMode = (viewMode as ViewMode) || 'dashboard'
+  const currentViewMode = (viewMode as ViewMode) || 'requirements'
   const inReqDetail = currentViewMode === 'requirements' && !!activeRequirementId
   const showReqToolbar = currentViewMode === 'requirements' && !activeRequirementId
 
@@ -202,7 +202,7 @@ export default function WorkspaceView() {
                     <Sparkles className="w-6 h-6 text-accent" />
                   </div>
                   <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
-                  <p className="text-sm text-text-tertiary mb-6 max-w-sm mx-auto">{t('emptyState.desc')}</p>
+                  <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto leading-relaxed">{t('emptyState.desc')}</p>
                   <div className="flex items-center justify-center gap-3">
                     <button
                       onClick={() => { setReqSubView('list'); setReqCreating(true) }}

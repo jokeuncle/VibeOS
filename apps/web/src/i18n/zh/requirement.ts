@@ -4,8 +4,10 @@ const requirement = {
   'requirement.create.description': '描述',
   'requirement.create.placeholder.title': '输入需求标题...',
   'requirement.create.placeholder.desc': '描述需求详情...',
-  'requirement.empty': '暂无需求。创建一个开始吧。',
-  'requirement.listDesc': '工作空间内的所有需求。每条需求驱动完整的 AI 开发生命周期。',
+  'requirement.empty': '暂无需求。新建一条后，由 AI 在工作流中持续推进实现。',
+  'requirement.kanban.emptyColumn': '本阶段暂无',
+  'requirement.listDesc':
+    '在此记录目标与约束；由 AI 智能体编排工作流，拆解、执行并交付每一条需求。',
   'requirement.run': '运行分析',
   'requirement.reset': '重置并重新运行',
   'requirement.continue': '继续推进',
