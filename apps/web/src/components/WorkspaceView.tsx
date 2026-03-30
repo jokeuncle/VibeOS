@@ -5,7 +5,6 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
-import Sidebar from './Sidebar'
 import MessageThread from './MessageThread'
 import Dashboard from './Dashboard'
 import RequirementList from './RequirementList'
@@ -99,8 +98,6 @@ export default function WorkspaceView() {
   const currentViewMode = (viewMode as ViewMode) || 'requirements'
   const inReqDetail = currentViewMode === 'requirements' && !!activeRequirementId
   const showReqToolbar = currentViewMode === 'requirements' && !activeRequirementId
-  const listEmptyIdle =
-    showReqToolbar && reqSubView === 'list' && reqCount === 0 && !reqCreating
 
   const wideWorkspaceViews =
     currentViewMode === 'requirements' ||
@@ -116,16 +113,13 @@ export default function WorkspaceView() {
   const maxW = wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
 
   return (
-    <div className="flex-1 flex overflow-hidden">
-      <Sidebar />
-
-      <motion.main
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="flex-1 overflow-y-auto"
-      >
-        <div className={`mx-auto px-8 py-6 ${maxW}`}>
+    <motion.main
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="flex-1 min-h-0 overflow-y-auto"
+    >
+      <div className={`mx-auto px-8 py-6 ${maxW}`}>
           {/* Breadcrumb when viewing requirement detail */}
           {inReqDetail && (
             <div className="flex items-center gap-2 mb-5">
@@ -222,20 +216,13 @@ export default function WorkspaceView() {
           )}
 
           <div className="space-y-6">
-            {currentViewMode === 'requirements' && !activeRequirementId && !listEmptyIdle ? (
-              <div className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden">
-                <div className="p-4 sm:p-5">
-                  <ViewContent />
-                </div>
-              </div>
-            ) : (
-              <ViewContent />
+            <ViewContent />
+            {!showReqToolbar && (
+              <MessageThread workspaceId={workspace.id} requirementId={activeRequirementId ?? undefined} />
             )}
-            <MessageThread />
           </div>
-          <div className="h-20" />
-        </div>
-      </motion.main>
-    </div>
+          <div className="h-28" />
+      </div>
+    </motion.main>
   )
 }

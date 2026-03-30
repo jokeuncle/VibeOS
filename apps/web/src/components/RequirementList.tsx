@@ -183,13 +183,17 @@ export default function RequirementList() {
     })
   }
 
-  // Group by status for a cleaner overview
+  // Group by status — include every RequirementStatus so no row is dropped
   const drafts = requirements.filter(r => r.status === 'draft')
+  const designing = requirements.filter(r => r.status === 'designing')
+  const ready = requirements.filter(r => r.status === 'ready')
   const inProgress = requirements.filter(r => r.status === 'in_progress')
   const completed = requirements.filter(r => r.status === 'completed')
 
   const groups = [
     { key: 'in_progress', items: inProgress, label: t('requirement.status.in_progress'), dot: 'bg-accent animate-pulse' },
+    { key: 'designing', items: designing, label: t('requirement.status.designing'), dot: 'bg-accent/70' },
+    { key: 'ready', items: ready, label: t('requirement.status.ready'), dot: 'bg-warning' },
     { key: 'draft', items: drafts, label: t('requirement.status.draft'), dot: 'bg-surface-4' },
     { key: 'completed', items: completed, label: t('requirement.status.completed'), dot: 'bg-success' },
   ].filter(g => g.items.length > 0)

@@ -1,1 +1,1 @@
-export type RequirementDetailTab = 'overview' | 'work' | 'relations' | 'agents'
+export type RequirementDetailTab = 'work' | 'relations' | 'agents'

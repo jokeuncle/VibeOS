@@ -14,7 +14,6 @@ import { PHASE_ORDER, PHASE_META } from './phaseMeta'
 import type { RequirementDetailTab } from './types'
 import { TaskDrawer } from './TaskDrawer'
 import { RequirementDetailHeader } from './RequirementDetailHeader'
-import { RequirementDetailOverviewTab } from './RequirementDetailOverviewTab'
 import { RequirementDetailWorkTab } from './RequirementDetailWorkTab'
 import { RequirementDetailRelationsTab } from './RequirementDetailRelationsTab'
 import { RequirementDetailAgentsTab } from './RequirementDetailAgentsTab'
@@ -28,7 +27,7 @@ export default function RequirementDetail() {
   const workspace = workspaces.find(w => w.id === activeWorkspaceId)
 
   const [selectedPhase, setSelectedPhase] = useState<PhaseType>(() => req?.currentPhase ?? 'requirement')
-  const [detailTab, setDetailTab] = useState<RequirementDetailTab>('overview')
+  const [detailTab, setDetailTab] = useState<RequirementDetailTab>('work')
   const [addingRelation, setAddingRelation] = useState(false)
   const [newRelTarget, setNewRelTarget] = useState('')
   const [newRelType, setNewRelType] = useState<RelationType>('depends_on')
@@ -41,7 +40,7 @@ export default function RequirementDetail() {
   useLayoutEffect(() => {
     if (!req) return
     setSelectedPhase(req.currentPhase)
-    setDetailTab('overview')
+    setDetailTab('work')
     setDrawerTask(null)
     setDescExpanded(false)
     setDrawerTaskRefLinks({})
@@ -78,7 +77,6 @@ export default function RequirementDetail() {
   const phaseDone = selectedPhaseTasks.filter(t2 => t2.status === 'completed').length
 
   const currentPhaseTasks = getTasksForPhase(req.currentPhase)
-  const currentPhaseDone  = currentPhaseTasks.filter(t2 => t2.status === 'completed').length
   const allCurrentDone    = currentPhaseTasks.length > 0 && currentPhaseTasks.every(t2 => t2.status === 'completed')
   const currentOrderIdx   = PHASE_ORDER.indexOf(req.currentPhase)
   const nextPhaseType     = currentOrderIdx < PHASE_ORDER.length - 1 ? PHASE_ORDER[currentOrderIdx + 1] : null
@@ -173,9 +171,6 @@ export default function RequirementDetail() {
         t={t}
         descExpanded={descExpanded}
         setDescExpanded={setDescExpanded}
-        detailTab={detailTab}
-        setDetailTab={setDetailTab}
-        relationsCount={relations.length}
         iteration={iteration}
         summaryLoading={summaryLoading}
         workflowRunning={workflowRunning}
@@ -195,7 +190,6 @@ export default function RequirementDetail() {
       >
         <Tabs.List className="flex flex-wrap gap-0.5 sm:gap-1 border-b border-border-subtle overflow-x-auto pb-px [-webkit-overflow-scrolling:touch]">
           {([
-            { id: 'overview' as const, label: t('requirement.detail.tab.overview' as TranslationKey) },
             { id: 'work' as const, label: t('requirement.detail.tab.work' as TranslationKey) },
             { id: 'relations' as const, label: t('phase.tab.relations'), badge: relations.length },
             { id: 'agents' as const, label: t('requirement.detail.tab.agents' as TranslationKey) },
@@ -212,17 +206,6 @@ export default function RequirementDetail() {
             </Tabs.Trigger>
           ))}
         </Tabs.List>
-
-        <Tabs.Content value="overview" className="outline-none focus-visible:ring-0 space-y-4 mt-0">
-          <RequirementDetailOverviewTab
-            currentPhase={req.currentPhase}
-            currentPhaseTasksLen={currentPhaseTasks.length}
-            currentPhaseDone={currentPhaseDone}
-            relationsCount={relations.length}
-            t={t}
-            setDetailTab={setDetailTab}
-          />
-        </Tabs.Content>
 
         <Tabs.Content value="work" className="outline-none focus-visible:ring-0 space-y-6 mt-0">
           <RequirementDetailWorkTab

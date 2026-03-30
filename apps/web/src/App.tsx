@@ -11,6 +11,7 @@ import CommandBar from './components/CommandBar'
 import WorkspaceHome from './components/WorkspaceHome'
 import WorkspaceView from './components/WorkspaceView'
 import WorkspaceTabs from './components/WorkspaceTabs'
+import Sidebar from './components/Sidebar'
 import CommandPalette from './components/CommandPalette'
 import SettingsPanel from './components/SettingsPanel'
 import TaskDetail from './components/TaskDetail'
@@ -23,7 +24,16 @@ import Dock from './components/Dock'
 
 export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
-  const { toggleSidebar, setSettingsOpen, theme, addTab, shortcutsOpen, setShortcutsOpen, commandPaletteOpen, settingsOpen } = useUIStore()
+  const {
+    toggleSidebar,
+    setSettingsOpen,
+    theme,
+    addTab,
+    shortcutsOpen,
+    setShortcutsOpen,
+    commandPaletteOpen,
+    settingsOpen,
+  } = useUIStore()
   const { locale } = useI18nStore()
   const restoreSession = useAuthStore((s) => s.restoreSession)
 
@@ -92,7 +102,7 @@ export default function App() {
       <TitleBar />
       <WorkspaceTabs />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <AnimatePresence mode="wait">
           {activeWorkspaceId ? (
             <motion.div
@@ -101,9 +111,17 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="flex-1 flex flex-col overflow-hidden"
+              className="flex min-h-0 flex-1 basis-0 overflow-hidden"
             >
-              <WorkspaceView />
+              <Sidebar />
+
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                <WorkspaceView />
+
+                <div className="shrink-0 bg-gradient-to-t from-surface-0 via-surface-0/95 to-transparent px-4 pb-3 pt-4 sm:px-6">
+                  <CommandBar />
+                </div>
+              </div>
             </motion.div>
           ) : (
             <motion.div
@@ -119,7 +137,11 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <CommandBar />
+        {!activeWorkspaceId && (
+          <div className="shrink-0">
+            <CommandBar />
+          </div>
+        )}
       </div>
 
       <Dock />

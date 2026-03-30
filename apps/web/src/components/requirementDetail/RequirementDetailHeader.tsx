@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion'
 import {
-  Sparkles, RotateCcw, Rocket, Link2, Check, SkipForward, RefreshCw, Undo2,
+  Sparkles, RotateCcw, Rocket, Check, SkipForward, RefreshCw, Undo2,
 } from 'lucide-react'
 import type { PhaseType, Requirement } from '../../types'
-import type { RequirementDetailTab } from './types'
+import type { TranslationKey } from '../../i18n/en'
 import { PRIORITY_COLORS, STATUS_COLORS } from './uiConstants'
 
 type TFn = (k: any) => string
@@ -13,9 +13,6 @@ export function RequirementDetailHeader({
   t,
   descExpanded,
   setDescExpanded,
-  detailTab,
-  setDetailTab,
-  relationsCount,
   iteration,
   summaryLoading,
   workflowRunning,
@@ -31,9 +28,6 @@ export function RequirementDetailHeader({
   t: TFn
   descExpanded: boolean
   setDescExpanded: (v: boolean | ((b: boolean) => boolean)) => void
-  detailTab: RequirementDetailTab
-  setDetailTab: (tab: RequirementDetailTab) => void
-  relationsCount: number
   iteration: number
   summaryLoading: boolean
   workflowRunning: boolean
@@ -115,11 +109,6 @@ export function RequirementDetailHeader({
             <RotateCcw className="w-3.5 h-3.5" />{t('requirement.reset')}
           </button>
         )}
-        <button type="button" onClick={() => setDetailTab('relations')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer ${detailTab === 'relations' ? 'bg-accent/15 text-accent' : 'bg-surface-3 hover:bg-surface-4 text-text-secondary'}`}>
-          <Link2 className="w-3.5 h-3.5" />{t('phase.tab.relations')}
-          {relationsCount > 0 && <span className="text-[10px] font-mono opacity-70">({relationsCount})</span>}
-        </button>
         {iteration > 1 && (
           <span className="flex items-center gap-0.5 text-[10px] font-mono text-warning ml-auto">
             <RefreshCw className="w-3 h-3" /> ×{iteration}
@@ -127,15 +116,25 @@ export function RequirementDetailHeader({
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="space-y-1.5 mt-4 pt-4 border-t border-border-subtle/60">
+        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+          <div>
+            <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+              {t('requirement.detail.progressOverall' as TranslationKey)}
+            </p>
+            <p className="text-[10px] text-text-tertiary/80 mt-0.5 leading-snug">
+              {t('requirement.detail.progressOverallSub' as TranslationKey)}
+            </p>
+          </div>
+          <span className="text-[10px] font-mono text-text-tertiary tabular-nums shrink-0 sm:text-right">
+            {req.doneCount}/{req.taskCount}
+          </span>
+        </div>
         <div className="flex-1 h-0.5 bg-surface-3 rounded-full overflow-hidden min-w-0">
           <motion.div className="h-full rounded-full bg-accent" initial={{ width: 0 }}
             animate={{ width: `${req.taskCount > 0 ? Math.round((req.doneCount / req.taskCount) * 100) : 0}%` }}
             transition={{ duration: 0.8, ease: 'easeOut' }} />
         </div>
-        <span className="text-[10px] font-mono text-text-tertiary tabular-nums shrink-0">
-          {req.doneCount}/{req.taskCount}
-        </span>
       </div>
     </motion.div>
   )
