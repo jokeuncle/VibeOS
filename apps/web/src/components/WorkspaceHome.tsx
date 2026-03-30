@@ -321,7 +321,7 @@ export default function WorkspaceHome() {
       </div>
 
       {/* NLP session: anchored in home canvas, separate from CommandBar */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-6 sm:px-10 pb-1">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-6 sm:px-10 pb-3 sm:pb-4">
         <div className="pointer-events-auto w-full max-w-2xl">
           <HomeConversation />
         </div>

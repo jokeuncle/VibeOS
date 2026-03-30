@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { ExecutionTimelineBlock } from './NlpInteractionBlocks'
 import type { RichBlock } from '../types'
 
@@ -45,9 +46,15 @@ export function HomeReasoningPanel({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer inline-flex items-center gap-0.5 -ml-0.5 py-0.5"
+        aria-expanded={open}
+        className="text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer inline-flex items-center gap-1 -ml-0.5 py-0.5"
       >
-        <span className="text-[10px] w-3.5 inline-block text-center opacity-70">{open ? '▼' : '▶'}</span>
+        <ChevronRight
+          className={`w-3.5 h-3.5 shrink-0 opacity-70 transition-transform duration-200 ease-out ${
+            open ? 'rotate-90' : ''
+          }`}
+          aria-hidden
+        />
         <span>{open ? '收起' : '看一下怎么理解的'}</span>
       </button>
 

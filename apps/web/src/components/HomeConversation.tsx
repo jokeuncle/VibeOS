@@ -85,9 +85,9 @@ export default function HomeConversation() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
           transition={{ duration: 0.25 }}
-          className="rounded-xl border border-border-subtle bg-surface-1/30 backdrop-blur-md overflow-hidden shadow-lg shadow-black/10"
+          className="rounded-2xl bg-surface-1/50 backdrop-blur-xl shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)]"
         >
-          <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
+          <div className="px-4 py-3 border-b border-border-subtle/35 flex items-center gap-2 rounded-t-2xl">
             <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
               <Sparkles className="w-3.5 h-3.5 text-accent" />
             </div>
@@ -105,7 +105,7 @@ export default function HomeConversation() {
           </div>
           <div
             ref={scrollRef}
-            className="max-h-[min(50vh,22rem)] overflow-y-auto p-3 scroll-smooth"
+            className="max-h-[min(50vh,22rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth rounded-b-2xl"
           >
             <div className="mx-auto w-full max-w-xl space-y-2.5">
             {homeMessages.map((msg) => (
