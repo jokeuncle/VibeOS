@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Activity, ChevronDown, ChevronUp,
@@ -202,8 +202,16 @@ function TraceRow({ group }: { group: TraceGroup }) {
 
 export default function WorkspaceTraces() {
   const t = useT()
-  const { activeWorkspaceId, executionLogs } = useWorkspaceStore()
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const executionLogs = useWorkspaceStore((s) => s.executionLogs)
+  const fetchExecutionLogs = useWorkspaceStore((s) => s.fetchExecutionLogs)
   const logs = activeWorkspaceId ? (executionLogs[activeWorkspaceId] ?? []) : []
+
+  useEffect(() => {
+    if (activeWorkspaceId && !activeWorkspaceId.startsWith('ws-temp-')) {
+      void fetchExecutionLogs(activeWorkspaceId)
+    }
+  }, [activeWorkspaceId, fetchExecutionLogs])
 
   const [agentFilter, setAgentFilter] = useState('All')
   const [statusFilter, setStatusFilter] = useState<TraceStatus | 'all'>('all')
@@ -228,7 +236,7 @@ export default function WorkspaceTraces() {
 
   const stats = [
     { label: t('traces.totalExecutions'), value: allGroups.length.toString(),  icon: Activity,   color: 'text-text-primary' },
-    { label: t('traces.totalTokens'),     value: `${totalEntries} logs`,        icon: MessageSquare, color: 'text-accent' },
+    { label: t('traces.totalTokens'),     value: `${totalEntries} ${t('traces.totalLogsCount')}`, icon: MessageSquare, color: 'text-accent' },
     { label: t('traces.errors'),          value: errorCount.toString(),          icon: AlertCircle, color: errorCount > 0 ? 'text-danger' : 'text-text-tertiary' },
   ]
 
@@ -292,7 +300,7 @@ export default function WorkspaceTraces() {
           <div className="rounded-xl border border-dashed border-border-default bg-surface-1/20 py-14 text-center">
             <Activity className="w-8 h-8 text-text-tertiary/40 mx-auto mb-3" />
             <p className="text-[12px] text-text-tertiary">{t('traces.noResults')}</p>
-            <p className="text-[11px] text-text-tertiary/60 mt-1">Run a workflow or NLP command to see agent traces here.</p>
+            <p className="text-[11px] text-text-tertiary/60 mt-1">{t('traces.emptyHint')}</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-[12px] text-text-tertiary">{t('traces.noResults')}</div>

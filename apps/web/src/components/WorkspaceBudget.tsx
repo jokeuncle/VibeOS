@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Gauge, Cpu, TrendingUp, AlertTriangle, Settings2, DollarSign, BarChart3, RefreshCw } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -37,21 +37,29 @@ export default function WorkspaceBudget() {
   const [budget, setBudget] = useState<BudgetResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [dailyLimit, setDailyLimit] = useState('')
-  const [alertPct, setAlertPct] = useState('')
+  // Initialise with sensible defaults so the form is never blank on API failure
+  const [dailyLimit, setDailyLimit] = useState('10.00')
+  const [alertPct, setAlertPct] = useState('80')
+
+  // Ref always reflects the latest workspace to guard against stale responses
+  const activeWsRef = useRef(activeWorkspaceId)
+  useEffect(() => { activeWsRef.current = activeWorkspaceId }, [activeWorkspaceId])
 
   const fetchBudget = useCallback(async () => {
     if (!activeWorkspaceId) return
+    const wsId = activeWorkspaceId
     setLoading(true)
     try {
-      const data = await workspaceApi.getBudget(activeWorkspaceId)
+      const data = await workspaceApi.getBudget(wsId)
+      // Discard if workspace changed while request was in-flight
+      if (activeWsRef.current !== wsId) return
       setBudget(data)
       setDailyLimit(data.settings.dailySpendLimitUsd.toFixed(2))
       setAlertPct(String(data.settings.alertThresholdPct))
     } catch {
-      // ignore – keep existing state
+      // keep existing defaults on failure
     } finally {
-      setLoading(false)
+      if (activeWsRef.current === wsId) setLoading(false)
     }
   }, [activeWorkspaceId])
 
@@ -85,6 +93,8 @@ export default function WorkspaceBudget() {
   const agentUsage = budget?.agentUsage ?? []
   const weekLabels = budget?.weekLabels ?? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   const weekSpend = budget?.weekSpendUsd ?? [0, 0, 0, 0, 0, 0, 0]
+  // Monday=0 … Sunday=6, matching the backend's Mon-first convention
+  const todayIndex = (new Date().getDay() + 6) % 7
   const weekMax = Math.max(...weekSpend, dailyLimitVal * 0.8, 0.01)
   const weekTotal = weekSpend.reduce((s, v) => s + v, 0)
   const maxAgentTokens = Math.max(...agentUsage.map(a => a.tokensTotal), 1)
@@ -185,7 +195,7 @@ export default function WorkspaceBudget() {
           {weekLabels.map((label, i) => {
             const val = weekSpend[i] ?? 0
             const pct = (val / weekMax) * 100
-            const isToday = i === 5
+            const isToday = i === todayIndex
             return (
               <div key={label} className="flex-1 flex flex-col items-center gap-1">
                 <motion.div

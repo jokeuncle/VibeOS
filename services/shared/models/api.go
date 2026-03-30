@@ -111,6 +111,14 @@ type TestRepoConnectionResp struct {
 	Message     string `json:"message,omitempty"`
 }
 
+// GitLabProjectResult is one item in a project search response.
+type GitLabProjectResult struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	PathWithNamespace string `json:"pathWithNamespace"`
+	WebURL            string `json:"webUrl"`
+}
+
 // Auth DTOs
 type RegisterReq struct {
 	Email    string `json:"email"`

@@ -106,6 +106,7 @@ CREATE TABLE agents (
     name VARCHAR(255) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'idle',
     current_task VARCHAR(512),
+    preferred_model TEXT,
     avatar VARCHAR(16) NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

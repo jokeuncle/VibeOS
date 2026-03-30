@@ -67,6 +67,20 @@ func (h *GitLabCredentialHandler) Delete(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SearchProjects proxies a project search to the GitLab instance identified by credId.
+func (h *GitLabCredentialHandler) SearchProjects(w http.ResponseWriter, r *http.Request) {
+	credID := chi.URLParam(r, "credId")
+	search := r.URL.Query().Get("search")
+
+	results, err := h.svc.SearchGitLabProjects(r.Context(), credID, search)
+	if err != nil {
+		h.log.Error("search gitlab projects", "error", err)
+		writeError(w, http.StatusBadGateway, "gitlab search failed: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[[]models.GitLabProjectResult]{Data: results})
+}
+
 // Decrypt returns the decrypted token for internal service-to-service use.
 // This endpoint should be network-restricted in production (e.g. only reachable by agents).
 func (h *GitLabCredentialHandler) Decrypt(w http.ResponseWriter, r *http.Request) {

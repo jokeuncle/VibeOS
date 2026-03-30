@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Plus, GitBranch, Trash2, CheckCircle, XCircle, Loader2,
-  ExternalLink, Key,
+  ExternalLink, Key, AlertTriangle,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { workspaceApi, gitlabCredentialApi } from '../lib/api'
@@ -38,6 +38,7 @@ export default function GitLabReposPanel({ workspaceId, onClose }: GitLabReposPa
   const [step, setStep] = useState<Step>('list')
   const [credentials, setCredentials] = useState<GitLabCredential[]>([])
   const [loadingCreds, setLoadingCreds] = useState(false)
+  const [deletingCredId, setDeletingCredId] = useState<string | null>(null)
   const [testingRepo, setTestingRepo] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({})
   const [error, setError] = useState('')
@@ -54,6 +55,19 @@ export default function GitLabReposPanel({ workspaceId, onClose }: GitLabReposPa
     setCredentials((prev) => [...prev, cred])
     setError('')
     setStep('add-repo')
+  }
+
+  async function handleDeleteCredential(credId: string) {
+    setDeletingCredId(credId)
+    try {
+      await gitlabCredentialApi.delete(credId)
+      setCredentials((prev) => prev.filter((c) => c.id !== credId))
+      setError('')
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setDeletingCredId(null)
+    }
   }
 
   async function handleRepoSave(data: RepoFormData) {
@@ -140,8 +154,10 @@ export default function GitLabReposPanel({ workspaceId, onClose }: GitLabReposPa
               credentials={credentials}
               testingRepo={testingRepo}
               testResults={testResults}
+              deletingCredId={deletingCredId}
               onTest={handleTestConnection}
               onDelete={handleDeleteRepo}
+              onDeleteCredential={handleDeleteCredential}
               onAddCredential={() => { setStep('add-credential'); setError('') }}
               onAddRepo={() => { setStep('add-repo'); setError('') }}
             />
@@ -182,13 +198,18 @@ export default function GitLabReposPanel({ workspaceId, onClose }: GitLabReposPa
 
 /* ── Repo List (inline sub-component) ────────────────────────────── */
 
-function RepoList({ repos, credentials, testingRepo, testResults, onTest, onDelete, onAddCredential, onAddRepo }: {
+function RepoList({
+  repos, credentials, testingRepo, testResults, deletingCredId,
+  onTest, onDelete, onDeleteCredential, onAddCredential, onAddRepo,
+}: {
   repos: WorkspaceRepo[]
   credentials: GitLabCredential[]
   testingRepo: string | null
   testResults: Record<string, { ok: boolean; message: string }>
+  deletingCredId: string | null
   onTest: (id: string) => void
   onDelete: (id: string) => void
+  onDeleteCredential: (id: string) => void
   onAddCredential: () => void
   onAddRepo: () => void
 }) {
@@ -291,13 +312,39 @@ function RepoList({ repos, credentials, testingRepo, testResults, onTest, onDele
       {credentials.length > 0 && (
         <div className="mt-3 pt-3 border-t border-border-subtle">
           <p className="text-xs text-text-tertiary font-medium mb-2">{t('gitlab.instances')}</p>
-          <div className="space-y-1">
-            {credentials.map((c) => (
-              <div key={c.id} className="flex items-center justify-between text-xs text-text-tertiary">
-                <span>{c.label || c.gitlabUrl}</span>
-                <span className="text-text-quaternary">···{c.tokenHint}</span>
-              </div>
-            ))}
+          <div className="space-y-1.5">
+            {credentials.map((c) => {
+              const repoCount = repos.filter((r) => r.credentialId === c.id).length
+              return (
+                <div key={c.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-2 transition-colors group">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-text-secondary truncate">{c.label || c.gitlabUrl}</div>
+                    <div className="text-[10px] text-text-quaternary">{c.gitlabUrl} · ···{c.tokenHint}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {repoCount > 0 && (
+                      <span className="text-[10px] text-text-tertiary">{repoCount} repo{repoCount > 1 ? 's' : ''}</span>
+                    )}
+                    {repoCount > 0 ? (
+                      <div title={t('gitlab.instanceHasRepos')} className="p-1 text-text-quaternary">
+                        <AlertTriangle className="w-3 h-3" />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => onDeleteCredential(c.id)}
+                        disabled={deletingCredId === c.id}
+                        className="p-1 rounded text-text-quaternary hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-50 opacity-0 group-hover:opacity-100"
+                      >
+                        {deletingCredId === c.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <Trash2 className="w-3 h-3" />
+                        }
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

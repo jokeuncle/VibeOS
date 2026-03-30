@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   Plug2, CheckCircle2, Circle, ExternalLink,
@@ -237,8 +237,8 @@ export default function WorkspaceIntegrations() {
 
   const [integrations, setIntegrations] = useState<Integration[]>(derivedIntegrations)
 
-  // Sync with real data when repos change
-  useMemo(() => {
+  // Sync with real data when repos change (useEffect, not useMemo — this is a side effect)
+  useEffect(() => {
     setIntegrations(derivedIntegrations)
   }, [derivedIntegrations])
 

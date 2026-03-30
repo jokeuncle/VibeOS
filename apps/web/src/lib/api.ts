@@ -1,6 +1,6 @@
 import type {
   Workspace, Message, RichBlock, AgentType, ActivityItem,
-  GitLabCredential, WorkspaceRepo, User, WorkspaceMember,
+  GitLabCredential, GitLabProjectResult, WorkspaceRepo, User, WorkspaceMember,
   Requirement, RequirementRelation, Task, Phase, Agent,
   Artifact, ArtifactMeta, FeedbackSignal, ConversationSummary, ActivitySummary,
   LabelColor, BudgetResponse, WorkspaceBudgetSettings, PipelinePhaseConfig,
@@ -338,6 +338,11 @@ export const gitlabCredentialApi = {
 
   delete: (id: string) =>
     request<void>(`/api/gitlab/credentials/${id}`, { method: 'DELETE' }),
+
+  searchProjects: (credId: string, search: string) =>
+    request<{ data: GitLabProjectResult[] }>(
+      `/api/gitlab/credentials/${credId}/projects?search=${encodeURIComponent(search)}`
+    ).then(unwrap),
 }
 
 export const workflowApi = {

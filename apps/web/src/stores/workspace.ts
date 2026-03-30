@@ -79,6 +79,10 @@ export interface LogEntry {
   taskId?: string
 }
 
+/** Per workspace: execution log history has been loaded from the API this SPA session. */
+const executionLogsHydratedIds = new Set<string>()
+const executionLogsFetchInflight = new Map<string, Promise<void>>()
+
 export interface AgentStatusEvent {
   agentType: string
   status: import('../types').AgentStatus
@@ -126,6 +130,9 @@ interface WorkspaceState {
   sendNLPMessageStream: (input: string) => void
   sendAgentChatMessageStream: (agentType: string, input: string) => void
   appendExecutionLog: (workspaceId: string, entry: LogEntry) => void
+  setExecutionLogs: (workspaceId: string, entries: LogEntry[]) => void
+  /** Load persisted execution logs when opening Traces or Agent log stream (not on workspace switch). */
+  fetchExecutionLogs: (workspaceId?: string) => Promise<void>
   updateAgentStatus: (workspaceId: string, agentType: string, status: import('../types').AgentStatus, detail?: string) => void
   patchTaskStatus: (workspaceId: string, taskId: string, status: PhaseStatus) => void
 
@@ -884,6 +891,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     })()
   },
 
+  setExecutionLogs: (workspaceId, entries) => {
+    if (!workspaceId) return
+    set((s) => ({
+      executionLogs: { ...s.executionLogs, [workspaceId]: entries },
+    }))
+  },
+
   appendExecutionLog: (workspaceId, entry) => {
     if (!workspaceId) return
     set((s) => ({
@@ -892,6 +906,39 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         [workspaceId]: [...(s.executionLogs[workspaceId] || []), entry].slice(-500),
       },
     }))
+  },
+
+  fetchExecutionLogs: async (workspaceId) => {
+    const id = workspaceId ?? get().activeWorkspaceId
+    if (!id || id.startsWith('ws-temp-')) return
+
+    if (executionLogsHydratedIds.has(id)) return
+
+    const inflight = executionLogsFetchInflight.get(id)
+    if (inflight) return inflight
+
+    const run = (async () => {
+      try {
+        const logsResp = await workspaceApi.listExecutionLogs(id, undefined, 200)
+        const historicLogs: LogEntry[] = ((logsResp as any).data || []).map((l: any) => ({
+          id: l.id,
+          timestamp: l.timestamp,
+          agent: l.agent,
+          level: l.level as LogEntry['level'],
+          message: l.message,
+          taskId: l.taskId,
+        }))
+        get().setExecutionLogs(id, historicLogs)
+        executionLogsHydratedIds.add(id)
+      } catch (err) {
+        console.error('Failed to fetch execution logs:', err)
+      } finally {
+        executionLogsFetchInflight.delete(id)
+      }
+    })()
+
+    executionLogsFetchInflight.set(id, run)
+    return run
   },
 
   updateAgentStatus: (workspaceId, agentType, status, detail) => {

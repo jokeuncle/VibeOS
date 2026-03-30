@@ -195,6 +195,7 @@ func main() {
 		r.Post("/", credHandler.Create)
 		r.Delete("/{credId}", credHandler.Delete)
 		r.Get("/{credId}/decrypt", credHandler.Decrypt)
+		r.Get("/{credId}/projects", credHandler.SearchProjects)
 	})
 
 	// ---- Start -----------------------------------------------------------

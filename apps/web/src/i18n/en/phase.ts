@@ -21,6 +21,7 @@ const phase = {
   'phase.short.development': 'DEV',
   'phase.short.testing': 'TEST',
   'phase.short.deployment': 'SHIP',
+  'phase.short.cicd': 'CI/CD',
   'phase.short.monitoring': 'OPS',
 
   'phase.title': 'Phases',

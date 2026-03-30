@@ -185,6 +185,13 @@ export interface GitLabCredential {
   updatedAt: string
 }
 
+export interface GitLabProjectResult {
+  id: string
+  name: string
+  pathWithNamespace: string
+  webUrl: string
+}
+
 export interface WorkspaceRepo {
   id: string
   workspaceId: string

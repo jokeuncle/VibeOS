@@ -259,18 +259,29 @@ export default function WorkspacePipeline() {
   const [saving, setSaving] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Ref always reflects the latest workspace to guard against stale responses
+  const activeWsRef = useRef(activeWorkspaceId)
+  useEffect(() => { activeWsRef.current = activeWorkspaceId }, [activeWorkspaceId])
+
   // Load configs from backend on mount
   const loadPipeline = useCallback(async () => {
     if (!activeWorkspaceId) return
+    const wsId = activeWorkspaceId
     try {
-      const configs = await workspaceApi.getPipeline(activeWorkspaceId)
+      const configs = await workspaceApi.getPipeline(wsId)
+      if (activeWsRef.current !== wsId) return
       setPhases(mergePhases(PHASE_META, configs))
     } catch {
       // fallback to defaults already set
     }
   }, [activeWorkspaceId])
 
-  useEffect(() => { loadPipeline() }, [loadPipeline])
+  useEffect(() => {
+    // Cancel any pending save from the previous workspace before loading new data
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    setSelectedPhase(null)
+    loadPipeline()
+  }, [loadPipeline])
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -282,9 +293,10 @@ export default function WorkspacePipeline() {
   // Auto-save with debounce
   const savePhases = useCallback(async (updated: PhaseView[]) => {
     if (!activeWorkspaceId) return
+    const wsId = activeWorkspaceId
     setSaving(true)
     try {
-      await workspaceApi.updatePipeline(activeWorkspaceId,
+      await workspaceApi.updatePipeline(wsId,
         updated.map(p => ({
           phaseKey: p.key,
           enabled: p.enabled,
@@ -295,7 +307,7 @@ export default function WorkspacePipeline() {
     } catch {
       // ignore – state stays as is
     } finally {
-      setSaving(false)
+      if (activeWsRef.current === wsId) setSaving(false)
     }
   }, [activeWorkspaceId])
 
@@ -375,12 +387,19 @@ export default function WorkspacePipeline() {
               />
               <AnimatePresence>
                 {selectedPhase === phase.key && (
-                  <div className="mt-1.5">
+                  <motion.div
+                    key={phase.key}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="mt-1.5 overflow-hidden"
+                  >
                     <PhaseDetail
                       phase={phase}
                       onUpdate={patch => updatePhase(phase.key, patch)}
                     />
-                  </div>
+                  </motion.div>
                 )}
               </AnimatePresence>
             </div>

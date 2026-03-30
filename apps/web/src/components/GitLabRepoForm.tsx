@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Loader2, Search, X, ChevronDown } from 'lucide-react'
 import FormSelect from './ui/FormSelect'
+import { gitlabCredentialApi } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
-import type { GitLabCredential, RepoBranchStrategy, RepoRole } from '../types'
+import type { GitLabCredential, GitLabProjectResult, RepoBranchStrategy, RepoRole } from '../types'
 
 interface GitLabRepoFormProps {
   credentials: GitLabCredential[]
@@ -43,9 +44,123 @@ const PHASE_KEYS: { value: string; labelKey: TranslationKey }[] = [
   { value: 'design', labelKey: 'phase.short.design' },
   { value: 'development', labelKey: 'phase.short.development' },
   { value: 'testing', labelKey: 'phase.short.testing' },
-  { value: 'deployment', labelKey: 'phase.short.deployment' },
+  { value: 'cicd', labelKey: 'phase.short.cicd' },
   { value: 'monitoring', labelKey: 'phase.short.monitoring' },
 ]
+
+function ProjectPicker({
+  credentialId,
+  onSelect,
+}: {
+  credentialId: string
+  onSelect: (project: GitLabProjectResult) => void
+}) {
+  const t = useT()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<GitLabProjectResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<GitLabProjectResult | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setQuery('')
+    setResults([])
+    setSelected(null)
+    setOpen(false)
+  }, [credentialId])
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!credentialId) return
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const data = await gitlabCredentialApi.searchProjects(credentialId, query)
+        setResults(data)
+        setOpen(true)
+      } catch {
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 350)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [query, credentialId])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function handleSelect(project: GitLabProjectResult) {
+    setSelected(project)
+    setOpen(false)
+    setQuery(project.pathWithNamespace)
+    onSelect(project)
+  }
+
+  function handleClear() {
+    setSelected(null)
+    setQuery('')
+    setResults([])
+    setOpen(false)
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border-default bg-surface-2 focus-within:ring-1 focus-within:ring-accent/50">
+        {searching
+          ? <Loader2 className="w-3.5 h-3.5 text-text-tertiary shrink-0 animate-spin" />
+          : <Search className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+        }
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setSelected(null) }}
+          onFocus={() => { if (results.length > 0) setOpen(true) }}
+          placeholder={t('gitlab.searchProject')}
+          className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-quaternary focus:outline-none"
+        />
+        {(query || selected) && (
+          <button onClick={handleClear} className="text-text-tertiary hover:text-text-secondary cursor-pointer">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {!searching && !query && <ChevronDown className="w-3.5 h-3.5 text-text-tertiary shrink-0" />}
+      </div>
+
+      {open && results.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-border-default bg-surface-1 shadow-xl shadow-black/30">
+          {results.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => handleSelect(project)}
+              className="w-full text-left px-3 py-2.5 hover:bg-surface-2 transition-colors border-b border-border-subtle last:border-0 cursor-pointer"
+            >
+              <div className="text-[12px] font-medium text-text-primary truncate">{project.name}</div>
+              <div className="text-[10px] text-text-tertiary truncate">{project.pathWithNamespace}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {open && !searching && results.length === 0 && query.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border-default bg-surface-1 px-3 py-3 text-xs text-text-tertiary shadow-xl shadow-black/30">
+          {t('gitlab.noProjectsFound')}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function GitLabRepoForm({ credentials, loadingCreds, onSave, onError }: GitLabRepoFormProps) {
   const t = useT()
@@ -59,6 +174,12 @@ export default function GitLabRepoForm({ credentials, loadingCreds, onSave, onEr
   const [branchStrategy, setBranchStrategy] = useState<RepoBranchStrategy>('feature')
   const [selectedPhases, setSelectedPhases] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+
+  function handleProjectSelect(project: GitLabProjectResult) {
+    setProjectId(project.id)
+    setProjectName(project.name)
+    setProjectUrl(project.webUrl)
+  }
 
   function togglePhase(phase: string) {
     setSelectedPhases((prev) =>
@@ -107,46 +228,39 @@ export default function GitLabRepoForm({ credentials, loadingCreds, onSave, onEr
                 value: c.id,
                 label: `${c.label || c.gitlabUrl} (···${c.tokenHint})`,
               }))}
-              onChange={setSelectedCredId}
+              onChange={(v) => { setSelectedCredId(v); setProjectId(''); setProjectName(''); setProjectUrl('') }}
             />
           )}
         </div>
 
-        {/* Project ID */}
-        <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1.5">{t('gitlab.projectIdOrPath')}</label>
-          <input
-            type="text"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            placeholder="590 or fe/my-project"
-            className="w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-quaternary focus:outline-none focus:ring-1 focus:ring-accent/50"
-          />
-        </div>
-
-        {/* Project Name */}
-        <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1.5">{t('gitlab.projectName')}</label>
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="My Frontend Project"
-            className="w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-quaternary focus:outline-none focus:ring-1 focus:ring-accent/50"
-          />
-        </div>
-
-        {/* Project URL */}
-        <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1.5">{t('gitlab.projectUrl')}</label>
-          <input
-            type="url"
-            value={projectUrl}
-            onChange={(e) => setProjectUrl(e.target.value)}
-            placeholder="https://gitlab.com/group/project"
-            className="w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-quaternary focus:outline-none focus:ring-1 focus:ring-accent/50"
-          />
-        </div>
+        {/* Project search */}
+        {selectedCredId && (
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">{t('gitlab.projectSearch')}</label>
+            <ProjectPicker credentialId={selectedCredId} onSelect={handleProjectSelect} />
+            {projectId && (
+              <div className="mt-1.5 flex items-center gap-2 text-[11px] text-text-tertiary min-w-0">
+                {projectUrl ? (
+                  <a
+                    href={projectUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={t('gitlab.openInGitLab')}
+                    className="flex items-center gap-2 min-w-0 rounded-md -mx-1 px-1 py-0.5 text-text-tertiary hover:bg-surface-3/60 hover:text-text-secondary transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40"
+                  >
+                    <span className="font-mono text-accent shrink-0">#{projectId}</span>
+                    <span className="truncate">{projectName}</span>
+                  </a>
+                ) : (
+                  <>
+                    <span className="font-mono text-accent shrink-0">#{projectId}</span>
+                    <span className="truncate">{projectName}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Role + Primary */}
         <div className="grid grid-cols-2 gap-3">
@@ -237,7 +351,7 @@ export default function GitLabRepoForm({ credentials, loadingCreds, onSave, onEr
         </div>
       </div>
 
-      <div className="shrink-0 flex items-center justify-end px-5 py-4 border-t border-border-subtle">
+      <div className="mt-6 shrink-0 flex items-center justify-end py-4 border-t border-border-subtle">
         <button
           onClick={handleSave}
           disabled={saving}

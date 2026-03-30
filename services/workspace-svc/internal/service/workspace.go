@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -846,6 +847,13 @@ func (s *Service) GetBudget(ctx context.Context, wsID string) (*models.BudgetRes
 		totalCost += stat.CostUSD
 		totalTokens += stat.TokensTotal
 	}
+	// Sort by cost descending for stable, meaningful UI ordering.
+	sort.Slice(agentUsage, func(i, j int) bool {
+		if agentUsage[i].CostUSD != agentUsage[j].CostUSD {
+			return agentUsage[i].CostUSD > agentUsage[j].CostUSD
+		}
+		return agentUsage[i].AgentType < agentUsage[j].AgentType
+	})
 
 	// Week spend series (Mon–Sun), indexed 0–6 where Monday = 0
 	weekSpend := make([]float64, 7)

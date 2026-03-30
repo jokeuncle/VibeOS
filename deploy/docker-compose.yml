@@ -1,3 +1,8 @@
+# Postgres loads ./init.sql only on **first** start (empty volume). Existing volumes keep the old schema.
+# After git pull, apply SQL under migrations/ manually, e.g.:
+#   ./apply-migration-005.sh
+# or: cat migrations/005_budget_pipeline_logs.sql | docker compose exec -T postgres psql -U vibeos -d vibeos
+
 services:
   postgres:
     image: postgres:16-alpine

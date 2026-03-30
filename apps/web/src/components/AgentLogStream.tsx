@@ -49,6 +49,13 @@ export default function AgentLogStream({ agents, taskId }: Props) {
 
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const executionLogs = useWorkspaceStore((s) => s.executionLogs)
+  const fetchExecutionLogs = useWorkspaceStore((s) => s.fetchExecutionLogs)
+
+  useEffect(() => {
+    if (activeWorkspaceId && !activeWorkspaceId.startsWith('ws-temp-')) {
+      void fetchExecutionLogs(activeWorkspaceId)
+    }
+  }, [activeWorkspaceId, fetchExecutionLogs])
 
   const allLogs = activeWorkspaceId ? executionLogs[activeWorkspaceId] || [] : []
 

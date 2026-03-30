@@ -40,15 +40,22 @@ const SIZE = {
   },
 } as const
 
+type MenuRect = { top: number; left: number; width: number; showAbove: boolean }
+
 function useMenuPosition(
   open: boolean,
   triggerRef: React.RefObject<HTMLElement | null>,
   fullWidth: boolean,
 ) {
-  const [rect, setRect] = useState({ top: 0, left: 0, width: 200, showAbove: false })
+  /** null until measured — avoids one frame at (0,0) when portaling to body */
+  const [rect, setRect] = useState<MenuRect | null>(null)
 
   useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return
+    if (!open) {
+      setRect(null)
+      return
+    }
+    if (!triggerRef.current) return
 
     function update() {
       const el = triggerRef.current
@@ -109,9 +116,11 @@ export default function FormSelect({
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  const pos = menuPos
   const portal =
     open &&
     !disabled &&
+    pos != null &&
     typeof document !== 'undefined' &&
     createPortal(
       <>
@@ -132,9 +141,9 @@ export default function FormSelect({
             motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-100
           `.trim().replace(/\s+/g, ' ')}
           style={{
-            top: menuPos.top,
-            left: menuPos.left,
-            width: menuPos.width,
+            top: pos.top,
+            left: pos.left,
+            width: pos.width,
             maxWidth: 'min(100vw - 16px, 320px)',
           }}
         >

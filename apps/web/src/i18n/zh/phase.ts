@@ -21,6 +21,7 @@ const phase = {
   'phase.short.development': '开发',
   'phase.short.testing': '测试',
   'phase.short.deployment': '部署',
+  'phase.short.cicd': 'CI/CD',
   'phase.short.monitoring': '监控',
 
   'phase.title': '阶段',

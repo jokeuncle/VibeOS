@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   Bot, Settings2, ChevronDown, ChevronUp,
@@ -153,6 +153,11 @@ function AgentCard({
   const [expanded, setExpanded] = useState(false)
   const [model, setModel] = useState(liveModel ?? meta.defaultModel)
   const Icon = meta.icon
+
+  // Sync model when backend data loads or workspace switches
+  useEffect(() => {
+    if (liveModel) setModel(liveModel)
+  }, [liveModel])
 
   const isActive = liveStatus !== 'idle'
 

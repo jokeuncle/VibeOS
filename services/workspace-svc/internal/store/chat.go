@@ -523,8 +523,14 @@ func (s *PostgresStore) GetPipelineConfigs(ctx context.Context, workspaceID stri
 }
 
 func (s *PostgresStore) UpsertPipelineConfigs(ctx context.Context, workspaceID string, phases []models.PipelinePhaseConfigReq) ([]models.PipelinePhaseConfig, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
 	for _, p := range phases {
-		_, err := s.pool.Exec(ctx,
+		_, err := tx.Exec(ctx,
 			`INSERT INTO workspace_pipeline_configs (workspace_id, phase_key, enabled, require_approval, quality_gate, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, NOW())
 			 ON CONFLICT (workspace_id, phase_key) DO UPDATE
@@ -537,6 +543,9 @@ func (s *PostgresStore) UpsertPipelineConfigs(ctx context.Context, workspaceID s
 		if err != nil {
 			return nil, fmt.Errorf("upsert pipeline phase %s: %w", p.PhaseKey, err)
 		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 	return s.GetPipelineConfigs(ctx, workspaceID)
 }

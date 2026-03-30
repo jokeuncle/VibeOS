@@ -6,9 +6,11 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -198,4 +200,66 @@ func (s *Service) DeleteWorkspaceRepo(ctx context.Context, id string) error {
 
 func (s *Service) ListReposForPhase(ctx context.Context, workspaceID, phaseType string) ([]models.WorkspaceRepo, error) {
 	return s.store.ListReposForPhase(ctx, workspaceID, phaseType)
+}
+
+// SearchGitLabProjects queries the GitLab instance for projects matching the search term.
+// Returns a simplified list suitable for the project-picker UI.
+func (s *Service) SearchGitLabProjects(ctx context.Context, credentialID, search string) ([]models.GitLabProjectResult, error) {
+	gitlabURL, token, err := s.GetDecryptedToken(ctx, credentialID)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt token: %w", err)
+	}
+
+	apiURL := strings.TrimRight(gitlabURL, "/") + "/api/v4/projects"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	q := req.URL.Query()
+	if search != "" {
+		q.Set("search", search)
+		// Default false on GitLab: match is only against project path/name/description,
+		// not ancestor group names — e.g. "acme" won't find "acme/app". Enable namespace matching.
+		q.Set("search_namespaces", "true")
+	}
+	q.Set("membership", "true")
+	q.Set("per_page", "20")
+	q.Set("order_by", "last_activity_at")
+	req.URL.RawQuery = q.Encode()
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("gitlab request: %w", err)
+	}
+	defer func() {
+		io.Copy(io.Discard, resp.Body) //nolint:errcheck
+		resp.Body.Close()
+	}()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("gitlab returned %d", resp.StatusCode)
+	}
+
+	var raw []struct {
+		ID                int    `json:"id"`
+		Name              string `json:"name"`
+		PathWithNamespace string `json:"path_with_namespace"`
+		HTTPURLToRepo     string `json:"http_url_to_repo"`
+		WebURL            string `json:"web_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	results := make([]models.GitLabProjectResult, 0, len(raw))
+	for _, p := range raw {
+		results = append(results, models.GitLabProjectResult{
+			ID:                fmt.Sprintf("%d", p.ID),
+			Name:              p.Name,
+			PathWithNamespace: p.PathWithNamespace,
+			WebURL:            p.WebURL,
+		})
+	}
+	return results, nil
 }

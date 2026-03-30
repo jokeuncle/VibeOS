@@ -124,6 +124,8 @@ const intelligence = {
   'traces.status.error': 'Error',
   'traces.status.running': 'Running',
   'traces.toolCalls': 'Tool calls',
+  'traces.totalLogsCount': 'logs',
+  'traces.emptyHint': 'Run a workflow or NLP command to see agent traces here.',
 } as const
 
 export default intelligence
