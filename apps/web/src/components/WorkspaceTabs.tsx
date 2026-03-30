@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import { WORKSPACE_TAB_DOT, WORKSPACE_TAB_TOP, workspaceColorFallback } from '../lib/workspaceColors'
 
 export default function WorkspaceTabs() {
   const t = useT()
@@ -18,6 +19,7 @@ export default function WorkspaceTabs() {
           const ws = workspaces.find((w) => w.id === tabId)
           if (!ws) return null
           const isActive = tabId === activeWorkspaceId
+          const wc = workspaceColorFallback(ws.color)
           return (
             <motion.div
               key={tabId}
@@ -25,13 +27,17 @@ export default function WorkspaceTabs() {
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
               transition={{ duration: 0.15 }}
-              className={`relative flex items-center gap-1.5 px-3 h-7 text-[11px] font-medium cursor-pointer border-t-2 rounded-t-md transition-colors shrink-0 ${
+              className={`relative flex items-center gap-1.5 px-3 h-7 text-[11px] font-medium cursor-pointer rounded-t-md transition-colors shrink-0 ${
                 isActive
-                  ? 'bg-surface-1 text-text-primary border-accent'
-                  : 'bg-surface-0 text-text-tertiary border-transparent hover:text-text-secondary hover:bg-surface-1/50'
+                  ? `bg-surface-1 text-text-primary ${WORKSPACE_TAB_TOP[wc]}`
+                  : 'bg-surface-0 text-text-tertiary border-t-2 border-t-transparent hover:text-text-secondary hover:bg-surface-1/50'
               }`}
               onClick={() => setActiveWorkspace(tabId)}
             >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${WORKSPACE_TAB_DOT[wc]}`}
+                aria-hidden
+              />
               <span className="truncate max-w-[120px]">{ws.name || t('workspace.untitled')}</span>
               <button
                 onClick={(e) => {
