@@ -54,17 +54,23 @@ interface UIState {
   viewMode:
     | 'dashboard'
     | 'requirements'
-    | 'knowledgeBase'
-    | 'projectMemory'
-    | 'techKnowledge'
+    | 'pipeline'
+    | 'agentTeam'
+    | 'integrations'
+    | 'context'
+    | 'traces'
+    | 'budget'
     | 'settings'
   setViewMode: (
     mode:
       | 'dashboard'
       | 'requirements'
-      | 'knowledgeBase'
-      | 'projectMemory'
-      | 'techKnowledge'
+      | 'pipeline'
+      | 'agentTeam'
+      | 'integrations'
+      | 'context'
+      | 'traces'
+      | 'budget'
       | 'settings',
   ) => void
 

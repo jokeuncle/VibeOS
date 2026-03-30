@@ -16,10 +16,22 @@ import WorkspaceSettings from './WorkspaceSettings'
 import WorkspaceKnowledgeBase from './WorkspaceKnowledgeBase'
 import WorkspaceProjectMemory from './WorkspaceProjectMemory'
 import WorkspaceTechKnowledge from './WorkspaceTechKnowledge'
+import WorkspacePipeline from './WorkspacePipeline'
+import WorkspaceAgentTeam from './WorkspaceAgentTeam'
+import WorkspaceIntegrations from './WorkspaceIntegrations'
+import WorkspaceContext from './WorkspaceContext'
+import WorkspaceTraces from './WorkspaceTraces'
+import WorkspaceBudget from './WorkspaceBudget'
 
 type ViewMode =
   | 'dashboard'
   | 'requirements'
+  | 'pipeline'
+  | 'agentTeam'
+  | 'integrations'
+  | 'context'
+  | 'traces'
+  | 'budget'
   | 'knowledgeBase'
   | 'projectMemory'
   | 'techKnowledge'
@@ -50,21 +62,19 @@ function ViewContent() {
     return <RequirementList />
   }
 
-  if (currentMode === 'knowledgeBase') {
-    return <WorkspaceKnowledgeBase />
-  }
+  if (currentMode === 'pipeline') return <WorkspacePipeline />
+  if (currentMode === 'agentTeam') return <WorkspaceAgentTeam />
+  if (currentMode === 'integrations') return <WorkspaceIntegrations />
+  if (currentMode === 'context') return <WorkspaceContext />
+  if (currentMode === 'traces') return <WorkspaceTraces />
+  if (currentMode === 'budget') return <WorkspaceBudget />
 
-  if (currentMode === 'projectMemory') {
-    return <WorkspaceProjectMemory />
-  }
+  // Legacy routes kept for backward compat
+  if (currentMode === 'knowledgeBase') return <WorkspaceKnowledgeBase />
+  if (currentMode === 'projectMemory') return <WorkspaceProjectMemory />
+  if (currentMode === 'techKnowledge') return <WorkspaceTechKnowledge />
 
-  if (currentMode === 'techKnowledge') {
-    return <WorkspaceTechKnowledge />
-  }
-
-  if (currentMode === 'settings') {
-    return <WorkspaceSettings />
-  }
+  if (currentMode === 'settings') return <WorkspaceSettings />
 
   return null
 }
@@ -94,7 +104,13 @@ export default function WorkspaceView() {
     currentViewMode === 'requirements' ||
     currentViewMode === 'knowledgeBase' ||
     currentViewMode === 'projectMemory' ||
-    currentViewMode === 'techKnowledge'
+    currentViewMode === 'techKnowledge' ||
+    currentViewMode === 'pipeline' ||
+    currentViewMode === 'agentTeam' ||
+    currentViewMode === 'integrations' ||
+    currentViewMode === 'context' ||
+    currentViewMode === 'traces' ||
+    currentViewMode === 'budget'
   const maxW = wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
 
   return (
