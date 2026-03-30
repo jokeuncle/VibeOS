@@ -144,6 +144,11 @@ const common = {
   'error.networkError': '网络连接异常，请检查服务是否正常运行。',
   'error.agentUnavailable': '{name} Agent 服务未启动，请先启动对应的 Agent 服务。',
   'error.agentUnavailableGeneric': 'Agent 服务未启动或无法连接，请检查服务配置。',
+
+  'common.save': '保存',
+  'common.saving': '保存中…',
+  'common.cancel': '取消',
+  'common.refresh': '刷新',
 }
 
 export default common

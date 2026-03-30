@@ -155,15 +155,76 @@ type Task struct {
 }
 
 type Agent struct {
-	ID          string      `json:"id" db:"id"`
-	WorkspaceID string      `json:"workspaceId" db:"workspace_id"`
-	Type        AgentType   `json:"type" db:"type"`
-	Name        string      `json:"name" db:"name"`
-	Status      AgentStatus `json:"status" db:"status"`
-	CurrentTask *string     `json:"currentTask,omitempty" db:"current_task"`
-	Avatar      string      `json:"avatar" db:"avatar"`
-	CreatedAt   time.Time   `json:"createdAt" db:"created_at"`
-	UpdatedAt   time.Time   `json:"updatedAt" db:"updated_at"`
+	ID             string      `json:"id" db:"id"`
+	WorkspaceID    string      `json:"workspaceId" db:"workspace_id"`
+	Type           AgentType   `json:"type" db:"type"`
+	Name           string      `json:"name" db:"name"`
+	Status         AgentStatus `json:"status" db:"status"`
+	CurrentTask    *string     `json:"currentTask,omitempty" db:"current_task"`
+	PreferredModel *string     `json:"preferredModel,omitempty" db:"preferred_model"`
+	Avatar         string      `json:"avatar" db:"avatar"`
+	CreatedAt      time.Time   `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time   `json:"updatedAt" db:"updated_at"`
+}
+
+// ---------------------------------------------------------------------------
+// Budget & usage models
+// ---------------------------------------------------------------------------
+
+// WorkspaceBudgetSettings stores per-workspace spending limits.
+type WorkspaceBudgetSettings struct {
+	WorkspaceID        string    `json:"workspaceId" db:"workspace_id"`
+	DailySpendLimitUSD float64   `json:"dailySpendLimitUsd" db:"daily_spend_limit_usd"`
+	AlertThresholdPct  int       `json:"alertThresholdPct" db:"alert_threshold_pct"`
+	UpdatedAt          time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// AgentUsageStat is a single agent's token/cost usage for a time window.
+type AgentUsageStat struct {
+	AgentType    string  `json:"agentType"`
+	TokensTotal  int64   `json:"tokensTotal"`
+	CostUSD      float64 `json:"costUsd"`
+	Model        string  `json:"model"`
+	RequestCount int     `json:"requestCount"`
+}
+
+// BudgetResponse combines settings + today's usage returned by the budget API.
+type BudgetResponse struct {
+	Settings      WorkspaceBudgetSettings `json:"settings"`
+	UsedTodayUSD  float64                 `json:"usedTodayUsd"`
+	TokensToday   int64                   `json:"tokensToday"`
+	AgentUsage    []AgentUsageStat        `json:"agentUsage"`
+	WeekLabels    []string                `json:"weekLabels"`
+	WeekSpendUSD  []float64               `json:"weekSpendUsd"`
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline configuration models
+// ---------------------------------------------------------------------------
+
+// PipelinePhaseConfig stores per-workspace overrides for each SDLC phase.
+type PipelinePhaseConfig struct {
+	WorkspaceID     string    `json:"workspaceId" db:"workspace_id"`
+	PhaseKey        string    `json:"phaseKey" db:"phase_key"`
+	Enabled         bool      `json:"enabled" db:"enabled"`
+	RequireApproval bool      `json:"requireApproval" db:"require_approval"`
+	QualityGate     *string   `json:"qualityGate,omitempty" db:"quality_gate"`
+	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// ---------------------------------------------------------------------------
+// Execution log models
+// ---------------------------------------------------------------------------
+
+// ExecutionLog records a single agent log entry (persisted to DB for history).
+type ExecutionLog struct {
+	ID          string    `json:"id" db:"id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	AgentType   string    `json:"agent" db:"agent_type"`
+	Level       string    `json:"level" db:"level"`
+	Message     string    `json:"message" db:"message"`
+	TaskID      *string   `json:"taskId,omitempty" db:"task_id"`
+	CreatedAt   time.Time `json:"timestamp" db:"created_at"`
 }
 
 type Artifact struct {

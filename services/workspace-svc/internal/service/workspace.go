@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -802,4 +803,116 @@ func (s *Service) publishEvent(ctx context.Context, wsID, eventType string, payl
 	if err := s.redis.Publish(ctx, "vibeos:events", data).Err(); err != nil {
 		s.log.Error("failed to publish redis event", "error", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Budget
+// ---------------------------------------------------------------------------
+
+func (s *Service) GetBudget(ctx context.Context, wsID string) (*models.BudgetResponse, error) {
+	settings, err := s.store.GetBudgetSettings(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch today's logs only, then the last 7 days for week series.
+	todayLogs, _, err := s.store.ListExecutionLogsSince(ctx, wsID, todayUTC(), 500)
+	if err != nil {
+		return nil, err
+	}
+	weekLogs, _, err := s.store.ListExecutionLogsSince(ctx, wsID, weekStartUTC(), 5000)
+	if err != nil {
+		return nil, err
+	}
+
+	// Per-agent today aggregation
+	agentMap := map[string]*models.AgentUsageStat{}
+	for _, l := range todayLogs {
+		stat, ok := agentMap[l.AgentType]
+		if !ok {
+			stat = &models.AgentUsageStat{AgentType: l.AgentType}
+			agentMap[l.AgentType] = stat
+		}
+		stat.RequestCount++
+		// Rough stand-in: each log entry ≈ 500 tokens, $0.005 / entry
+		stat.TokensTotal += 500
+		stat.CostUSD += 0.005
+	}
+	agentUsage := make([]models.AgentUsageStat, 0, len(agentMap))
+	var totalCost float64
+	var totalTokens int64
+	for _, stat := range agentMap {
+		agentUsage = append(agentUsage, *stat)
+		totalCost += stat.CostUSD
+		totalTokens += stat.TokensTotal
+	}
+
+	// Week spend series (Mon–Sun), indexed 0–6 where Monday = 0
+	weekSpend := make([]float64, 7)
+	for _, l := range weekLogs {
+		day := int(l.CreatedAt.Weekday()+6) % 7 // Sunday(0)→6, Monday(1)→0
+		if day >= 0 && day < 7 {
+			weekSpend[day] += 0.005
+		}
+	}
+
+	return &models.BudgetResponse{
+		Settings:     *settings,
+		UsedTodayUSD: totalCost,
+		TokensToday:  totalTokens,
+		AgentUsage:   agentUsage,
+		WeekLabels:   []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"},
+		WeekSpendUSD: weekSpend,
+	}, nil
+}
+
+func todayUTC() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func weekStartUTC() time.Time {
+	now := time.Now().UTC()
+	// Go weekday: Sunday=0, Monday=1… shift so Monday=0
+	offset := int(now.Weekday()+6) % 7
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return day.AddDate(0, 0, -offset)
+}
+
+func (s *Service) UpdateBudgetSettings(ctx context.Context, wsID string, req models.UpdateBudgetSettingsReq) (*models.WorkspaceBudgetSettings, error) {
+	return s.store.UpsertBudgetSettings(ctx, wsID, req)
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline configuration
+// ---------------------------------------------------------------------------
+
+func (s *Service) GetPipelineConfigs(ctx context.Context, wsID string) ([]models.PipelinePhaseConfig, error) {
+	return s.store.GetPipelineConfigs(ctx, wsID)
+}
+
+func (s *Service) UpdatePipelineConfigs(ctx context.Context, wsID string, req models.UpdatePipelineReq) ([]models.PipelinePhaseConfig, error) {
+	return s.store.UpsertPipelineConfigs(ctx, wsID, req.Phases)
+}
+
+// ---------------------------------------------------------------------------
+// Execution logs
+// ---------------------------------------------------------------------------
+
+func (s *Service) ListExecutionLogs(ctx context.Context, wsID, cursor string, limit int) ([]models.ExecutionLog, string, error) {
+	return s.store.ListExecutionLogs(ctx, wsID, cursor, limit)
+}
+
+func (s *Service) CreateExecutionLog(ctx context.Context, wsID string, req models.CreateExecutionLogReq) (*models.ExecutionLog, error) {
+	entry := &models.ExecutionLog{
+		WorkspaceID: wsID,
+		AgentType:   req.AgentType,
+		Level:       req.Level,
+		Message:     req.Message,
+		TaskID:      req.TaskID,
+	}
+	if err := s.store.CreateExecutionLog(ctx, entry); err != nil {
+		return nil, err
+	}
+	return entry, nil
 }

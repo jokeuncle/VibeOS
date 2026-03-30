@@ -3,7 +3,8 @@ import type {
   GitLabCredential, WorkspaceRepo, User, WorkspaceMember,
   Requirement, RequirementRelation, Task, Phase, Agent,
   Artifact, ArtifactMeta, FeedbackSignal, ConversationSummary, ActivitySummary,
-  LabelColor,
+  LabelColor, BudgetResponse, WorkspaceBudgetSettings, PipelinePhaseConfig,
+  ExecutionLogEntry,
 } from '../types'
 
 function getAuthHeader(): Record<string, string> {
@@ -189,10 +190,42 @@ export const workspaceApi = {
   listAgents: (wsId: string) =>
     request<{ data: Agent[] }>(`/api/workspaces/${wsId}/agents`).then(unwrap),
 
-  updateAgent: (wsId: string, agentId: string, updates: { status?: string; currentTask?: string }) =>
+  updateAgent: (wsId: string, agentId: string, updates: { status?: string; currentTask?: string; preferredModel?: string }) =>
     request<{ data: Agent }>(`/api/workspaces/${wsId}/agents/${agentId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
+    }).then(unwrap),
+
+  // Budget & usage
+  getBudget: (wsId: string) =>
+    request<{ data: BudgetResponse }>(`/api/workspaces/${wsId}/budget`).then(unwrap),
+
+  updateBudgetSettings: (wsId: string, updates: { dailySpendLimitUsd?: number; alertThresholdPct?: number }) =>
+    request<{ data: WorkspaceBudgetSettings }>(`/api/workspaces/${wsId}/budget`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }).then(unwrap),
+
+  // Pipeline configuration
+  getPipeline: (wsId: string) =>
+    request<{ data: PipelinePhaseConfig[] }>(`/api/workspaces/${wsId}/pipeline`).then(unwrap),
+
+  updatePipeline: (wsId: string, phases: { phaseKey: string; enabled: boolean; requireApproval: boolean; qualityGate?: string | null }[]) =>
+    request<{ data: PipelinePhaseConfig[] }>(`/api/workspaces/${wsId}/pipeline`, {
+      method: 'PATCH',
+      body: JSON.stringify({ phases }),
+    }).then(unwrap),
+
+  // Execution logs
+  listExecutionLogs: (wsId: string, cursor?: string, limit = 100) =>
+    request<{ data: ExecutionLogEntry[]; cursor?: string; hasMore: boolean }>(
+      `/api/workspaces/${wsId}/execution-logs?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
+    ),
+
+  createExecutionLog: (wsId: string, entry: { agent: string; level: string; message: string; taskId?: string }) =>
+    request<{ data: ExecutionLogEntry }>(`/api/workspaces/${wsId}/execution-logs`, {
+      method: 'POST',
+      body: JSON.stringify(entry),
     }).then(unwrap),
 
   // Feedback signals

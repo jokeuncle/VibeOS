@@ -78,9 +78,74 @@ export interface Agent {
   name: string
   status: AgentStatus
   currentTask?: string
+  preferredModel?: string
   avatar: string
   createdAt: string
   updatedAt: string
+}
+
+// ---------------------------------------------------------------------------
+// Budget & usage types
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceBudgetSettings {
+  workspaceId: string
+  dailySpendLimitUsd: number
+  alertThresholdPct: number
+  updatedAt: string
+}
+
+export interface AgentUsageStat {
+  agentType: string
+  tokensTotal: number
+  costUsd: number
+  model: string
+  requestCount: number
+}
+
+export interface BudgetResponse {
+  settings: WorkspaceBudgetSettings
+  usedTodayUsd: number
+  tokensToday: number
+  agentUsage: AgentUsageStat[]
+  weekLabels: string[]
+  weekSpendUsd: number[]
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline configuration types
+// ---------------------------------------------------------------------------
+
+export type PipelinePhaseKey =
+  | 'requirement'
+  | 'architecture'
+  | 'design'
+  | 'development'
+  | 'testing'
+  | 'cicd'
+  | 'monitoring'
+
+export interface PipelinePhaseConfig {
+  workspaceId: string
+  phaseKey: PipelinePhaseKey
+  enabled: boolean
+  requireApproval: boolean
+  qualityGate?: string | null
+  updatedAt: string
+}
+
+// ---------------------------------------------------------------------------
+// Execution log types
+// ---------------------------------------------------------------------------
+
+export interface ExecutionLogEntry {
+  id: string
+  workspaceId: string
+  agent: string
+  level: 'info' | 'warn' | 'error' | 'success'
+  message: string
+  taskId?: string
+  timestamp: string
 }
 
 // ---------------------------------------------------------------------------

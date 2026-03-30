@@ -41,6 +41,7 @@ const intelligence = {
   'budget.dailySpendLimitHint': '达到限额后 Agent 将暂停',
   'budget.alertThreshold': '告警阈值（%）',
   'budget.alertThresholdHint': '用量超过此百分比时通知',
+  'budget.noUsageData': '暂无用量数据 — 运行 Agent 后可在此查看 Token 消耗详情。',
 
   'context.title': '上下文',
   'context.desc': 'Agent 在每次执行前从记忆、索引文档和知识图谱中汇聚的工作空间知识。',

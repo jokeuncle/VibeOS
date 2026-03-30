@@ -144,6 +144,11 @@ const common = {
   'error.networkError': 'Network error — check that services are running.',
   'error.agentUnavailable': '{name} Agent is not running. Please start the Agent service first.',
   'error.agentUnavailableGeneric': 'Agent service is not running or unreachable. Check your service configuration.',
+
+  'common.save': 'Save',
+  'common.saving': 'Saving…',
+  'common.cancel': 'Cancel',
+  'common.refresh': 'Refresh',
 } as const
 
 export default common

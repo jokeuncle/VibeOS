@@ -73,6 +73,9 @@ func main() {
 	feedbackHandler := handler.NewFeedbackHandler(svc, logger)
 	summaryHandler := handler.NewSummaryHandler(svc, logger)
 	reqHandler := handler.NewRequirementHandler(svc, logger)
+	budgetHandler := handler.NewBudgetHandler(svc, logger)
+	pipelineConfigHandler := handler.NewPipelineConfigHandler(svc, logger)
+	execLogHandler := handler.NewExecutionLogHandler(svc, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -149,6 +152,18 @@ func main() {
 			// Agent status
 			r.Get("/agents", agentHandler.List)
 			r.Patch("/agents/{agentId}", agentHandler.Update)
+
+			// Budget & usage
+			r.Get("/budget", budgetHandler.Get)
+			r.Patch("/budget", budgetHandler.Update)
+
+			// Pipeline phase configuration
+			r.Get("/pipeline", pipelineConfigHandler.Get)
+			r.Patch("/pipeline", pipelineConfigHandler.Update)
+
+			// Execution logs
+			r.Get("/execution-logs", execLogHandler.List)
+			r.Post("/execution-logs", execLogHandler.Create)
 
 			// Feedback signals
 			r.Post("/feedback", feedbackHandler.Create)

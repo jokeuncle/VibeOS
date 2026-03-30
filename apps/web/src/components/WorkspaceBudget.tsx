@@ -1,38 +1,24 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { Gauge, Cpu, TrendingUp, AlertTriangle, Settings2, DollarSign, BarChart3 } from 'lucide-react'
+import { Gauge, Cpu, TrendingUp, AlertTriangle, Settings2, DollarSign, BarChart3, RefreshCw } from 'lucide-react'
+import { useWorkspaceStore } from '../stores/workspace'
+import { workspaceApi } from '../lib/api'
 import { useT } from '../i18n'
+import type { BudgetResponse } from '../types'
 
-interface AgentUsage {
-  type: string
-  label: string
-  color: string
-  barColor: string
-  tokensToday: number
-  costToday: number
-  model: string
+const AGENT_COLORS: Record<string, { text: string; bar: string }> = {
+  architecture: { text: 'text-indigo-400', bar: 'bg-indigo-400' },
+  development:  { text: 'text-emerald-400', bar: 'bg-emerald-400' },
+  pm:           { text: 'text-violet-400', bar: 'bg-violet-400' },
+  requirement:  { text: 'text-blue-400', bar: 'bg-blue-400' },
+  testing:      { text: 'text-yellow-400', bar: 'bg-yellow-400' },
+  design:       { text: 'text-pink-400', bar: 'bg-pink-400' },
+  cicd:         { text: 'text-orange-400', bar: 'bg-orange-400' },
+  monitoring:   { text: 'text-cyan-400', bar: 'bg-cyan-400' },
 }
 
-const AGENT_USAGE: AgentUsage[] = [
-  { type: 'architecture', label: 'Architecture', color: 'text-indigo-400', barColor: 'bg-indigo-400', tokensToday: 48200, costToday: 0.87, model: 'claude-opus-4-5' },
-  { type: 'development', label: 'Development', color: 'text-emerald-400', barColor: 'bg-emerald-400', tokensToday: 34500, costToday: 0.62, model: 'gemini-2.5-pro' },
-  { type: 'pm', label: 'PM', color: 'text-violet-400', barColor: 'bg-violet-400', tokensToday: 22800, costToday: 0.41, model: 'claude-opus-4-5' },
-  { type: 'requirement', label: 'Requirement', color: 'text-blue-400', barColor: 'bg-blue-400', tokensToday: 18400, costToday: 0.22, model: 'claude-sonnet-4-5' },
-  { type: 'testing', label: 'Testing', color: 'text-yellow-400', barColor: 'bg-yellow-400', tokensToday: 12100, costToday: 0.14, model: 'claude-sonnet-4-5' },
-  { type: 'design', label: 'Design', color: 'text-pink-400', barColor: 'bg-pink-400', tokensToday: 8200, costToday: 0.10, model: 'claude-sonnet-4-5' },
-  { type: 'cicd', label: 'CI/CD', color: 'text-orange-400', barColor: 'bg-orange-400', tokensToday: 4300, costToday: 0.05, model: 'claude-sonnet-4-5' },
-]
-
-const DAILY_BUDGET = 10.0
-const DAILY_USED = AGENT_USAGE.reduce((s, a) => s + a.costToday, 0)
-const BUDGET_PERCENT = Math.round((DAILY_USED / DAILY_BUDGET) * 100)
-
-const WEEK_HISTORY = [1.24, 3.87, 2.11, 4.52, 5.12, DAILY_USED, 0]
-const WEEK_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const WEEK_MAX = Math.max(...WEEK_HISTORY, DAILY_BUDGET * 0.8)
-
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
-  const pct = Math.min((value / max) * 100, 100)
+  const pct = Math.min((value / Math.max(max, 1)) * 100, 100)
   return (
     <div className="flex-1 h-1 bg-surface-3 rounded-full overflow-hidden">
       <motion.div
@@ -47,17 +33,67 @@ function MiniBar({ value, max, color }: { value: number; max: number; color: str
 
 export default function WorkspaceBudget() {
   const t = useT()
-  const [dailyLimit, setDailyLimit] = useState(DAILY_BUDGET.toFixed(2))
-  const [alertPct, setAlertPct] = useState('80')
+  const { activeWorkspaceId } = useWorkspaceStore()
+  const [budget, setBudget] = useState<BudgetResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [dailyLimit, setDailyLimit] = useState('')
+  const [alertPct, setAlertPct] = useState('')
 
-  const overBudget = DAILY_USED > DAILY_BUDGET
-  const nearBudget = BUDGET_PERCENT >= Number(alertPct)
+  const fetchBudget = useCallback(async () => {
+    if (!activeWorkspaceId) return
+    setLoading(true)
+    try {
+      const data = await workspaceApi.getBudget(activeWorkspaceId)
+      setBudget(data)
+      setDailyLimit(data.settings.dailySpendLimitUsd.toFixed(2))
+      setAlertPct(String(data.settings.alertThresholdPct))
+    } catch {
+      // ignore – keep existing state
+    } finally {
+      setLoading(false)
+    }
+  }, [activeWorkspaceId])
+
+  useEffect(() => { fetchBudget() }, [fetchBudget])
+
+  async function handleSaveSettings() {
+    if (!activeWorkspaceId) return
+    setSaving(true)
+    try {
+      const updated = await workspaceApi.updateBudgetSettings(activeWorkspaceId, {
+        dailySpendLimitUsd: parseFloat(dailyLimit) || 10,
+        alertThresholdPct: parseInt(alertPct) || 80,
+      })
+      if (budget) {
+        setBudget({ ...budget, settings: updated })
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const dailyLimitVal = parseFloat(dailyLimit) || 10
+  const alertPctVal = parseInt(alertPct) || 80
+  const usedToday = budget?.usedTodayUsd ?? 0
+  const tokensToday = budget?.tokensToday ?? 0
+  const budgetPercent = Math.round((usedToday / dailyLimitVal) * 100)
+  const overBudget = usedToday > dailyLimitVal
+  const nearBudget = budgetPercent >= alertPctVal
+  const agentUsage = budget?.agentUsage ?? []
+  const weekLabels = budget?.weekLabels ?? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const weekSpend = budget?.weekSpendUsd ?? [0, 0, 0, 0, 0, 0, 0]
+  const weekMax = Math.max(...weekSpend, dailyLimitVal * 0.8, 0.01)
+  const weekTotal = weekSpend.reduce((s, v) => s + v, 0)
+  const maxAgentTokens = Math.max(...agentUsage.map(a => a.tokensTotal), 1)
 
   const costStats = [
-    { label: t('budget.usedToday'), value: `$${DAILY_USED.toFixed(2)}`, icon: DollarSign, color: 'text-text-primary' },
-    { label: t('budget.remainingToday'), value: `$${Math.max(DAILY_BUDGET - DAILY_USED, 0).toFixed(2)}`, icon: Gauge, color: 'text-success' },
-    { label: t('budget.dailyBudget'), value: `$${DAILY_BUDGET.toFixed(2)}`, icon: Settings2, color: 'text-text-tertiary' },
-    { label: t('budget.tokensToday'), value: `${(AGENT_USAGE.reduce((s, a) => s + a.tokensToday, 0) / 1000).toFixed(1)}K`, icon: Cpu, color: 'text-accent' },
+    { label: t('budget.usedToday'), value: `$${usedToday.toFixed(2)}`, icon: DollarSign, color: 'text-text-primary' },
+    { label: t('budget.remainingToday'), value: `$${Math.max(dailyLimitVal - usedToday, 0).toFixed(2)}`, icon: Gauge, color: 'text-success' },
+    { label: t('budget.dailyBudget'), value: `$${dailyLimitVal.toFixed(2)}`, icon: Settings2, color: 'text-text-tertiary' },
+    { label: t('budget.tokensToday'), value: `${(tokensToday / 1000).toFixed(1)}K`, icon: Cpu, color: 'text-accent' },
   ]
 
   return (
@@ -67,12 +103,21 @@ export default function WorkspaceBudget() {
       transition={{ duration: 0.2 }}
       className="space-y-6"
     >
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Gauge className="w-4 h-4 text-accent" />
-          <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('budget.title')}</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Gauge className="w-4 h-4 text-accent" />
+            <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('budget.title')}</h1>
+          </div>
+          <p className="text-[12px] text-text-tertiary">{t('budget.desc')}</p>
         </div>
-        <p className="text-[12px] text-text-tertiary">{t('budget.desc')}</p>
+        <button
+          onClick={fetchBudget}
+          disabled={loading}
+          className="flex items-center gap-1 text-[11px] text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
+        >
+          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -87,7 +132,7 @@ export default function WorkspaceBudget() {
                 strokeLinecap="round"
                 strokeDasharray={`${2 * Math.PI * 32}`}
                 initial={{ strokeDashoffset: 2 * Math.PI * 32 }}
-                animate={{ strokeDashoffset: 2 * Math.PI * 32 * (1 - Math.min(BUDGET_PERCENT / 100, 1)) }}
+                animate={{ strokeDashoffset: 2 * Math.PI * 32 * (1 - Math.min(budgetPercent / 100, 1)) }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
             </svg>
@@ -95,7 +140,7 @@ export default function WorkspaceBudget() {
               <span className={`text-lg font-bold font-mono leading-none
                 ${overBudget ? 'text-danger' : nearBudget ? 'text-warning' : 'text-text-primary'}`}
               >
-                {BUDGET_PERCENT}%
+                {budgetPercent}%
               </span>
             </div>
           </div>
@@ -133,15 +178,16 @@ export default function WorkspaceBudget() {
             {t('budget.sevenDaySpend')}
           </span>
           <span className="ml-auto text-[11px] font-mono text-text-tertiary">
-            ${WEEK_HISTORY.reduce((s, v) => s + v, 0).toFixed(2)} {t('budget.thisWeek')}
+            ${weekTotal.toFixed(2)} {t('budget.thisWeek')}
           </span>
         </div>
         <div className="flex items-end gap-1.5 h-20">
-          {WEEK_HISTORY.map((val, i) => {
-            const pct = (val / WEEK_MAX) * 100
+          {weekLabels.map((label, i) => {
+            const val = weekSpend[i] ?? 0
+            const pct = (val / weekMax) * 100
             const isToday = i === 5
             return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <div key={label} className="flex-1 flex flex-col items-center gap-1">
                 <motion.div
                   initial={{ height: 0 }}
                   animate={{ height: `${pct}%` }}
@@ -150,7 +196,7 @@ export default function WorkspaceBudget() {
                     ${isToday ? 'bg-accent' : val === 0 ? 'bg-surface-3' : 'bg-surface-4'}`}
                 />
                 <span className={`text-[9px] font-mono ${isToday ? 'text-accent' : 'text-text-tertiary'}`}>
-                  {WEEK_LABELS[i]}
+                  {label}
                 </span>
               </div>
             )
@@ -165,20 +211,27 @@ export default function WorkspaceBudget() {
             {t('budget.byAgent')}
           </span>
         </div>
-        <div className="space-y-3">
-          {AGENT_USAGE.map(agent => (
-            <div key={agent.type} className="flex items-center gap-3">
-              <span className={`text-[11px] font-medium w-24 shrink-0 ${agent.color}`}>{agent.label}</span>
-              <MiniBar value={agent.tokensToday} max={AGENT_USAGE[0].tokensToday} color={agent.barColor} />
-              <span className="text-[10px] font-mono text-text-tertiary w-16 text-right shrink-0">
-                {(agent.tokensToday / 1000).toFixed(1)}K t
-              </span>
-              <span className="text-[11px] font-mono font-semibold text-text-secondary w-12 text-right shrink-0">
-                ${agent.costToday.toFixed(2)}
-              </span>
-            </div>
-          ))}
-        </div>
+        {agentUsage.length === 0 ? (
+          <p className="text-[11px] text-text-tertiary italic">{t('budget.noUsageData')}</p>
+        ) : (
+          <div className="space-y-3">
+            {agentUsage.map(agent => {
+              const c = AGENT_COLORS[agent.agentType] ?? { text: 'text-text-tertiary', bar: 'bg-surface-4' }
+              return (
+                <div key={agent.agentType} className="flex items-center gap-3">
+                  <span className={`text-[11px] font-medium w-24 shrink-0 capitalize ${c.text}`}>{agent.agentType}</span>
+                  <MiniBar value={agent.tokensTotal} max={maxAgentTokens} color={c.bar} />
+                  <span className="text-[10px] font-mono text-text-tertiary w-16 text-right shrink-0">
+                    {(agent.tokensTotal / 1000).toFixed(1)}K t
+                  </span>
+                  <span className="text-[11px] font-mono font-semibold text-text-secondary w-12 text-right shrink-0">
+                    ${agent.costUsd.toFixed(2)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-border-subtle bg-surface-1/30 p-5">
@@ -213,6 +266,15 @@ export default function WorkspaceBudget() {
             />
             <p className="text-[10px] text-text-tertiary mt-1">{t('budget.alertThresholdHint')}</p>
           </div>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={handleSaveSettings}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-accent text-[12px] font-semibold text-surface-1 hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+          >
+            {saving ? t('common.saving') : t('common.save')}
+          </button>
         </div>
       </div>
     </motion.div>

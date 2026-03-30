@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/vibeos/shared/models"
 )
@@ -289,21 +290,27 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 			idx++
 		}
 	}
+	if req.PreferredModel != nil {
+		sets = append(sets, fmt.Sprintf("preferred_model = $%d", idx))
+		args = append(args, *req.PreferredModel)
+		idx++
+	}
 	if len(sets) == 0 {
 		return nil, fmt.Errorf("no fields to update")
 	}
 
 	sets = append(sets, "updated_at = NOW()")
 	query := fmt.Sprintf(
-		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING id, workspace_id, type, name, status, current_task, avatar, created_at, updated_at",
+		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING id, workspace_id, type, name, status, current_task, preferred_model, avatar, created_at, updated_at",
 		strings.Join(sets, ", "), idx, idx+1,
 	)
 	args = append(args, id, workspaceID)
 
 	var a models.Agent
+	var agentType, status string
 	err := s.pool.QueryRow(ctx, query, args...).Scan(
-		&a.ID, &a.WorkspaceID, &a.Type, &a.Name, &a.Status,
-		&a.CurrentTask, &a.Avatar, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
+		&a.CurrentTask, &a.PreferredModel, &a.Avatar, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -311,6 +318,8 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 		}
 		return nil, err
 	}
+	a.Type = models.AgentType(agentType)
+	a.Status = models.AgentStatus(status)
 	return &a, nil
 }
 
@@ -409,4 +418,208 @@ func (s *PostgresStore) GetTrustScores(ctx context.Context, agentType string) ([
 		out = []models.TrustScore{}
 	}
 	return out, nil
+}
+
+// =========================================================================
+// Budget settings
+// =========================================================================
+
+func (s *PostgresStore) GetBudgetSettings(ctx context.Context, workspaceID string) (*models.WorkspaceBudgetSettings, error) {
+	var b models.WorkspaceBudgetSettings
+	err := s.pool.QueryRow(ctx,
+		`SELECT workspace_id, daily_spend_limit_usd, alert_threshold_pct, updated_at
+		 FROM workspace_budget_settings WHERE workspace_id = $1`, workspaceID,
+	).Scan(&b.WorkspaceID, &b.DailySpendLimitUSD, &b.AlertThresholdPct, &b.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Return defaults when no row yet
+			return &models.WorkspaceBudgetSettings{
+				WorkspaceID:        workspaceID,
+				DailySpendLimitUSD: 10.0,
+				AlertThresholdPct:  80,
+				UpdatedAt:          time.Now().UTC(),
+			}, nil
+		}
+		return nil, err
+	}
+	return &b, nil
+}
+
+func (s *PostgresStore) UpsertBudgetSettings(ctx context.Context, workspaceID string, req models.UpdateBudgetSettingsReq) (*models.WorkspaceBudgetSettings, error) {
+	b, err := s.GetBudgetSettings(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if req.DailySpendLimitUSD != nil {
+		b.DailySpendLimitUSD = *req.DailySpendLimitUSD
+	}
+	if req.AlertThresholdPct != nil {
+		b.AlertThresholdPct = *req.AlertThresholdPct
+	}
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO workspace_budget_settings (workspace_id, daily_spend_limit_usd, alert_threshold_pct, updated_at)
+		 VALUES ($1, $2, $3, NOW())
+		 ON CONFLICT (workspace_id) DO UPDATE
+		   SET daily_spend_limit_usd = EXCLUDED.daily_spend_limit_usd,
+		       alert_threshold_pct   = EXCLUDED.alert_threshold_pct,
+		       updated_at            = NOW()
+		 RETURNING workspace_id, daily_spend_limit_usd, alert_threshold_pct, updated_at`,
+		workspaceID, b.DailySpendLimitUSD, b.AlertThresholdPct,
+	).Scan(&b.WorkspaceID, &b.DailySpendLimitUSD, &b.AlertThresholdPct, &b.UpdatedAt)
+	return b, err
+}
+
+// =========================================================================
+// Pipeline phase configs
+// =========================================================================
+
+var defaultPipelinePhases = []struct {
+	Key             string
+	Enabled         bool
+	RequireApproval bool
+	QualityGate     *string
+}{
+	{Key: "requirement", Enabled: true, RequireApproval: false, QualityGate: nil},
+	{Key: "architecture", Enabled: true, RequireApproval: true, QualityGate: strPtr("Schema + API spec required")},
+	{Key: "design", Enabled: true, RequireApproval: false, QualityGate: nil},
+	{Key: "development", Enabled: true, RequireApproval: false, QualityGate: strPtr("MR must be created")},
+	{Key: "testing", Enabled: true, RequireApproval: false, QualityGate: strPtr("Coverage ≥ 80%")},
+	{Key: "cicd", Enabled: true, RequireApproval: true, QualityGate: nil},
+	{Key: "monitoring", Enabled: false, RequireApproval: false, QualityGate: nil},
+}
+
+func strPtr(s string) *string { return &s }
+
+func (s *PostgresStore) GetPipelineConfigs(ctx context.Context, workspaceID string) ([]models.PipelinePhaseConfig, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT workspace_id, phase_key, enabled, require_approval, quality_gate, updated_at
+		 FROM workspace_pipeline_configs WHERE workspace_id = $1 ORDER BY phase_key`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.PipelinePhaseConfig
+	for rows.Next() {
+		var c models.PipelinePhaseConfig
+		if err := rows.Scan(&c.WorkspaceID, &c.PhaseKey, &c.Enabled, &c.RequireApproval, &c.QualityGate, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	// No rows yet → return defaults
+	if len(out) == 0 {
+		for _, d := range defaultPipelinePhases {
+			out = append(out, models.PipelinePhaseConfig{
+				WorkspaceID:     workspaceID,
+				PhaseKey:        d.Key,
+				Enabled:         d.Enabled,
+				RequireApproval: d.RequireApproval,
+				QualityGate:     d.QualityGate,
+				UpdatedAt:       time.Now().UTC(),
+			})
+		}
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpsertPipelineConfigs(ctx context.Context, workspaceID string, phases []models.PipelinePhaseConfigReq) ([]models.PipelinePhaseConfig, error) {
+	for _, p := range phases {
+		_, err := s.pool.Exec(ctx,
+			`INSERT INTO workspace_pipeline_configs (workspace_id, phase_key, enabled, require_approval, quality_gate, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, NOW())
+			 ON CONFLICT (workspace_id, phase_key) DO UPDATE
+			   SET enabled          = EXCLUDED.enabled,
+			       require_approval = EXCLUDED.require_approval,
+			       quality_gate     = EXCLUDED.quality_gate,
+			       updated_at       = NOW()`,
+			workspaceID, p.PhaseKey, p.Enabled, p.RequireApproval, p.QualityGate,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("upsert pipeline phase %s: %w", p.PhaseKey, err)
+		}
+	}
+	return s.GetPipelineConfigs(ctx, workspaceID)
+}
+
+// =========================================================================
+// Execution logs
+// =========================================================================
+
+func (s *PostgresStore) CreateExecutionLog(ctx context.Context, entry *models.ExecutionLog) error {
+	if entry.ID == "" {
+		entry.ID = uuid.NewString()
+	}
+	return s.pool.QueryRow(ctx,
+		`INSERT INTO execution_logs (id, workspace_id, agent_type, level, message, task_id)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING created_at`,
+		entry.ID, entry.WorkspaceID, entry.AgentType, entry.Level, entry.Message, entry.TaskID,
+	).Scan(&entry.CreatedAt)
+}
+
+func (s *PostgresStore) ListExecutionLogs(ctx context.Context, workspaceID string, cursor string, limit int) ([]models.ExecutionLog, string, error) {
+	var (
+		query string
+		args  []any
+	)
+	if cursor != "" {
+		query = `SELECT id, workspace_id, agent_type, level, message, task_id, created_at
+			 FROM execution_logs
+			 WHERE workspace_id = $1 AND created_at < (SELECT created_at FROM execution_logs WHERE id = $2)
+			 ORDER BY created_at DESC LIMIT $3`
+		args = []any{workspaceID, cursor, limit}
+	} else {
+		query = `SELECT id, workspace_id, agent_type, level, message, task_id, created_at
+			 FROM execution_logs WHERE workspace_id = $1
+			 ORDER BY created_at DESC LIMIT $2`
+		args = []any{workspaceID, limit}
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var out []models.ExecutionLog
+	for rows.Next() {
+		var e models.ExecutionLog
+		if err := rows.Scan(&e.ID, &e.WorkspaceID, &e.AgentType, &e.Level, &e.Message, &e.TaskID, &e.CreatedAt); err != nil {
+			return nil, "", err
+		}
+		out = append(out, e)
+	}
+	if out == nil {
+		out = []models.ExecutionLog{}
+	}
+	var nextCursor string
+	if len(out) == limit {
+		nextCursor = out[len(out)-1].ID
+	}
+	return out, nextCursor, nil
+}
+
+func (s *PostgresStore) ListExecutionLogsSince(ctx context.Context, workspaceID string, since time.Time, limit int) ([]models.ExecutionLog, string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, workspace_id, agent_type, level, message, task_id, created_at
+		 FROM execution_logs
+		 WHERE workspace_id = $1 AND created_at >= $2
+		 ORDER BY created_at DESC LIMIT $3`,
+		workspaceID, since, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var out []models.ExecutionLog
+	for rows.Next() {
+		var e models.ExecutionLog
+		if err := rows.Scan(&e.ID, &e.WorkspaceID, &e.AgentType, &e.Level, &e.Message, &e.TaskID, &e.CreatedAt); err != nil {
+			return nil, "", err
+		}
+		out = append(out, e)
+	}
+	if out == nil {
+		out = []models.ExecutionLog{}
+	}
+	return out, "", nil
 }

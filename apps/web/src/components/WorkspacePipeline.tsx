@@ -1,35 +1,26 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   GitBranch, ChevronRight, ToggleLeft, ToggleRight,
   ShieldCheck, Zap, AlertTriangle, CheckCircle2,
-  ArrowRight, Settings2, Lock, Unlock,
+  ArrowRight, Settings2, Lock, Unlock, RefreshCw,
 } from 'lucide-react'
+import { useWorkspaceStore } from '../stores/workspace'
+import { workspaceApi } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
+import type { PipelinePhaseKey, PipelinePhaseConfig } from '../types'
 
-type PhaseKey =
-  | 'requirement'
-  | 'architecture'
-  | 'design'
-  | 'development'
-  | 'testing'
-  | 'cicd'
-  | 'monitoring'
-
-interface PhaseConfig {
-  key: PhaseKey
+interface PhaseStaticMeta {
+  key: PipelinePhaseKey
   labelKey: TranslationKey
   descKey: TranslationKey
   agent: string
   color: string
   dotColor: string
-  enabled: boolean
-  requireApproval: boolean
-  qualityGate: string | null
 }
 
-const INITIAL_PHASES: PhaseConfig[] = [
+const PHASE_META: PhaseStaticMeta[] = [
   {
     key: 'requirement',
     labelKey: 'pipeline.phase.requirement.label',
@@ -37,9 +28,6 @@ const INITIAL_PHASES: PhaseConfig[] = [
     agent: 'requirement-agent',
     color: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
     dotColor: 'bg-violet-400',
-    enabled: true,
-    requireApproval: false,
-    qualityGate: null,
   },
   {
     key: 'architecture',
@@ -48,9 +36,6 @@ const INITIAL_PHASES: PhaseConfig[] = [
     agent: 'architecture-agent',
     color: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
     dotColor: 'bg-blue-400',
-    enabled: true,
-    requireApproval: true,
-    qualityGate: 'Schema + API spec required',
   },
   {
     key: 'design',
@@ -59,9 +44,6 @@ const INITIAL_PHASES: PhaseConfig[] = [
     agent: 'design-agent',
     color: 'bg-pink-500/10 border-pink-500/20 text-pink-400',
     dotColor: 'bg-pink-400',
-    enabled: true,
-    requireApproval: false,
-    qualityGate: null,
   },
   {
     key: 'development',
@@ -70,9 +52,6 @@ const INITIAL_PHASES: PhaseConfig[] = [
     agent: 'dev-agent',
     color: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
     dotColor: 'bg-emerald-400',
-    enabled: true,
-    requireApproval: false,
-    qualityGate: 'MR must be created',
   },
   {
     key: 'testing',
@@ -81,9 +60,6 @@ const INITIAL_PHASES: PhaseConfig[] = [
     agent: 'test-agent',
     color: 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
     dotColor: 'bg-yellow-400',
-    enabled: true,
-    requireApproval: false,
-    qualityGate: 'Coverage ≥ 80%',
   },
   {
     key: 'cicd',
@@ -92,9 +68,6 @@ const INITIAL_PHASES: PhaseConfig[] = [
     agent: 'cicd-agent',
     color: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
     dotColor: 'bg-orange-400',
-    enabled: true,
-    requireApproval: true,
-    qualityGate: null,
   },
   {
     key: 'monitoring',
@@ -103,13 +76,28 @@ const INITIAL_PHASES: PhaseConfig[] = [
     agent: 'monitoring-agent',
     color: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
     dotColor: 'bg-cyan-400',
-    enabled: false,
-    requireApproval: false,
-    qualityGate: null,
   },
 ]
 
-function PhaseNode({ phase, isLast }: { phase: PhaseConfig; isLast: boolean }) {
+// Merged view: static display metadata + live backend config
+interface PhaseView extends PhaseStaticMeta, PipelinePhaseConfig {}
+
+function mergePhases(meta: PhaseStaticMeta[], configs: PipelinePhaseConfig[]): PhaseView[] {
+  return meta.map(m => {
+    const live = configs.find(c => c.phaseKey === m.key)
+    return {
+      ...m,
+      workspaceId: live?.workspaceId ?? '',
+      phaseKey: m.key,
+      enabled: live?.enabled ?? true,
+      requireApproval: live?.requireApproval ?? false,
+      qualityGate: live?.qualityGate ?? null,
+      updatedAt: live?.updatedAt ?? '',
+    }
+  })
+}
+
+function PhaseNode({ phase, isLast }: { phase: PhaseView; isLast: boolean }) {
   const t = useT()
   return (
     <div className="flex items-center gap-0">
@@ -138,7 +126,7 @@ function PhaseRow({
   onClick,
   onToggle,
 }: {
-  phase: PhaseConfig
+  phase: PhaseView
   isSelected: boolean
   onClick: () => void
   onToggle: (enabled: boolean) => void
@@ -194,7 +182,13 @@ function PhaseRow({
   )
 }
 
-function PhaseDetail({ phase, onUpdate }: { phase: PhaseConfig; onUpdate: (p: Partial<PhaseConfig>) => void }) {
+function PhaseDetail({
+  phase,
+  onUpdate,
+}: {
+  phase: PhaseView
+  onUpdate: (patch: Partial<Pick<PhaseView, 'requireApproval' | 'qualityGate'>>) => void
+}) {
   const t = useT()
   return (
     <motion.div
@@ -259,11 +253,63 @@ function PhaseDetail({ phase, onUpdate }: { phase: PhaseConfig; onUpdate: (p: Pa
 
 export default function WorkspacePipeline() {
   const t = useT()
-  const [phases, setPhases] = useState<PhaseConfig[]>(INITIAL_PHASES)
-  const [selectedPhase, setSelectedPhase] = useState<PhaseKey | null>(null)
+  const { activeWorkspaceId } = useWorkspaceStore()
+  const [phases, setPhases] = useState<PhaseView[]>(() => mergePhases(PHASE_META, []))
+  const [selectedPhase, setSelectedPhase] = useState<PipelinePhaseKey | null>(null)
+  const [saving, setSaving] = useState(false)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function updatePhase(key: PhaseKey, patch: Partial<PhaseConfig>) {
-    setPhases(prev => prev.map(p => p.key === key ? { ...p, ...patch } : p))
+  // Load configs from backend on mount
+  const loadPipeline = useCallback(async () => {
+    if (!activeWorkspaceId) return
+    try {
+      const configs = await workspaceApi.getPipeline(activeWorkspaceId)
+      setPhases(mergePhases(PHASE_META, configs))
+    } catch {
+      // fallback to defaults already set
+    }
+  }, [activeWorkspaceId])
+
+  useEffect(() => { loadPipeline() }, [loadPipeline])
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+    }
+  }, [])
+
+  // Auto-save with debounce
+  const savePhases = useCallback(async (updated: PhaseView[]) => {
+    if (!activeWorkspaceId) return
+    setSaving(true)
+    try {
+      await workspaceApi.updatePipeline(activeWorkspaceId,
+        updated.map(p => ({
+          phaseKey: p.key,
+          enabled: p.enabled,
+          requireApproval: p.requireApproval,
+          qualityGate: p.qualityGate ?? null,
+        }))
+      )
+    } catch {
+      // ignore – state stays as is
+    } finally {
+      setSaving(false)
+    }
+  }, [activeWorkspaceId])
+
+  function scheduleSave(updated: PhaseView[]) {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => savePhases(updated), 800)
+  }
+
+  function updatePhase(key: PipelinePhaseKey, patch: Partial<PhaseView>) {
+    setPhases(prev => {
+      const next = prev.map(p => p.key === key ? { ...p, ...patch } : p)
+      scheduleSave(next)
+      return next
+    })
   }
 
   const activePhases = phases.filter(p => p.enabled)
@@ -275,12 +321,20 @@ export default function WorkspacePipeline() {
       transition={{ duration: 0.2 }}
       className="space-y-6"
     >
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <GitBranch className="w-4 h-4 text-accent" />
-          <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('pipeline.title')}</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <GitBranch className="w-4 h-4 text-accent" />
+            <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('pipeline.title')}</h1>
+          </div>
+          <p className="text-[12px] text-text-tertiary">{t('pipeline.desc')}</p>
         </div>
-        <p className="text-[12px] text-text-tertiary">{t('pipeline.desc')}</p>
+        {saving && (
+          <div className="flex items-center gap-1 text-[11px] text-text-tertiary">
+            <RefreshCw className="w-3 h-3 animate-spin" />
+            {t('common.saving')}
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-border-subtle bg-surface-1/30 p-5">
@@ -319,14 +373,16 @@ export default function WorkspacePipeline() {
                 onClick={() => setSelectedPhase(selectedPhase === phase.key ? null : phase.key)}
                 onToggle={enabled => updatePhase(phase.key, { enabled })}
               />
-              {selectedPhase === phase.key && (
-                <div className="mt-1.5">
-                  <PhaseDetail
-                    phase={phase}
-                    onUpdate={patch => updatePhase(phase.key, patch)}
-                  />
-                </div>
-              )}
+              <AnimatePresence>
+                {selectedPhase === phase.key && (
+                  <div className="mt-1.5">
+                    <PhaseDetail
+                      phase={phase}
+                      onUpdate={patch => updatePhase(phase.key, patch)}
+                    />
+                  </div>
+                )}
+              </AnimatePresence>
             </div>
           ))}
         </div>

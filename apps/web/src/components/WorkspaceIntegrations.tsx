@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Plug2, CheckCircle2, Circle, ExternalLink,
   GitBranch, Zap, Bell, Cloud, Puzzle, Plus,
   ChevronRight, Settings2, AlertCircle, Link,
 } from 'lucide-react'
+import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 
@@ -207,9 +208,46 @@ function IntegrationRow({
 
 export default function WorkspaceIntegrations() {
   const t = useT()
-  const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS)
+  const { workspaces, activeWorkspaceId } = useWorkspaceStore()
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const repos = workspace?.repos ?? []
+
+  // Derive real GitLab status from workspace repos
+  const gitlabRepos = repos.filter(r => r.gitlabUrl)
+  const gitlabConnected = gitlabRepos.length > 0
+  const gitlabDetail = gitlabConnected
+    ? `${gitlabRepos.length} repo${gitlabRepos.length > 1 ? 's' : ''} bound`
+    : undefined
+  // GitLab CI is connected if there's a primary repo with a CI-capable strategy
+  const gitlabCiConnected = gitlabRepos.some(r => r.isPrimary)
+
+  const derivedIntegrations = useMemo<Integration[]>(() => INTEGRATIONS.map(i => {
+    if (i.id === 'gitlab') return {
+      ...i,
+      status: gitlabConnected ? 'connected' : 'disconnected',
+      detail: gitlabDetail,
+    }
+    if (i.id === 'gitlab-ci') return {
+      ...i,
+      status: gitlabCiConnected ? 'connected' : 'disconnected',
+      detail: gitlabCiConnected ? 'Linked via GitLab integration' : undefined,
+    }
+    return i
+  }), [gitlabConnected, gitlabDetail, gitlabCiConnected])
+
+  const [integrations, setIntegrations] = useState<Integration[]>(derivedIntegrations)
+
+  // Sync with real data when repos change
+  useMemo(() => {
+    setIntegrations(derivedIntegrations)
+  }, [derivedIntegrations])
 
   function handleConnect(id: string) {
+    if (id === 'gitlab') {
+      // Clicking GitLab navigates to the Integrations settings (repos panel)
+      // The actual connection happens through WorkspaceSettings > GitLab Repos
+      return
+    }
     setIntegrations(prev =>
       prev.map(i => i.id === id && i.status === 'disconnected'
         ? { ...i, status: 'connected', detail: 'Just connected' }

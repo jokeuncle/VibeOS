@@ -149,8 +149,36 @@ type ArchiveWorkspaceReq struct {
 
 // Agent status update
 type UpdateAgentReq struct {
-	Status      *string `json:"status,omitempty"`      // idle | running | waiting | error
-	CurrentTask *string `json:"currentTask,omitempty"`
+	Status         *string `json:"status,omitempty"`         // idle | running | waiting | error
+	CurrentTask    *string `json:"currentTask,omitempty"`
+	PreferredModel *string `json:"preferredModel,omitempty"` // e.g. claude-opus-4-5
+}
+
+// Budget settings update
+type UpdateBudgetSettingsReq struct {
+	DailySpendLimitUSD *float64 `json:"dailySpendLimitUsd,omitempty"`
+	AlertThresholdPct  *int     `json:"alertThresholdPct,omitempty"`
+}
+
+// Pipeline phase config (per-phase item in update request)
+type PipelinePhaseConfigReq struct {
+	PhaseKey        string  `json:"phaseKey"`
+	Enabled         bool    `json:"enabled"`
+	RequireApproval bool    `json:"requireApproval"`
+	QualityGate     *string `json:"qualityGate,omitempty"`
+}
+
+// Batch pipeline update
+type UpdatePipelineReq struct {
+	Phases []PipelinePhaseConfigReq `json:"phases"`
+}
+
+// Execution log entry creation
+type CreateExecutionLogReq struct {
+	AgentType string  `json:"agent"`
+	Level     string  `json:"level"` // info | warn | error | success
+	Message   string  `json:"message"`
+	TaskID    *string `json:"taskId,omitempty"`
 }
 
 // Feedback signal (stored for preference learning)

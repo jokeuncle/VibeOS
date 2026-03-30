@@ -41,6 +41,7 @@ const intelligence = {
   'budget.dailySpendLimitHint': 'Agents pause when limit is reached',
   'budget.alertThreshold': 'Alert threshold (%)',
   'budget.alertThresholdHint': 'Notify when usage exceeds this %',
+  'budget.noUsageData': 'No usage data yet — run some agents to see token consumption here.',
 
   'context.title': 'Context',
   'context.desc': 'Everything agents know about this workspace — assembled before every execution from memory, indexed documents, and the knowledge graph.',
