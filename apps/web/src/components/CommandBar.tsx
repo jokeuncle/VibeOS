@@ -376,7 +376,21 @@ export default function CommandBar() {
         setTimeout(() => wsNameRef.current?.select(), 80)
       } catch {
         setHomeClassifying(false)
-        setHomeResponse(t('nlp.classifyError' as TranslationKey))
+        const fallbackHint = predictIntent(query)
+        if (fallbackHint) {
+          setPendingCreate({
+            query,
+            intent: fallbackHint.intent,
+            intentLabel: fallbackHint.label,
+            agentLabel: fallbackHint.agent,
+            suggestedName: query.slice(0, 40) || '新工作空间',
+            confidence: 0.6,
+          })
+          setWsNameInput(query.slice(0, 40) || '新工作空间')
+          setTimeout(() => wsNameRef.current?.select(), 80)
+        } else {
+          setHomeResponse(t('nlp.homeGreeting' as TranslationKey))
+        }
       }
       return
     }
