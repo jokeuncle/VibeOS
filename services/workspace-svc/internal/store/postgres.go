@@ -1353,8 +1353,8 @@ func (s *PostgresStore) ListRequirements(ctx context.Context, wsID string) ([]mo
 }
 
 func (s *PostgresStore) UpdateRequirement(ctx context.Context, id, wsID string, req models.UpdateRequirementReq) (*models.Requirement, error) {
-	sets := make([]string, 0, 6)
-	args := make([]any, 0, 6)
+	sets := make([]string, 0, 8)
+	args := make([]any, 0, 8)
 	idx := 1
 
 	if req.Title != nil {
@@ -1385,6 +1385,16 @@ func (s *PostgresStore) UpdateRequirement(ctx context.Context, id, wsID string, 
 	if req.Iteration != nil {
 		sets = append(sets, fmt.Sprintf("iteration = $%d", idx))
 		args = append(args, *req.Iteration)
+		idx++
+	}
+	if req.Progress != nil {
+		sets = append(sets, fmt.Sprintf("progress = $%d", idx))
+		args = append(args, *req.Progress)
+		idx++
+	}
+	if req.SortOrder != nil {
+		sets = append(sets, fmt.Sprintf("sort_order = $%d", idx))
+		args = append(args, *req.SortOrder)
 		idx++
 	}
 

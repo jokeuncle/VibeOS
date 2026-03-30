@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { motion } from 'framer-motion'
+import { LayoutDashboard } from 'lucide-react'
 import { useT } from '../i18n'
 import type { Phase, Agent, AgentStatus } from '../types'
 import type { TranslationKey } from '../i18n/en'
@@ -112,7 +113,20 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
 
   return (
     <div className="space-y-6">
-      {/* Workspace header with progress ring */}
+      {/* Page header */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <LayoutDashboard className="w-4 h-4 text-accent" />
+          <h1 className="text-base font-semibold text-text-primary tracking-tight">
+            {workspace?.name || t('dashboard.title')}
+          </h1>
+        </div>
+        <p className="text-[12px] text-text-tertiary">
+          {workspace?.description || t('dashboard.desc')}
+        </p>
+      </div>
+
+      {/* Workspace progress ring */}
       {workspace && (
         <motion.div
           initial={{ opacity: 0, y: -12 }}
@@ -131,17 +145,9 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
           </div>
 
           <div className="flex-1">
-            <h2 className="text-xl font-semibold tracking-tight text-text-primary">
-              {workspace.name || t('workspace.untitled')}
-            </h2>
-            {workspace.description && (
-              <p className="text-sm text-text-tertiary mt-1">{workspace.description}</p>
-            )}
-            <div className="flex items-center gap-4 mt-2">
-              <span className="text-[11px] font-mono text-text-tertiary">
-                {requirements.length} {t('view.requirements' as TranslationKey)} · {draftCount} {t('requirement.status.draft')} / {inProgressReqs} {t('requirement.status.in_progress')} / {completedReqs} {t('requirement.status.completed')}
-              </span>
-            </div>
+            <span className="text-[11px] font-mono text-text-tertiary">
+              {requirements.length} {t('view.requirements' as TranslationKey)} · {draftCount} {t('requirement.status.draft')} / {inProgressReqs} {t('requirement.status.in_progress')} / {completedReqs} {t('requirement.status.completed')}
+            </span>
           </div>
         </motion.div>
       )}

@@ -1,4 +1,4 @@
-import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo, User, WorkspaceMember, Requirement, RequirementRelation } from '../types'
+import type { Workspace, Message, RichBlock, AgentType, ActivityItem, GitLabCredential, WorkspaceRepo, User, WorkspaceMember, Requirement, RequirementRelation, Task, Phase, Agent, Artifact, ArtifactMeta } from '../types'
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('vibeos_token')
@@ -30,13 +30,23 @@ function scaleProgress(val: number): number {
 function normalizeWorkspace(ws: Workspace): Workspace {
   return {
     ...ws,
+    status: ws.status ?? 'active',
     progress: scaleProgress(ws.progress),
     phases: (ws.phases ?? []).map((p) => ({
       ...p,
       progress: scaleProgress(p.progress),
+      tasks: p.tasks ?? [],
     })),
+    agents: ws.agents ?? [],
+    activities: ws.activities ?? [],
     repos: ws.repos ?? [],
-    requirements: ws.requirements ?? [],
+    requirements: (ws.requirements ?? []).map((r) => ({
+      ...r,
+      progress: scaleProgress(r.progress),
+      tasks: r.tasks ?? [],
+      artifacts: r.artifacts ?? [],
+      relations: r.relations ?? [],
+    })),
   }
 }
 
@@ -71,13 +81,16 @@ export const workspaceApi = {
     request<void>(`/api/workspaces/${id}`, { method: 'DELETE' }),
 
   createTask: (wsId: string, phaseId: string, title: string, description = '') =>
-    request<{ data: any }>(`/api/workspaces/${wsId}/phases/${phaseId}/tasks`, {
+    request<{ data: Task }>(`/api/workspaces/${wsId}/phases/${phaseId}/tasks`, {
       method: 'POST',
       body: JSON.stringify({ title, description }),
     }).then(unwrap),
 
-  updateTask: (wsId: string, taskId: string, updates: Record<string, any>) =>
-    request<{ data: any }>(`/api/workspaces/${wsId}/tasks/${taskId}`, {
+  updateTask: (wsId: string, taskId: string, updates: Partial<{
+    title: string; description: string; status: string;
+    priority: string; labels: string[]; dueDate: string; assignedAgent: string
+  }>) =>
+    request<{ data: Task }>(`/api/workspaces/${wsId}/tasks/${taskId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
     }).then(unwrap),
@@ -86,7 +99,7 @@ export const workspaceApi = {
     request<void>(`/api/workspaces/${wsId}/tasks/${taskId}`, { method: 'DELETE' }),
 
   updatePhaseStatus: (wsId: string, phaseId: string, status: string) =>
-    request<{ data: any }>(`/api/workspaces/${wsId}/phases/${phaseId}/status`, {
+    request<{ data: Phase }>(`/api/workspaces/${wsId}/phases/${phaseId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }).then(unwrap),
@@ -109,13 +122,13 @@ export const workspaceApi = {
     ),
 
   listArtifacts: (wsId: string) =>
-    request<{ data: any[] }>(`/api/workspaces/${wsId}/artifacts`).then(unwrap),
+    request<{ data: Artifact[] }>(`/api/workspaces/${wsId}/artifacts`).then(unwrap),
 
   listArtifactsByPhase: (wsId: string, phaseId: string) =>
-    request<{ data: any[] }>(`/api/workspaces/${wsId}/phases/${phaseId}/artifacts`).then(unwrap),
+    request<{ data: Artifact[] }>(`/api/workspaces/${wsId}/phases/${phaseId}/artifacts`).then(unwrap),
 
   listArtifactsMeta: (wsId: string) =>
-    request<{ data: any[] }>(`/api/workspaces/${wsId}/artifacts/meta`).then(unwrap),
+    request<{ data: ArtifactMeta[] }>(`/api/workspaces/${wsId}/artifacts/meta`).then(unwrap),
 
   // Chat message persistence (cursor-paginated)
   listMessages: (wsId: string, cursor?: string, limit = 50) =>
@@ -168,10 +181,10 @@ export const workspaceApi = {
 
   // Agent status
   listAgents: (wsId: string) =>
-    request<{ data: any[] }>(`/api/workspaces/${wsId}/agents`).then(unwrap),
+    request<{ data: Agent[] }>(`/api/workspaces/${wsId}/agents`).then(unwrap),
 
   updateAgent: (wsId: string, agentId: string, updates: { status?: string; currentTask?: string }) =>
-    request<{ data: any }>(`/api/workspaces/${wsId}/agents/${agentId}`, {
+    request<{ data: Agent }>(`/api/workspaces/${wsId}/agents/${agentId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
     }).then(unwrap),
@@ -179,15 +192,15 @@ export const workspaceApi = {
   // Feedback signals
   createFeedbackSignal: (wsId: string, body: {
     agentType: string; actionType: string;
-    originalOutput?: string; context?: string
+    originalOutput?: string; modifiedOutput?: string; context?: string
   }) =>
-    request<{ data: any }>(`/api/workspaces/${wsId}/feedback`, {
+    request<{ data: FeedbackSignal }>(`/api/workspaces/${wsId}/feedback`, {
       method: 'POST',
       body: JSON.stringify(body),
     }).then(unwrap),
 
   listFeedbackSignals: (wsId: string, limit = 50) =>
-    request<{ data: any[] }>(`/api/workspaces/${wsId}/feedback?limit=${limit}`).then(unwrap),
+    request<{ data: FeedbackSignal[] }>(`/api/workspaces/${wsId}/feedback?limit=${limit}`).then(unwrap),
 
   // GitLab repo bindings
   listRepos: (wsId: string) =>

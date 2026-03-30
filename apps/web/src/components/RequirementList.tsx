@@ -232,7 +232,7 @@ export default function RequirementList() {
         )}
       </AnimatePresence>
 
-      {/* List panel — same chrome as conversation (MessageThread) */}
+      {/* List panel */}
       {(requirements.length > 0 || (!requirements.length && !reqCreating)) && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -240,13 +240,6 @@ export default function RequirementList() {
           transition={{ duration: 0.3, delay: 0.12 }}
           className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden"
         >
-          <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
-            <FileStack className="w-3.5 h-3.5 text-text-tertiary" />
-            <span className="text-xs font-medium text-text-secondary">{t('sidebar.requirements')}</span>
-            <div className="flex-1" />
-            <span className="text-[10px] font-mono text-text-tertiary tabular-nums">{requirements.length}</span>
-          </div>
-
           <div className="p-4">
             {requirements.length === 0 && !reqCreating && (
               <div className="text-center py-14">

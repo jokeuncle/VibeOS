@@ -49,12 +49,14 @@ type CreateRequirementReq struct {
 }
 
 type UpdateRequirementReq struct {
-	Title        *string `json:"title,omitempty"`
-	Description  *string `json:"description,omitempty"`
-	Status       *string `json:"status,omitempty"`
-	CurrentPhase *string `json:"currentPhase,omitempty"`
-	Priority     *string `json:"priority,omitempty"`
-	Iteration    *string `json:"iteration,omitempty"`
+	Title        *string  `json:"title,omitempty"`
+	Description  *string  `json:"description,omitempty"`
+	Status       *string  `json:"status,omitempty"`
+	CurrentPhase *string  `json:"currentPhase,omitempty"`
+	Priority     *string  `json:"priority,omitempty"`
+	Iteration    *string  `json:"iteration,omitempty"`
+	Progress     *float64 `json:"progress,omitempty"`
+	SortOrder    *int     `json:"sortOrder,omitempty"`
 }
 
 type CreateRequirementRelationReq struct {

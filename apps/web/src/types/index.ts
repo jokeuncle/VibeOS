@@ -34,15 +34,19 @@ export type LabelColor = (typeof LABEL_COLORS)[number]
 
 export interface Task {
   id: string
-  phaseId?: string
+  phaseId: string
+  workspaceId: string
   title: string
   status: PhaseStatus
   description?: string
   priority?: TaskPriority
-  labels?: LabelColor[]
+  labels?: string[]
   dueDate?: string
   assignedAgent?: AgentType
   requirementId?: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface ActivityItem {
@@ -55,21 +59,28 @@ export interface ActivityItem {
 
 export interface Phase {
   id: string
+  workspaceId: string
   type: PhaseType
   name: string
   status: PhaseStatus
   progress: number
   tasks: Task[]
   description: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Agent {
   id: string
+  workspaceId: string
   type: AgentType
   name: string
   status: AgentStatus
   currentTask?: string
   avatar: string
+  createdAt: string
+  updatedAt: string
 }
 
 // ---------------------------------------------------------------------------
@@ -131,8 +142,9 @@ export interface Workspace {
   name: string
   description: string
   progress: number
-  currentPhaseId: string
+  currentPhaseId: string | null
   color: WorkspaceColor
+  status: string
   phases: Phase[]
   agents: Agent[]
   activities: ActivityItem[]
@@ -152,6 +164,22 @@ export interface Artifact {
   type: string
   title: string
   content: string
+  metadata: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ArtifactMeta {
+  id: string
+  workspaceId: string
+  phaseId?: string
+  taskId?: string
+  requirementId?: string
+  agentType: AgentType
+  type: string
+  title: string
+  contentSize: number
   metadata: string
   version: number
   createdAt: string

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, MessageCircle, Sparkles, FileStack, LayoutGrid, GitBranch, ChevronLeft } from 'lucide-react'
+import { Plus, MessageCircle, Sparkles, FileStack, LayoutGrid, GitBranch, ChevronLeft, ListChecks } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -123,50 +123,6 @@ export default function WorkspaceView() {
         transition={{ duration: 0.3 }}
         className="flex-1 overflow-y-auto"
       >
-        {/* Requirements toolbar */}
-        {showReqToolbar && (
-          <div className="sticky top-0 z-10 bg-surface-0/90 backdrop-blur-sm border-b border-border-subtle">
-            <div className={`mx-auto px-8 py-2 ${maxW} flex items-center gap-3`}>
-              <span className="text-xs font-semibold text-text-secondary">{t('sidebar.requirements')}</span>
-              <span className="text-[10px] font-mono text-text-tertiary tabular-nums">{reqCount}</span>
-
-              <div className="flex-1" />
-
-              {/* Segmented view toggle */}
-              <div className="flex items-center gap-px p-0.5 rounded-md bg-surface-2 border border-border-subtle">
-                {REQ_SUB_VIEWS.map(({ key, icon: Icon, labelKey }) => {
-                  const isActive = reqSubView === key
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => setReqSubView(key)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium transition-all cursor-pointer ${
-                        isActive
-                          ? 'bg-surface-4 text-text-primary'
-                          : 'text-text-tertiary hover:text-text-secondary'
-                      }`}
-                    >
-                      <Icon className="w-3 h-3 shrink-0" />
-                      <span>{t(labelKey)}</span>
-                    </button>
-                  )
-                })}
-              </div>
-
-              <button
-                onClick={() => {
-                  if (reqSubView !== 'list') setReqSubView('list')
-                  setReqCreating(true)
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent hover:bg-accent/90 text-white text-[11px] font-medium cursor-pointer transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                {t('requirement.create')}
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className={`mx-auto px-8 py-6 ${maxW}`}>
           {/* Breadcrumb when viewing requirement detail */}
           {inReqDetail && (
@@ -185,38 +141,90 @@ export default function WorkspaceView() {
             </div>
           )}
 
-          {/* Empty state */}
-          {showReqToolbar && reqCount === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-dashed border-border-default bg-surface-1/30 p-10 text-center mb-8"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-6 h-6 text-accent" />
+          {/* Requirements page header + controls */}
+          {showReqToolbar && (
+            <div className="mb-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ListChecks className="w-4 h-4 text-accent" />
+                    <h1 className="text-base font-semibold text-text-primary tracking-tight">
+                      {t('sidebar.requirements')}
+                    </h1>
+                    <span className="text-[11px] font-mono text-text-tertiary tabular-nums">{reqCount}</span>
+                  </div>
+                  <p className="text-[12px] text-text-tertiary">{t('requirement.listDesc')}</p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 mt-0.5">
+                  {/* View toggle */}
+                  <div className="flex items-center gap-px p-0.5 rounded-md bg-surface-2 border border-border-subtle">
+                    {REQ_SUB_VIEWS.map(({ key, icon: Icon, labelKey }) => {
+                      const isActive = reqSubView === key
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setReqSubView(key)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-surface-4 text-text-primary'
+                              : 'text-text-tertiary hover:text-text-secondary'
+                          }`}
+                        >
+                          <Icon className="w-3 h-3 shrink-0" />
+                          <span>{t(labelKey)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (reqSubView !== 'list') setReqSubView('list')
+                      setReqCreating(true)
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent hover:bg-accent/90 text-white text-[11px] font-medium cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    {t('requirement.create')}
+                  </button>
+                </div>
               </div>
-              <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
-              <p className="text-sm text-text-tertiary mb-6 max-w-sm mx-auto">{t('emptyState.desc')}</p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => { setReqSubView('list'); setReqCreating(true) }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium cursor-pointer transition-colors"
+
+              {/* Empty state — shown below header when no requirements exist */}
+              {reqCount === 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl border border-dashed border-border-default bg-surface-1/30 p-10 text-center mt-6"
                 >
-                  <Plus className="w-4 h-4" />
-                  {t('requirement.create')}
-                </button>
-                <button
-                  onClick={() => {
-                    const pmAgent = workspace.agents.find((a) => a.type === 'pm') || workspace.agents[0]
-                    if (pmAgent) openAgentChat(pmAgent.id)
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-sm font-medium cursor-pointer transition-colors"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  {t('emptyState.talkAgent')}
-                </button>
-              </div>
-            </motion.div>
+                  <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                    <Sparkles className="w-6 h-6 text-accent" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-text-primary mb-2">{t('emptyState.title')}</h3>
+                  <p className="text-sm text-text-tertiary mb-6 max-w-sm mx-auto">{t('emptyState.desc')}</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => { setReqSubView('list'); setReqCreating(true) }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      {t('requirement.create')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const pmAgent = workspace.agents.find((a) => a.type === 'pm') || workspace.agents[0]
+                        if (pmAgent) openAgentChat(pmAgent.id)
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-text-secondary text-sm font-medium cursor-pointer transition-colors"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      {t('emptyState.talkAgent')}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </div>
           )}
 
           <div className="space-y-6">
