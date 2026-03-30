@@ -116,7 +116,7 @@ export default function CommandBar() {
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const workspaceAgents = activeWorkspace?.agents || []
 
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
+  
   const isZeroRequirements = !!activeWorkspaceId && (activeWorkspace?.requirements?.length ?? 0) === 0
   const activeRequirement = activeWorkspace?.requirements?.find((r) => r.id === activeRequirementId)
 
