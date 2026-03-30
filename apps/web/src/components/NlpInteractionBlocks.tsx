@@ -4,6 +4,7 @@ import {
   Target, Bot, Zap, AlertTriangle, XCircle, ServerOff,
   HelpCircle, Lightbulb, RotateCcw, ArrowRight,
   CheckCircle2, Loader2, Circle, ChevronRight, Sparkles, Play,
+  LayoutTemplate,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
@@ -354,6 +355,7 @@ export function NlpActionBlock({
   const actionType = block.actionType as NlpActionType | undefined
   if (!actionType) return null
 
+  const payload = block.actionPayload || {}
   const label = block.actionLabel || t(`nlp.action.${actionType}` as TranslationKey) || actionType
   const variant = block.actionVariant || 'primary'
   const icon = ACTION_ICON[actionType] || <ArrowRight className="w-3.5 h-3.5" />
@@ -362,7 +364,6 @@ export function NlpActionBlock({
     if (loading || done) return
     setLoading(true)
     try {
-      const payload = block.actionPayload || {}
       switch (actionType) {
         case 'workspace_create': {
           const name = (payload.suggested_name as string) || '新工作空间'
@@ -453,25 +454,90 @@ export function NlpActionBlock({
         ? 'bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20'
         : 'bg-surface-2 hover:bg-surface-3 text-text-secondary border border-border-subtle'
 
-  const cardVariantClass =
-    variant === 'primary'
-      ? 'border-accent/25 bg-accent/[0.08] text-accent hover:bg-accent/[0.14]'
-      : variant === 'danger'
-        ? 'border-danger/25 bg-danger/[0.06] text-danger hover:bg-danger/[0.1]'
-        : 'border-border-subtle bg-surface-2/45 text-text-secondary hover:bg-surface-2/70'
-
   const layoutClass =
-    layout === 'card'
-      ? `flex w-full items-center justify-center gap-2 px-4 py-3 rounded-xl border text-[12px] font-medium shadow-sm ${cardVariantClass} ${
-        done ? 'opacity-50 cursor-default' : ''
-      }`
-      : `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-medium ${
+    layout === 'chip'
+      ? `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-medium ${
         done ? 'opacity-50 cursor-default' : variantClass
       }`
+      : ''
+
+  if (layout === 'card') {
+    const navTarget = payload.target as string | undefined
+    let cardSubtitle: string | undefined = block.description
+    if (!cardSubtitle) {
+      if (actionType === 'navigate' && navTarget === 'create_workspace') {
+        cardSubtitle = t('nlp.homeNavigateCreateHint' as TranslationKey)
+      } else if (actionType === 'workspace_create') {
+        const name = typeof payload.suggested_name === 'string' ? payload.suggested_name : ''
+        const desc = typeof payload.suggested_description === 'string' ? payload.suggested_description : ''
+        const bits: string[] = []
+        if (name) bits.push(`${t('nlp.homeWorkspaceNameLine' as TranslationKey)} ${name}`)
+        if (desc) bits.push(desc.length > 56 ? `${desc.slice(0, 56)}…` : desc)
+        cardSubtitle =
+          bits.length > 0 ? bits.join(' · ') : t('nlp.homeWorkspaceCreateHint' as TranslationKey)
+      }
+    }
+    const cardHeadline = (block.title && block.title.trim()) || label
+
+    const rowIcon =
+      actionType === 'navigate' && navTarget === 'create_workspace' ? (
+        <LayoutTemplate className="w-4 h-4" />
+      ) : (
+        icon
+      )
+
+    const iconWrapTint =
+      actionType === 'workspace_create'
+        ? 'bg-accent/12 text-accent'
+        : 'bg-surface-3/70 text-text-secondary group-hover:text-accent'
+
+    return (
+      <motion.button
+        type="button"
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={handleClick}
+        disabled={loading || done}
+        className={
+          `group w-full text-left rounded-2xl border transition-all duration-200 cursor-pointer ` +
+          `border-border-subtle/45 bg-surface-2/20 hover:bg-surface-2/40 hover:border-accent/22 ` +
+          `shadow-[0_2px_14px_-5px_rgba(0,0,0,.07)] hover:shadow-[0_8px_28px_-10px_rgba(0,0,0,.09)] ` +
+          `${done ? 'opacity-55 pointer-events-none' : ''} ${loading ? 'pointer-events-none' : ''}`
+        }
+      >
+        <div className="flex items-center gap-3 px-3.5 py-3">
+          <div
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconWrapTint}`}
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin opacity-90" />
+            ) : (
+              <span className="[&_svg]:shrink-0">{rowIcon}</span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-medium text-text-primary leading-snug">
+              {loading ? t('nlp.action.creating' as TranslationKey) : cardHeadline}
+            </div>
+            {!loading && cardSubtitle ? (
+              <p className="text-[11px] text-text-tertiary mt-1 leading-relaxed line-clamp-2">
+                {cardSubtitle}
+              </p>
+            ) : null}
+          </div>
+          {!loading ? (
+            <ChevronRight className="w-4 h-4 text-text-tertiary group-hover:text-accent shrink-0 transition-colors" />
+          ) : null}
+        </div>
+      </motion.button>
+    )
+  }
 
   return (
     <motion.button
-      initial={{ opacity: 0, scale: layout === 'card' ? 1 : 0.95 }}
+      type="button"
+      initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.2 }}
       onClick={handleClick}
