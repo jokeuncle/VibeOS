@@ -19,25 +19,35 @@ export function useRegisterNlpContext(descriptor: NlpContextDescriptor | null): 
   const register = useUIStore((s) => s.registerNlpContext)
   const unregister = useUIStore((s) => s.unregisterNlpContext)
   const prevId = useRef<string | null>(null)
+  const descriptorRef = useRef(descriptor)
+  descriptorRef.current = descriptor
+
+  // Object identity changes every render for inline literals (e.g. WorkspaceHome's homeDesc).
+  // Depending on `descriptor` re-ran the effect every time → unregister → store update →
+  // re-render → infinite loop when the caller also subscribes to the full UI store.
+  const descSig = descriptor ? JSON.stringify(descriptor) : null
 
   useEffect(() => {
-    if (prevId.current && prevId.current !== descriptor?.id) {
+    const d = descriptorRef.current
+    if (!d) {
+      if (prevId.current) {
+        unregister(prevId.current)
+        prevId.current = null
+      }
+      return
+    }
+    if (prevId.current && prevId.current !== d.id) {
       unregister(prevId.current)
     }
-    if (descriptor) {
-      register(descriptor)
-      prevId.current = descriptor.id
-    } else if (prevId.current) {
-      unregister(prevId.current)
-      prevId.current = null
-    }
+    register(d)
+    prevId.current = d.id
     return () => {
       if (prevId.current) {
         unregister(prevId.current)
         prevId.current = null
       }
     }
-  }, [descriptor?.id, descriptor, register, unregister])
+  }, [descSig, register, unregister])
 }
 
 /** Read the resolved active context descriptor. */

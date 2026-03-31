@@ -4,6 +4,8 @@ import {
   Sparkles, ArrowUp, Command, Bot, Slash, CheckSquare,
   FileText, Blocks, Palette, Code2, FlaskConical, Rocket, Activity,
   X, ChevronRight, Loader2, Target,
+  PlusSquare, ListChecks, UserPlus, FileBarChart, Eye,
+  type LucideIcon,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
@@ -19,6 +21,23 @@ interface Suggestion {
   label: string
   value: string
   description?: string
+  /** Slash command string for Lucide icon (e.g. '/create') */
+  slashCmd?: string
+}
+
+/** Per-command icons — avoids a generic slash glyph in the command palette. */
+const SLASH_CMD_ICONS: Record<string, LucideIcon> = {
+  '/create': PlusSquare,
+  '/status': ListChecks,
+  '/assign': UserPlus,
+  '/deploy': Rocket,
+  '/review': Eye,
+  '/report': FileBarChart,
+}
+
+function SlashCommandSuggestIcon({ cmd }: { cmd: string }) {
+  const Icon = SLASH_CMD_ICONS[cmd] ?? Slash
+  return <Icon className="w-3.5 h-3.5 shrink-0" />
 }
 
 interface IntentHint {
@@ -163,7 +182,7 @@ export default function CommandBar() {
           type: 'command' as const,
           label: t(c.labelKey),
           value: `${c.cmd} `,
-          description: c.cmd,
+          slashCmd: c.cmd,
         }))
     }
 
@@ -364,11 +383,15 @@ export default function CommandBar() {
                   }`}
                 >
                   <span className={i === selectedIdx ? 'text-accent' : 'text-text-tertiary'}>
-                    {typeIcon(sug.type)}
+                    {sug.type === 'command' && sug.slashCmd ? (
+                      <SlashCommandSuggestIcon cmd={sug.slashCmd} />
+                    ) : (
+                      typeIcon(sug.type)
+                    )}
                   </span>
                   <span className="text-xs font-medium flex-1 truncate">{sug.label}</span>
-                  {sug.description && (
-                    <span className="text-[10px] font-mono text-text-tertiary">{sug.description}</span>
+                  {sug.description && sug.type !== 'command' && (
+                    <span className="text-[10px] text-text-tertiary/90 truncate max-w-[100px]">{sug.description}</span>
                   )}
                   <kbd className="text-[9px] text-text-tertiary/50 font-mono">Tab</kbd>
                 </button>
