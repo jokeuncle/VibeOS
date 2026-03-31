@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { CheckCircle2, Circle, Loader2, Play, Code2 } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, Play, Code2, ExternalLink, Zap } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -12,7 +12,7 @@ import {
   ExecutionTimelineBlock,
   NlpActionBlock,
 } from './NlpInteractionBlocks'
-import type { RichBlock, RichAction, PhaseStatus, TaskPriority } from '../types'
+import type { RichBlock, RichAction, PhaseStatus, TaskPriority, ExecutionStatus } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 function ProgressBar({ percent, label }: { percent: number; label?: string }) {
@@ -232,7 +232,80 @@ export function RichBlockRenderer({
         </div>
       )
 
+    case 'execution_result':
+      return <ExecutionResultBlock block={block} richLayout={richLayout} />
+
     default:
       return null
   }
+}
+
+const EXEC_STATUS_STYLES: Record<string, string> = {
+  success: 'bg-success/10 text-success border-success/20',
+  failed: 'bg-danger/10 text-danger border-danger/20',
+  running: 'bg-accent/10 text-accent border-accent/20',
+  queued: 'bg-surface-3 text-text-tertiary border-border-subtle',
+  cancelled: 'bg-surface-3 text-text-tertiary border-border-subtle',
+}
+
+function ExecutionResultBlock({ block, richLayout }: { block: RichBlock; richLayout: string }) {
+  const { executions, setActiveWorkspace } = useWorkspaceStore()
+  const { setActiveRequirement } = useWorkspaceStore()
+  const t = useT()
+
+  const liveExec = block.executionId ? executions.find((e) => e.id === block.executionId) : undefined
+  const status: ExecutionStatus = (liveExec?.status || 'success') as ExecutionStatus
+  const statusStyle = EXEC_STATUS_STYLES[status] || EXEC_STATUS_STYLES.queued
+  const StatusIcon = status === 'success' ? CheckCircle2 : status === 'failed' ? Circle : status === 'running' ? Loader2 : Circle
+
+  const isHome = richLayout === 'home'
+  const wrapClass = isHome
+    ? 'rounded-xl border border-border-subtle bg-surface-2/40 p-3.5'
+    : 'rounded-lg border border-border-subtle bg-surface-2/50 p-3'
+
+  function handleNavigate() {
+    if (block.linkedWorkspaceId) {
+      setActiveWorkspace(block.linkedWorkspaceId)
+    } else if (block.linkedRequirementId) {
+      setActiveRequirement(block.linkedRequirementId)
+    }
+  }
+
+  return (
+    <div className={`${wrapClass} space-y-2`}>
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+          <Zap className="w-3.5 h-3.5 text-accent" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-text-primary truncate">
+            {block.resultSummary || block.title || t('execution.result' as TranslationKey)}
+          </p>
+          {block.resultType && (
+            <span className="text-[10px] text-text-tertiary font-mono">{block.resultType}</span>
+          )}
+        </div>
+        <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-md border ${statusStyle}`}>
+          <StatusIcon className={`w-2.5 h-2.5 ${status === 'running' ? 'animate-spin' : ''}`} />
+          {status}
+        </span>
+      </div>
+
+      {block.linkedTaskIds && block.linkedTaskIds.length > 0 && (
+        <p className="text-[10px] text-text-tertiary">
+          {block.linkedTaskIds.length} {t('task.plural' as TranslationKey)}
+        </p>
+      )}
+
+      {(block.linkedWorkspaceId || block.linkedRequirementId) && (
+        <button
+          onClick={handleNavigate}
+          className="flex items-center gap-1 text-[11px] text-accent hover:text-accent-hover transition-colors cursor-pointer"
+        >
+          <ExternalLink className="w-3 h-3" />
+          {isHome ? t('workspace.open' as TranslationKey) : t('execution.viewDetails' as TranslationKey)}
+        </button>
+      )}
+    </div>
+  )
 }

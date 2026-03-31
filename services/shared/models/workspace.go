@@ -291,14 +291,17 @@ type ChatSession struct {
 }
 
 type ChatMessage struct {
-	ID          string    `json:"id" db:"id"`
-	SessionID   string    `json:"sessionId" db:"session_id"`
-	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
-	Role        string    `json:"role" db:"role"`
-	Content     string    `json:"content" db:"content"`
-	RichBlocks  *string   `json:"richBlocks,omitempty" db:"rich_blocks"`
-	AgentType   *string   `json:"agentType,omitempty" db:"agent_type"`
-	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
+	ID            string    `json:"id" db:"id"`
+	SessionID     *string   `json:"sessionId,omitempty" db:"session_id"`
+	WorkspaceID   *string   `json:"workspaceId,omitempty" db:"workspace_id"`
+	ContextType   string    `json:"contextType" db:"context_type"`
+	Role          string    `json:"role" db:"role"`
+	Content       string    `json:"content" db:"content"`
+	RichBlocks    *string   `json:"richBlocks,omitempty" db:"rich_blocks"`
+	AgentType     *string   `json:"agentType,omitempty" db:"agent_type"`
+	RequirementID *string   `json:"requirementId,omitempty" db:"requirement_id"`
+	ExecutionID   *string   `json:"executionId,omitempty" db:"execution_id"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
 }
 
 type ConversationSummary struct {

@@ -9,7 +9,7 @@ import TitleBar from './components/TitleBar'
 import StatusBar from './components/StatusBar'
 import CommandBar from './components/CommandBar'
 import WorkspaceHome from './components/WorkspaceHome'
-import WorkspaceConversation from './components/WorkspaceConversation'
+import ConversationThread from './components/ConversationThread'
 import WorkspaceView from './components/WorkspaceView'
 import WorkspaceTabs from './components/WorkspaceTabs'
 import Sidebar from './components/Sidebar'
@@ -122,7 +122,11 @@ export default function App() {
 
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-6 pb-3 sm:px-10 sm:pb-4">
                     <div className="pointer-events-auto w-full max-w-2xl">
-                      <WorkspaceConversation />
+                      <ConversationThread
+                        context="workspace"
+                        workspaceId={activeWorkspaceId ?? undefined}
+                        onDismiss={() => useWorkspaceStore.getState().clearWorkspaceConversation()}
+                      />
                     </div>
                   </div>
                 </div>

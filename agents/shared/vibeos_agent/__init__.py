@@ -30,6 +30,15 @@ from .protocol import (
     WorkspaceClient,
     WSGatewayClient,
 )
+from .registry import (
+    AgentManifest,
+    CapabilityDef,
+    IntentDef,
+    RegistryClient,
+    ResolvedTemplate,
+    TaskTemplateDef,
+    load_manifest_from_yaml,
+)
 from .session import SessionManager
 from .tools import BaseTool, ToolRegistry
 
@@ -37,6 +46,7 @@ __all__ = [
     "Activity",
     "Agent",
     "AgentEvent",
+    "AgentManifest",
     "AgentStatus",
     "AgentTask",
     "AgentType",
@@ -45,7 +55,9 @@ __all__ = [
     "BaseAgent",
     "BaseTool",
     "CapabilityContract",
+    "CapabilityDef",
     "Config",
+    "IntentDef",
     "KnowledgeClient",
     "LLMGatewayClient",
     "MemoryClient",
@@ -55,11 +67,15 @@ __all__ = [
     "Phase",
     "PhaseStatus",
     "PhaseType",
+    "RegistryClient",
+    "ResolvedTemplate",
     "RichAction",
     "RichBlock",
     "SessionManager",
     "Task",
+    "TaskTemplateDef",
     "ToolRegistry",
+    "load_manifest_from_yaml",
     "WSGatewayClient",
     "Workspace",
     "WorkspaceClient",

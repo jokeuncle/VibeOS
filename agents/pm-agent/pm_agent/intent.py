@@ -1,27 +1,31 @@
 """Structured NLU: single LLM call returns intent + confidence + extensible ``slots``.
 
-Adding a new intent with parameters:
-1. Append ``IntentDef`` to ``INTENT_REGISTRY``.
-2. Define a Pydantic model for that intent's slot object (e.g. ``CreateTaskSlots``).
-3. Document the key under ``slots`` in ``STRUCTURED_NLU_PROMPT``.
-4. Validate in ``_normalize_slots_for_intent`` and consume in handlers / home flow
-   (e.g. ``WorkspaceCreateSlots.initial_requirements`` → home ``workspace_create`` payload).
+Intents are loaded from the global registry (workspace-svc) when available,
+falling back to a built-in static registry.  The dynamic path enables new
+agents to register intents at startup without code changes here.
+
+Adding a new intent:
+- Preferred: register via ``RegistryClient.upsert_intent()`` or agent manifest.
+- Legacy: append to ``_BUILTIN_INTENTS`` below + add slot model + handler.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from vibeos_agent import AgentType, LLMGatewayClient
+from vibeos_agent import AgentType, LLMGatewayClient, RegistryClient
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Intent registry – THE single source of truth for intent *names*
+# Intent definition (local data class – kept for compatibility)
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True, slots=True)
@@ -33,17 +37,12 @@ class IntentDef:
     hint: str
 
 
-INTENT_REGISTRY: tuple[IntentDef, ...] = (
+# Static fallback used when the registry is unreachable.
+_BUILTIN_INTENTS: tuple[IntentDef, ...] = (
     IntentDef("create_workspace",     AgentType.PM,           "创建工作空间", "Create Workspace",     "user wants a new empty workspace or project shell (incl. random / named title)"),
     IntentDef("create_task",          AgentType.PM,           "创建任务",     "Create Task",          "user wants to create a single task"),
     IntentDef("create_requirement",   AgentType.PM,           "创建需求",     "Create Requirement",   "user wants a new requirement or feature request"),
-    IntentDef(
-        "bind_workspace_repo",
-        AgentType.PM,
-        "绑定仓库",
-        "Bind Repository",
-        "user wants to link this workspace to an existing GitLab project (bind/connect/关联仓库, paste git@ or https clone URL)",
-    ),
+    IntentDef("bind_workspace_repo",  AgentType.PM,           "绑定仓库",     "Bind Repository",      "user wants to link this workspace to an existing GitLab project (bind/connect/关联仓库, paste git@ or https clone URL)"),
     IntentDef("query_progress",       AgentType.PM,           "查询进度",     "Query Progress",       "user wants project/task status"),
     IntentDef("execute_task",         AgentType.PM,           "执行任务",     "Execute Task",         "user wants to run a specific task"),
     IntentDef("execute_phase",        AgentType.PM,           "执行阶段",     "Execute Phase",        "user wants to run a phase"),
@@ -53,8 +52,8 @@ INTENT_REGISTRY: tuple[IntentDef, ...] = (
     IntentDef("ui_design",            AgentType.DESIGN,       "UI 设计",      "UI Design",            "UI/UX, wireframes, mockups"),
     IntentDef("generate_code",        AgentType.DEVELOPMENT,  "生成代码",     "Generate Code",        "implement features / code"),
     IntentDef("run_tests",            AgentType.TESTING,      "运行测试",     "Run Tests",            "tests, QA"),
-    IntentDef("trigger_build",         AgentType.PM,           "触发构建",     "Trigger Build",        "trigger a CI/CD pipeline build for a project or branch"),
-    IntentDef("view_build_log",        AgentType.PM,           "查看构建日志", "View Build Log",       "view build logs, check pipeline status, query CI/CD results"),
+    IntentDef("trigger_build",        AgentType.PM,           "触发构建",     "Trigger Build",        "trigger a CI/CD pipeline build for a project or branch"),
+    IntentDef("view_build_log",       AgentType.PM,           "查看构建日志", "View Build Log",       "view build logs, check pipeline status, query CI/CD results"),
     IntentDef("deploy",               AgentType.PM,           "部署",         "Deploy",               "deploy to an environment, CI/CD release"),
     IntentDef("rollback",             AgentType.PM,           "回滚版本",     "Rollback",             "rollback a deployment to a previous version"),
     IntentDef("analyze_requirements", AgentType.REQUIREMENT,  "分析需求",     "Analyze Requirements", "analyze or refine requirements"),
@@ -63,14 +62,61 @@ INTENT_REGISTRY: tuple[IntentDef, ...] = (
     IntentDef("general_chat",         AgentType.PM,           "自由对话",     "General Chat",         "greetings, product help, chit-chat, or nothing else fits"),
 )
 
-
+# Mutable runtime state – refreshed by ``load_intents_from_registry``.
+INTENT_REGISTRY: list[IntentDef] = list(_BUILTIN_INTENTS)
 INTENT_TYPES: list[str] = [d.name for d in INTENT_REGISTRY]
-
 _AGENT_MAP: dict[str, AgentType] = {d.name: d.agent for d in INTENT_REGISTRY}
-
 INTENT_LABELS: dict[str, dict[str, str]] = {
     d.name: {"zh": d.label_zh, "en": d.label_en} for d in INTENT_REGISTRY
 }
+
+
+def _rebuild_derived() -> None:
+    """Refresh module-level derived structures after INTENT_REGISTRY changes."""
+    global INTENT_TYPES, _AGENT_MAP, INTENT_LABELS
+    INTENT_TYPES = [d.name for d in INTENT_REGISTRY]
+    _AGENT_MAP = {d.name: d.agent for d in INTENT_REGISTRY}
+    INTENT_LABELS = {d.name: {"zh": d.label_zh, "en": d.label_en} for d in INTENT_REGISTRY}
+
+
+async def load_intents_from_registry(registry: RegistryClient) -> int:
+    """Load enabled intents from the global registry, merging with builtins.
+
+    Returns the number of intents loaded.  On failure, keeps the current list.
+    """
+    try:
+        remote = await registry.list_intents(enabled_only=True)
+    except Exception as exc:
+        logger.warning("Registry unreachable, using builtin intents: %s", exc)
+        return len(INTENT_REGISTRY)
+
+    seen: set[str] = set()
+    merged: list[IntentDef] = []
+
+    for entry in remote:
+        name = entry.get("name", "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        merged.append(IntentDef(
+            name=name,
+            agent=AgentType(entry.get("handlerRef", "pm")) if entry.get("handlerRef") else AgentType.PM,
+            label_zh=entry.get("labelZh", ""),
+            label_en=entry.get("labelEn", ""),
+            hint=entry.get("hint", ""),
+        ))
+
+    for builtin in _BUILTIN_INTENTS:
+        if builtin.name not in seen:
+            seen.add(builtin.name)
+            merged.append(builtin)
+
+    INTENT_REGISTRY.clear()
+    INTENT_REGISTRY.extend(merged)
+    _rebuild_derived()
+    refresh_nlu_prompt()
+    logger.info("Loaded %d intents from registry (%d remote)", len(merged), len(remote))
+    return len(merged)
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +330,13 @@ def _structured_nlu_prompt() -> str:
 
 
 STRUCTURED_NLU_PROMPT: str = _structured_nlu_prompt()
+
+
+def refresh_nlu_prompt() -> str:
+    """Regenerate the NLU prompt from the current (possibly dynamic) registry."""
+    global STRUCTURED_NLU_PROMPT
+    STRUCTURED_NLU_PROMPT = _structured_nlu_prompt()
+    return STRUCTURED_NLU_PROMPT
 
 
 # ---------------------------------------------------------------------------

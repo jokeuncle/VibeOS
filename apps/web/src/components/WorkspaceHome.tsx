@@ -5,7 +5,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
-import HomeConversation from './HomeConversation'
+import ConversationThread from './ConversationThread'
 import type { Workspace } from '../types'
 import { WORKSPACE_CARD_BG, WORKSPACE_CARD_TEXT, workspaceColorFallback } from '../lib/workspaceColors'
 
@@ -311,10 +311,12 @@ export default function WorkspaceHome() {
         </div>
       </div>
 
-      {/* NLP session: anchored in home canvas, separate from CommandBar */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-6 sm:px-10 pb-3 sm:pb-4">
         <div className="pointer-events-auto w-full max-w-2xl">
-          <HomeConversation />
+          <ConversationThread
+            context="home"
+            onDismiss={() => useWorkspaceStore.getState().clearHomeMessages()}
+          />
         </div>
       </div>
     </div>

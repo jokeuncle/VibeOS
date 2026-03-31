@@ -156,18 +156,27 @@ CREATE TABLE chat_sessions (
     UNIQUE(workspace_id, agent_type)
 );
 
--- Chat messages
+-- Chat messages (global: workspace_id + session_id nullable for home context)
 CREATE TABLE chat_messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    session_id UUID REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    context_type VARCHAR(16) NOT NULL DEFAULT 'workspace',
     role VARCHAR(16) NOT NULL,
     content TEXT NOT NULL,
     rich_blocks JSONB,
     agent_type VARCHAR(32),
+    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
+    execution_id UUID REFERENCES agent_executions(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_messages_session ON chat_messages(session_id, created_at);
+CREATE INDEX idx_chat_messages_ws_cursor ON chat_messages(workspace_id, created_at DESC, id DESC);
+CREATE INDEX idx_chat_messages_context ON chat_messages(context_type, created_at DESC, id DESC);
+CREATE INDEX idx_chat_messages_home ON chat_messages(created_at DESC, id DESC) WHERE context_type = 'home';
+CREATE INDEX idx_chat_messages_req ON chat_messages(requirement_id, created_at DESC) WHERE requirement_id IS NOT NULL;
+CREATE INDEX idx_chat_messages_exec ON chat_messages(execution_id) WHERE execution_id IS NOT NULL;
 
 -- Notifications
 CREATE TABLE notifications (

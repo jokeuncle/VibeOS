@@ -1,7 +1,8 @@
 import type { StoreApi } from 'zustand'
-import type { AgentType, AgentExecution, Message, RichBlock, ExecutionStep } from '../../../types'
+import type { AgentType, AgentExecution, Message, RichBlock, ExecutionStep, ConversationContext } from '../../../types'
 import {
   workspaceApi,
+  globalMessageApi,
   agentApi,
   mapNLPResultToMessage,
   mapAgentChatToMessage,
@@ -18,11 +19,17 @@ import {
   safeParseRichBlocks,
   mergeMessagesById,
 } from '../helpers'
-import type { WorkspaceState } from '../types'
+import type { WorkspaceState, MessageScope } from '../types'
 import { workspaceMessagesFetchInflight } from '../inflight'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
+
+function makeMsg(
+  partial: Partial<Message> & { id: string; role: Message['role']; content: string; contextType: ConversationContext },
+): Message {
+  return { timestamp: new Date().toISOString(), ...partial }
+}
 
 export function buildChatSlice(set: SetState, get: GetState) {
   return {
@@ -34,19 +41,35 @@ export function buildChatSlice(set: SetState, get: GetState) {
     agentChatMessages: {} as Record<string, Message[]>,
     homeMessages: [] as Message[],
     homeNlpLoading: false,
+    homeMessagesCursor: null as string | null,
+    homeMessagesHasMore: false,
 
     addMessage: (message: Message) => {
-      set((s) => ({ messages: [...s.messages, message] }))
-      const wsId = get().activeWorkspaceId
-      if (wsId && !wsId.startsWith('ws-temp-')) {
-        workspaceApi
-          .saveMessage(wsId, {
-            role: message.role,
-            content: message.content || '',
-            agentType: message.agentType,
-            richBlocks: message.richBlocks ? JSON.stringify(message.richBlocks) : undefined,
-          })
-          .catch((err) => console.warn('Failed to persist message:', err))
+      const ctx = message.contextType || 'workspace'
+      if (ctx === 'home') {
+        set((s) => ({ homeMessages: [...s.homeMessages, message] }))
+        globalMessageApi.save({
+          role: message.role,
+          content: message.content || '',
+          agentType: message.agentType,
+          richBlocks: message.richBlocks ? JSON.stringify(message.richBlocks) : undefined,
+        }).catch((err) => console.warn('Failed to persist home message:', err))
+      } else {
+        set((s) => ({ messages: [...s.messages, message] }))
+        const wsId = get().activeWorkspaceId
+        if (wsId && !wsId.startsWith('ws-temp-')) {
+          workspaceApi
+            .saveMessage(wsId, {
+              role: message.role,
+              content: message.content || '',
+              agentType: message.agentType,
+              richBlocks: message.richBlocks ? JSON.stringify(message.richBlocks) : undefined,
+              contextType: ctx,
+              requirementId: message.requirementId,
+              executionId: message.executionId,
+            })
+            .catch((err) => console.warn('Failed to persist message:', err))
+        }
       }
     },
 
@@ -57,13 +80,15 @@ export function buildChatSlice(set: SetState, get: GetState) {
       const sessionId = `s-${Math.floor(Date.now() / 300000)}`
       const ts = new Date().toISOString()
 
-      const userMsg: Message = {
+      const userMsg = makeMsg({
         id: crypto.randomUUID(),
-        role: 'user' as const,
+        role: 'user',
         content: input,
         timestamp: ts,
         sessionId,
-      }
+        contextType: 'workspace',
+        workspaceId: wsId,
+      })
 
       set((s) => ({
         nlpLoading: true,
@@ -71,7 +96,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
       }))
 
       if (!wsId.startsWith('ws-temp-')) {
-        workspaceApi.saveMessage(wsId, { role: 'user', content: input }).catch((err) =>
+        workspaceApi.saveMessage(wsId, { role: 'user', content: input, contextType: 'workspace' }).catch((err) =>
           console.warn('Failed to persist user message:', err),
         )
       }
@@ -92,6 +117,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
                 content: agentMsg.content || '',
                 agentType: agentMsg.agentType,
                 richBlocks: agentMsg.richBlocks ? JSON.stringify(agentMsg.richBlocks) : undefined,
+                contextType: 'workspace',
               })
               .catch((err) => console.warn('Failed to persist agent message:', err))
           }
@@ -99,26 +125,21 @@ export function buildChatSlice(set: SetState, get: GetState) {
         })
         .catch((err) => {
           const errContent = friendlyError(err.message)
-          const errMsg: Message = {
+          const errMsg = makeMsg({
             id: crypto.randomUUID(),
-            role: 'agent' as const,
+            role: 'agent',
             content: errContent,
             agentType: 'pm' as AgentType,
-            timestamp: new Date().toISOString(),
             sessionId,
-          }
+            contextType: 'workspace',
+            workspaceId: wsId,
+          })
           set((s) => ({
             nlpLoading: false,
             messages: [...s.messages, errMsg],
           }))
           if (!wsId.startsWith('ws-temp-')) {
-            workspaceApi
-              .saveMessage(wsId, {
-                role: 'agent',
-                content: errContent,
-                agentType: 'pm',
-              })
-              .catch(() => {})
+            workspaceApi.saveMessage(wsId, { role: 'agent', content: errContent, agentType: 'pm', contextType: 'workspace' }).catch(() => {})
           }
         })
     },
@@ -127,13 +148,13 @@ export function buildChatSlice(set: SetState, get: GetState) {
       const wsId = get().activeWorkspaceId
       if (!wsId) return
       const key = `${wsId}:${agentType}`
-      const ts = new Date().toISOString()
-      const userMsg: Message = {
+      const userMsg = makeMsg({
         id: crypto.randomUUID(),
         role: 'user',
         content: input,
-        timestamp: ts,
-      }
+        contextType: 'agent_dm',
+        workspaceId: wsId,
+      })
       set((s) => ({
         chatLoading: true,
         agentChatMessages: {
@@ -156,13 +177,14 @@ export function buildChatSlice(set: SetState, get: GetState) {
           get().refreshActiveWorkspace()
         })
         .catch((err) => {
-          const errMsg: Message = {
+          const errMsg = makeMsg({
             id: crypto.randomUUID(),
             role: 'agent',
             content: friendlyError(err.message),
             agentType: agentType as AgentType,
-            timestamp: new Date().toISOString(),
-          }
+            contextType: 'agent_dm',
+            workspaceId: wsId,
+          })
           set((s) => ({
             chatLoading: false,
             agentChatMessages: {
@@ -186,12 +208,12 @@ export function buildChatSlice(set: SetState, get: GetState) {
         nlpLoading: true,
         messages: [
           ...s.messages,
-          { id: crypto.randomUUID(), role: 'user' as const, content: input, timestamp: ts, sessionId },
+          makeMsg({ id: crypto.randomUUID(), role: 'user', content: input, timestamp: ts, sessionId, contextType: 'workspace', workspaceId: wsId }),
         ],
       }))
 
       if (persist) {
-        workspaceApi.saveMessage(wsId, { role: 'user', content: input }).catch(() => {})
+        workspaceApi.saveMessage(wsId, { role: 'user', content: input, contextType: 'workspace' }).catch(() => {})
       }
 
       ;(async () => {
@@ -199,7 +221,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
         let agentType: AgentType = 'pm'
         const richBlocks: RichBlock[] = []
         const timelineSteps: ExecutionStep[] = []
-        // Must be a real UUID: agent_executions.id is Postgres UUID.
         const execId = msgId
         let execCreated = false
         let execHadError = false
@@ -236,14 +257,15 @@ export function buildChatSlice(set: SetState, get: GetState) {
           set((s) => ({
             messages: [
               ...s.messages,
-              {
+              makeMsg({
                 id: msgId,
-                role: 'agent' as const,
+                role: 'agent',
                 content: '',
                 agentType,
-                timestamp: new Date().toISOString(),
                 sessionId,
-              },
+                contextType: 'workspace',
+                workspaceId: wsId,
+              }),
             ],
           }))
 
@@ -256,7 +278,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- Timeline events ---
             if (evt.event === 'timeline') {
               const step = parseTimelineStep(data)
               const existing = timelineSteps.find((s) => s.id === step.id)
@@ -274,7 +295,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- Intent event → create execution ---
             if (evt.event === 'intent' && data.target_agent) {
               const { block: intentBlock, agentType: at } = parseIntentBlock(data)
               agentType = at
@@ -306,7 +326,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- Requirement preview (upsert) ---
             if (evt.event === 'requirement_preview') {
               const existingIdx = richBlocks.findIndex((b) => b.type === 'requirement_preview')
               if (existingIdx !== -1) richBlocks.splice(existingIdx, 1)
@@ -316,7 +335,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- Registry-based block parsers (clarification, error_card, cta, nlp_action, etc.) ---
             {
               const parsed = parseSseToBlock(evt.event, data)
               if (parsed) {
@@ -326,7 +344,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               }
             }
 
-            // --- Content deltas ---
             if (data.delta) {
               content += data.delta
             } else if (data.summary || data.payload?.summary) {
@@ -390,6 +407,8 @@ export function buildChatSlice(set: SetState, get: GetState) {
                 content,
                 agentType,
                 richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined,
+                contextType: 'workspace',
+                executionId: execCreated ? execId : undefined,
               })
               .catch(() => {})
           }
@@ -410,17 +429,20 @@ export function buildChatSlice(set: SetState, get: GetState) {
       const ts = new Date().toISOString()
       const msgId = crypto.randomUUID()
 
-      const userMsg: Message = {
+      const userMsg = makeMsg({
         id: crypto.randomUUID(),
-        role: 'user' as const,
+        role: 'user',
         content: input,
         timestamp: ts,
-      }
+        contextType: 'home',
+      })
 
       set((s) => ({
         homeNlpLoading: true,
         homeMessages: [...s.homeMessages, userMsg],
       }))
+
+      globalMessageApi.save({ role: 'user', content: input }).catch(() => {})
 
       ;(async () => {
         let content = ''
@@ -449,13 +471,13 @@ export function buildChatSlice(set: SetState, get: GetState) {
           set((s) => ({
             homeMessages: [
               ...s.homeMessages,
-              {
+              makeMsg({
                 id: msgId,
-                role: 'agent' as const,
+                role: 'agent',
                 content: '',
                 agentType,
-                timestamp: new Date().toISOString(),
-              },
+                contextType: 'home',
+              }),
             ],
           }))
 
@@ -467,7 +489,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- Timeline ---
             if (evt.event === 'timeline') {
               const step = parseTimelineStep(data)
               const existing = timelineSteps.find((s) => s.id === step.id)
@@ -482,7 +503,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- Intent (upsert mode for home) ---
             if (evt.event === 'intent' && data.target_agent) {
               const { block: intentBlock, agentType: at } = parseIntentBlock(data)
               agentType = at
@@ -493,7 +513,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
               continue
             }
 
-            // --- Registry-based block parsers (nlp_action, error_card, etc.) ---
             {
               const parsed = parseSseToBlock(evt.event, data)
               if (parsed) {
@@ -517,6 +536,14 @@ export function buildChatSlice(set: SetState, get: GetState) {
           }
         } finally {
           set({ homeNlpLoading: false })
+          if (content) {
+            globalMessageApi.save({
+              role: 'agent',
+              content,
+              agentType,
+              richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined,
+            }).catch(() => {})
+          }
         }
       })()
     },
@@ -526,12 +553,14 @@ export function buildChatSlice(set: SetState, get: GetState) {
       if (!wsId) return
       const key = `${wsId}:${agentType}`
       const ts = new Date().toISOString()
-      const userMsg: Message = {
+      const userMsg = makeMsg({
         id: crypto.randomUUID(),
         role: 'user',
         content: input,
         timestamp: ts,
-      }
+        contextType: 'agent_dm',
+        workspaceId: wsId,
+      })
       const replyId = crypto.randomUUID()
 
       set((s) => ({
@@ -541,7 +570,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
           [key]: [
             ...(s.agentChatMessages[key] || []),
             userMsg,
-            { id: replyId, role: 'agent' as const, content: '', agentType: agentType as AgentType, timestamp: ts },
+            makeMsg({ id: replyId, role: 'agent', content: '', agentType: agentType as AgentType, timestamp: ts, contextType: 'agent_dm', workspaceId: wsId }),
           ],
         },
       }))
@@ -606,6 +635,40 @@ export function buildChatSlice(set: SetState, get: GetState) {
       })()
     },
 
+    fetchMessages: async (scope: MessageScope) => {
+      if (scope.contextType === 'home') {
+        try {
+          const resp = await globalMessageApi.list(undefined, 50)
+            .catch(() => ({ data: [] as any[], hasMore: false, cursor: undefined as string | undefined }))
+          const restored: Message[] = (resp.data || []).reverse().map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            agentType: m.agentType,
+            timestamp: m.createdAt,
+            richBlocks: safeParseRichBlocks(m.richBlocks),
+            sessionId: m.sessionId,
+            contextType: 'home' as ConversationContext,
+            workspaceId: m.workspaceId,
+            requirementId: m.requirementId,
+            executionId: m.executionId,
+          }))
+          set((s) => ({
+            homeMessages: mergeMessagesById(restored, s.homeMessages),
+            homeMessagesCursor: resp.cursor || null,
+            homeMessagesHasMore: resp.hasMore || false,
+          }))
+        } catch (err) {
+          console.error('Failed to fetch home messages:', err)
+        }
+        return
+      }
+
+      const wsId = scope.workspaceId
+      if (!wsId) return
+      return get().fetchWorkspaceMessages(wsId)
+    },
+
     fetchWorkspaceMessages: async (workspaceId?: string) => {
       const id = workspaceId ?? get().activeWorkspaceId
       if (!id || id.startsWith('ws-temp-')) return
@@ -628,6 +691,10 @@ export function buildChatSlice(set: SetState, get: GetState) {
             timestamp: m.createdAt,
             richBlocks: safeParseRichBlocks(m.richBlocks),
             sessionId: m.sessionId,
+            contextType: (m.contextType || 'workspace') as ConversationContext,
+            workspaceId: m.workspaceId,
+            requirementId: m.requirementId,
+            executionId: m.executionId,
           }))
 
           set((s) => {
@@ -649,7 +716,33 @@ export function buildChatSlice(set: SetState, get: GetState) {
       return run
     },
 
-    loadOlderMessages: () => {
+    loadOlderMessages: (scope?: MessageScope) => {
+      if (scope?.contextType === 'home') {
+        const cursor = get().homeMessagesCursor
+        if (!cursor) return
+
+        return globalMessageApi
+          .list(cursor, 50)
+          .then((resp) => {
+            const older: Message[] = (resp.data || []).reverse().map((m: any) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              agentType: m.agentType,
+              timestamp: m.createdAt,
+              richBlocks: safeParseRichBlocks(m.richBlocks),
+              sessionId: m.sessionId,
+              contextType: 'home' as ConversationContext,
+            }))
+            set((s) => ({
+              homeMessages: [...older, ...s.homeMessages],
+              homeMessagesCursor: resp.cursor || null,
+              homeMessagesHasMore: resp.hasMore,
+            }))
+          })
+          .catch((err) => console.error('Failed to load older home messages:', err))
+      }
+
       const wsId = get().activeWorkspaceId
       const cursor = get().messagesCursor
       if (!wsId || !cursor) return
@@ -666,6 +759,10 @@ export function buildChatSlice(set: SetState, get: GetState) {
             timestamp: m.createdAt,
             richBlocks: safeParseRichBlocks(m.richBlocks),
             sessionId: m.sessionId,
+            contextType: (m.contextType || 'workspace') as ConversationContext,
+            workspaceId: m.workspaceId,
+            requirementId: m.requirementId,
+            executionId: m.executionId,
           }))
           set((s) => {
             if (s.activeWorkspaceId !== wsId) return {}
@@ -688,6 +785,8 @@ export function buildChatSlice(set: SetState, get: GetState) {
     | 'agentChatMessages'
     | 'homeMessages'
     | 'homeNlpLoading'
+    | 'homeMessagesCursor'
+    | 'homeMessagesHasMore'
     | 'addMessage'
     | 'sendNLPMessage'
     | 'sendAgentChatMessage'
@@ -696,6 +795,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
     | 'sendHomeNLPStream'
     | 'clearHomeMessages'
     | 'clearWorkspaceConversation'
+    | 'fetchMessages'
     | 'fetchWorkspaceMessages'
     | 'loadOlderMessages'
   >

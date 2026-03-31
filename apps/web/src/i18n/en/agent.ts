@@ -159,6 +159,10 @@ const agent = {
   'execution.empty.desc': 'When you trigger tasks via NLP — like code generation, builds, or design — execution progress and results will appear here.',
   'execution.linkedTasks': 'Linked tasks',
   'execution.childExecutions': 'Sub-executions',
+  'execution.result': 'Execution result',
+  'execution.viewDetails': 'View details',
+  'task.plural': 'task(s)',
+  'workspace.open': 'Open workspace',
 } as const
 
 export default agent

@@ -1,0 +1,203 @@
+agent:
+  type: pm
+  version: "1.0.0"
+
+intents:
+  - name: create_workspace
+    labels: { zh: "创建工作空间", en: "Create Workspace" }
+    hint: "user wants a new empty workspace or project shell (incl. random / named title)"
+  - name: create_task
+    labels: { zh: "创建任务", en: "Create Task" }
+    hint: "user wants to create a single task"
+  - name: create_requirement
+    labels: { zh: "创建需求", en: "Create Requirement" }
+    hint: "user wants a new requirement or feature request"
+  - name: bind_workspace_repo
+    labels: { zh: "绑定仓库", en: "Bind Repository" }
+    hint: "user wants to link this workspace to an existing GitLab project"
+  - name: query_progress
+    labels: { zh: "查询进度", en: "Query Progress" }
+    hint: "user wants project/task status"
+  - name: execute_task
+    labels: { zh: "执行任务", en: "Execute Task" }
+    hint: "user wants to run a specific task"
+  - name: execute_phase
+    labels: { zh: "执行阶段", en: "Execute Phase" }
+    hint: "user wants to run a phase"
+  - name: run_project
+    labels: { zh: "运行项目", en: "Run Project" }
+    hint: "user wants full lifecycle"
+  - name: trigger_build
+    labels: { zh: "触发构建", en: "Trigger Build" }
+    hint: "trigger a CI/CD pipeline build for a project or branch"
+  - name: view_build_log
+    labels: { zh: "查看构建日志", en: "View Build Log" }
+    hint: "view build logs, check pipeline status, query CI/CD results"
+  - name: deploy
+    labels: { zh: "部署", en: "Deploy" }
+    hint: "deploy to an environment, CI/CD release"
+  - name: rollback
+    labels: { zh: "回滚版本", en: "Rollback" }
+    hint: "rollback a deployment to a previous version"
+  - name: general_chat
+    labels: { zh: "自由对话", en: "General Chat" }
+    hint: "greetings, product help, chit-chat, or nothing else fits"
+
+  # Domain agent intents (PM routes these to other agents)
+  - name: design_system
+    labels: { zh: "系统架构设计", en: "System Design" }
+    hint: "system-level architecture design"
+  - name: architecture_design
+    labels: { zh: "架构设计", en: "Architecture Design" }
+    hint: "technical architecture"
+  - name: ui_design
+    labels: { zh: "UI 设计", en: "UI Design" }
+    hint: "UI/UX, wireframes, mockups"
+  - name: generate_code
+    labels: { zh: "生成代码", en: "Generate Code" }
+    hint: "implement features / code"
+  - name: run_tests
+    labels: { zh: "运行测试", en: "Run Tests" }
+    hint: "tests, QA"
+  - name: analyze_requirements
+    labels: { zh: "分析需求", en: "Analyze Requirements" }
+    hint: "analyze or refine requirements"
+  - name: setup_monitoring
+    labels: { zh: "配置监控", en: "Setup Monitoring" }
+    hint: "monitoring, alerts"
+  - name: design_observability
+    labels: { zh: "可观测性设计", en: "Observability Design" }
+    hint: "SRE, SLOs, incidents"
+
+templates:
+  # PM-handled intents → internal handlers
+  - intent: create_task
+    context: workspace
+    handler_type: internal
+    handler_ref: create_task
+    capabilities: [pm.create_task, llm.chat]
+  - intent: create_requirement
+    context: workspace
+    handler_type: internal
+    handler_ref: create_requirement
+    capabilities: [pm.create_requirement, llm.chat]
+  - intent: bind_workspace_repo
+    context: workspace
+    handler_type: internal
+    handler_ref: bind_workspace_repo
+    capabilities: [pm.bind_workspace_repo]
+  - intent: query_progress
+    context: workspace
+    handler_type: internal
+    handler_ref: query_progress
+    capabilities: [pm.query_progress]
+  - intent: execute_task
+    context: workspace
+    handler_type: internal
+    handler_ref: execute_task
+    capabilities: [pm.execute_task]
+  - intent: execute_phase
+    context: workspace
+    handler_type: internal
+    handler_ref: execute_phase
+    capabilities: [pm.workflow]
+  - intent: run_project
+    context: workspace
+    handler_type: internal
+    handler_ref: run_project
+    task_type: composite
+    capabilities: [pm.workflow]
+  - intent: trigger_build
+    context: workspace
+    handler_type: internal
+    handler_ref: trigger_build
+    capabilities: [pm.pipeline]
+  - intent: view_build_log
+    context: workspace
+    handler_type: internal
+    handler_ref: view_build_log
+    capabilities: [pm.pipeline]
+  - intent: deploy
+    context: workspace
+    handler_type: internal
+    handler_ref: deploy
+    capabilities: [pm.pipeline]
+  - intent: rollback
+    context: workspace
+    handler_type: internal
+    handler_ref: rollback
+    capabilities: [pm.pipeline]
+  - intent: general_chat
+    context: "*"
+    handler_type: internal
+    handler_ref: general_chat
+    capabilities: [llm.chat]
+
+  # Domain agent intents → route to remote agent
+  - intent: design_system
+    context: workspace
+    handler_type: agent
+    handler_ref: architecture
+    capabilities: [architecture.design]
+  - intent: architecture_design
+    context: workspace
+    handler_type: agent
+    handler_ref: architecture
+    capabilities: [architecture.design]
+  - intent: ui_design
+    context: workspace
+    handler_type: agent
+    handler_ref: design
+    capabilities: [design.ui]
+  - intent: generate_code
+    context: workspace
+    handler_type: agent
+    handler_ref: development
+    capabilities: [development.code_gen]
+  - intent: run_tests
+    context: workspace
+    handler_type: agent
+    handler_ref: testing
+    capabilities: [testing.run]
+  - intent: analyze_requirements
+    context: workspace
+    handler_type: agent
+    handler_ref: requirement
+    capabilities: [requirement.analyze]
+  - intent: setup_monitoring
+    context: workspace
+    handler_type: agent
+    handler_ref: monitoring
+    capabilities: [monitoring.setup]
+  - intent: design_observability
+    context: workspace
+    handler_type: agent
+    handler_ref: monitoring
+    capabilities: [monitoring.observability]
+
+  # Home context
+  - intent: create_workspace
+    context: home
+    handler_type: internal
+    handler_ref: create_workspace
+    capabilities: [pm.create_workspace]
+
+capabilities:
+  - name: pm.create_task
+    description: "Create tasks within a workspace phase"
+  - name: pm.create_requirement
+    description: "Create or discover requirements"
+  - name: pm.bind_workspace_repo
+    description: "Bind a GitLab repository to a workspace"
+  - name: pm.query_progress
+    description: "Query project/task status"
+  - name: pm.execute_task
+    description: "Execute a specific task via agent dispatch"
+  - name: pm.workflow
+    description: "Run phase/project lifecycle workflows"
+  - name: pm.pipeline
+    description: "Trigger CI/CD pipeline operations"
+  - name: pm.create_workspace
+    description: "Create a new workspace"
+  - name: llm.chat
+    description: "General LLM chat completion"

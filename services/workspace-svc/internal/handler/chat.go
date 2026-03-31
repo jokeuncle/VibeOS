@@ -53,10 +53,16 @@ func (h *ChatHandler) SaveMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctxType := req.ContextType
+	if ctxType == "" {
+		ctxType = "workspace"
+	}
+
 	msg := &models.ChatMessage{
 		ID:          uuid.New().String(),
-		SessionID:   sess.ID,
-		WorkspaceID: wsID,
+		SessionID:   &sess.ID,
+		WorkspaceID: &wsID,
+		ContextType: ctxType,
 		Role:        req.Role,
 		Content:     req.Content,
 		AgentType:   nilIfEmpty(req.AgentType),
@@ -65,6 +71,8 @@ func (h *ChatHandler) SaveMessage(w http.ResponseWriter, r *http.Request) {
 	if req.RichBlocks != "" {
 		msg.RichBlocks = &req.RichBlocks
 	}
+	msg.RequirementID = nilIfEmpty(req.RequirementID)
+	msg.ExecutionID = nilIfEmpty(req.ExecutionID)
 
 	if err := h.store.SaveChatMessage(r.Context(), msg); err != nil {
 		h.log.Error("save chat message", "error", err)
@@ -72,7 +80,6 @@ func (h *ChatHandler) SaveMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Async: check if distillation threshold is exceeded
 	go h.distill.CheckAndDistillMessages(context.Background(), wsID)
 
 	writeJSON(w, http.StatusCreated, models.APIResponse[models.ChatMessage]{Data: *msg})
@@ -92,6 +99,59 @@ func (h *ChatHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	msgs, nextCursor, hasMore, err := h.store.ListChatMessages(r.Context(), wsID, cursor, limit)
 	if err != nil {
 		h.log.Error("list chat messages", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.CursorResponse[models.ChatMessage]{
+		Data:    msgs,
+		Cursor:  nextCursor,
+		HasMore: hasMore,
+	})
+}
+
+// POST /api/messages — save a home (global) message
+func (h *ChatHandler) SaveGlobalMessage(w http.ResponseWriter, r *http.Request) {
+	var req models.SendMessageReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	msg := &models.ChatMessage{
+		ID:          uuid.New().String(),
+		ContextType: "home",
+		Role:        req.Role,
+		Content:     req.Content,
+		AgentType:   nilIfEmpty(req.AgentType),
+		CreatedAt:   time.Now(),
+	}
+	if req.RichBlocks != "" {
+		msg.RichBlocks = &req.RichBlocks
+	}
+
+	if err := h.store.SaveChatMessage(r.Context(), msg); err != nil {
+		h.log.Error("save global message", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, models.APIResponse[models.ChatMessage]{Data: *msg})
+}
+
+// GET /api/messages?cursor=&limit= — list home (global) messages
+func (h *ChatHandler) ListGlobalMessages(w http.ResponseWriter, r *http.Request) {
+	cursor := r.URL.Query().Get("cursor")
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 100 {
+			limit = v
+		}
+	}
+
+	msgs, nextCursor, hasMore, err := h.store.ListGlobalMessages(r.Context(), cursor, limit)
+	if err != nil {
+		h.log.Error("list global messages", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

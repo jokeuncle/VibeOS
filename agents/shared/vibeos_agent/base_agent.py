@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import json
 import logging
@@ -28,6 +29,7 @@ from .models import (
     Message,
     RichBlock,
 )
+from .registry import AgentManifest, CapabilityDef, RegistryClient
 from .session import SessionManager
 from .tools import ToolRegistry
 
@@ -65,6 +67,8 @@ class BaseAgent(ABC):
     system_prompt: str = "You are a helpful AI agent."
     tools: list[dict[str, Any]] = []
 
+    manifest: AgentManifest | None = None
+
     def __init__(self) -> None:
         self.workspace_svc = WorkspaceClient()
         self.llm = LLMGatewayClient()
@@ -74,6 +78,8 @@ class BaseAgent(ABC):
         self.rag = RAGClient()
         self.knowledge = KnowledgeClient()
         self.tool_registry = ToolRegistry()
+        self._registry = RegistryClient()
+        self._heartbeat_task: asyncio.Task[None] | None = None
         self._task_context_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
             "task_context", default=None,
         )
@@ -738,7 +744,77 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 pass
         return result
 
+    # ------------------------------------------------------------------
+    # Global registry: self-registration & heartbeat
+    # ------------------------------------------------------------------
+
+    def _build_capability_defs(self) -> list[CapabilityDef]:
+        """Derive capability definitions from class-level capabilities + registered tools."""
+        agent_key = _enum_val(self.agent_type)
+        defs: list[CapabilityDef] = []
+
+        for cap in self.capabilities:
+            defs.append(CapabilityDef(
+                name=f"{agent_key}.{cap.name}",
+                provider=agent_key,
+                description=f"{cap.name} capability",
+                source=agent_key,
+            ))
+
+        for schema in self.tool_registry.get_schemas():
+            fn = schema.get("function", {})
+            name = fn.get("name", "")
+            if name:
+                defs.append(CapabilityDef(
+                    name=f"{agent_key}.{name}",
+                    provider=agent_key,
+                    description=fn.get("description", ""),
+                    input_schema=fn.get("parameters", {}),
+                    source=agent_key,
+                ))
+
+        return defs
+
+    async def register_with_registry(self) -> None:
+        """Register this agent's manifest (intents, templates, capabilities) globally."""
+        agent_key = _enum_val(self.agent_type)
+        manifest = self.manifest or AgentManifest(
+            agent_type=agent_key,
+            capabilities=self._build_capability_defs(),
+        )
+        try:
+            result = await self._registry.register_manifest(manifest)
+            logger.info(
+                "Registered manifest for %s: %s", agent_key, result,
+            )
+        except Exception as exc:
+            logger.warning("Failed to register with global registry: %s", exc)
+
+    async def _heartbeat_loop(self, interval: float = 30.0) -> None:
+        """Periodically send heartbeats for all registered capabilities."""
+        agent_key = _enum_val(self.agent_type)
+        caps = self._build_capability_defs()
+        while True:
+            await asyncio.sleep(interval)
+            for cap in caps:
+                try:
+                    await self._registry.heartbeat(cap.name, agent_key)
+                except Exception:
+                    pass
+
+    def start_heartbeat(self, interval: float = 30.0) -> None:
+        """Start the background heartbeat loop (call after registration)."""
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(interval))
+
+    def stop_heartbeat(self) -> None:
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
+
     async def close(self) -> None:
+        self.stop_heartbeat()
+        await self._registry.close()
         await self.workspace_svc.close()
         await self.llm.close()
         await self.ws.close()

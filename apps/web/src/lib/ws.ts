@@ -121,6 +121,7 @@ function handleWSEvent(event: Record<string, any>) {
         agentType: p.agentType,
         timestamp: p.createdAt || new Date().toISOString(),
         sessionId: p.sessionId,
+        contextType: p.contextType || 'workspace',
       })
     }
   }

@@ -58,6 +58,7 @@ export function workflowEventToMessage(event: WorkflowEvent): Message | null {
     content,
     agentType: 'pm' as import('../../types').AgentType,
     timestamp: new Date().toISOString(),
+    contextType: 'workspace' as import('../../types').ConversationContext,
   }
 }
 

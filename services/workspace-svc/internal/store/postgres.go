@@ -85,6 +85,7 @@ type Store interface {
 	GetOrCreateChatSession(ctx context.Context, workspaceID, agentType string) (*models.ChatSession, error)
 	SaveChatMessage(ctx context.Context, msg *models.ChatMessage) error
 	ListChatMessages(ctx context.Context, workspaceID string, cursor string, limit int) ([]models.ChatMessage, string, bool, error)
+	ListGlobalMessages(ctx context.Context, cursor string, limit int) ([]models.ChatMessage, string, bool, error)
 
 	// Artifact metadata-only listing
 	ListArtifactMetaByWorkspace(ctx context.Context, workspaceID string) ([]models.ArtifactMeta, error)
@@ -132,6 +133,24 @@ type Store interface {
 	UpdateAgentExecution(ctx context.Context, id string, req models.UpdateAgentExecutionReq) (*models.AgentExecution, error)
 	ListAgentExecutions(ctx context.Context, workspaceID string, requirementID *string, cursor string, limit int) ([]models.AgentExecution, string, error)
 	LinkExecutionToTasks(ctx context.Context, executionID string, taskIDs []string) error
+
+	// Global registry: intents, task templates, capabilities
+	ListIntents(ctx context.Context, enabledOnly bool) ([]models.IntentRegistryEntry, error)
+	GetIntent(ctx context.Context, name string) (*models.IntentRegistryEntry, error)
+	UpsertIntent(ctx context.Context, req models.CreateIntentReq) (*models.IntentRegistryEntry, error)
+	DeleteIntent(ctx context.Context, name string) error
+
+	ListTaskTemplates(ctx context.Context, enabledOnly bool) ([]models.TaskTemplateEntry, error)
+	ResolveTaskTemplate(ctx context.Context, intentName, ctxScope string) (*models.TaskTemplateEntry, error)
+	UpsertTaskTemplate(ctx context.Context, req models.CreateTaskTemplateReq) (*models.TaskTemplateEntry, error)
+	DeleteTaskTemplate(ctx context.Context, id string) error
+
+	ListCapabilities(ctx context.Context, enabledOnly bool) ([]models.CapabilityEntry, error)
+	ListCapabilitiesByProvider(ctx context.Context, provider string) ([]models.CapabilityEntry, error)
+	FindCapabilityProviders(ctx context.Context, capabilityName string) ([]models.CapabilityEntry, error)
+	UpsertCapability(ctx context.Context, req models.CreateCapabilityReq) (*models.CapabilityEntry, error)
+	UpdateCapabilityHealth(ctx context.Context, name, provider, health string) error
+	DeleteCapability(ctx context.Context, name, provider string) error
 }
 
 type PostgresStore struct {

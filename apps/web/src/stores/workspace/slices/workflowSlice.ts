@@ -162,6 +162,7 @@ export function buildWorkflowSlice(set: SetState, get: GetState) {
             role: 'system' as const,
             content: `⚠️ ${check.reason}，请先发布需求。`,
             timestamp: new Date().toISOString(),
+            contextType: 'workspace' as const,
           }
           set((s) => ({ messages: [...s.messages, sysMsg] }))
           return

@@ -81,6 +81,7 @@ func main() {
 	budgetHandler := handler.NewBudgetHandler(svc, logger)
 	pipelineConfigHandler := handler.NewPipelineConfigHandler(svc, logger)
 	execHandler := handler.NewExecutionHandler(svc, logger)
+	registryHandler := handler.NewRegistryHandler(st, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -193,8 +194,32 @@ func main() {
 		})
 	})
 
+	// Global (home) messages — not workspace-scoped
+	r.Get("/api/messages", chatHandler.ListGlobalMessages)
+	r.Post("/api/messages", chatHandler.SaveGlobalMessage)
+
 	// Trust scores (cross-workspace)
 	r.Get("/api/trust-scores", feedbackHandler.TrustScores)
+
+	// Global registry: intents, task templates, capabilities
+	r.Route("/api/registry", func(r chi.Router) {
+		r.Get("/intents", registryHandler.ListIntents)
+		r.Post("/intents", registryHandler.UpsertIntent)
+		r.Get("/intents/{name}", registryHandler.GetIntent)
+		r.Delete("/intents/{name}", registryHandler.DeleteIntent)
+
+		r.Get("/templates", registryHandler.ListTaskTemplates)
+		r.Get("/templates/resolve", registryHandler.ResolveTaskTemplate)
+		r.Post("/templates", registryHandler.CreateTaskTemplate)
+		r.Delete("/templates/{id}", registryHandler.DeleteTaskTemplate)
+
+		r.Get("/capabilities", registryHandler.ListCapabilities)
+		r.Post("/capabilities", registryHandler.UpsertCapability)
+		r.Post("/capabilities/heartbeat", registryHandler.Heartbeat)
+		r.Delete("/capabilities/{name}", registryHandler.DeleteCapability)
+
+		r.Post("/manifest", registryHandler.RegisterManifest)
+	})
 
 	// GitLab credentials (admin-level, not per-workspace)
 	r.Route("/api/gitlab/credentials", func(r chi.Router) {

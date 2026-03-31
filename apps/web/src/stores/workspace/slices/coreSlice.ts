@@ -106,9 +106,9 @@ export function buildCoreSlice(set: SetState, get: GetState) {
         messagesCursor: null,
         messagesHasMore: false,
       })
-      // Single code path with refreshActiveWorkspace (get + activities + executions).
       if (id && !id.startsWith('ws-temp-')) {
         void get().refreshActiveWorkspace()
+        void get().fetchWorkspaceMessages()
       }
     },
 

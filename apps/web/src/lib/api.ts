@@ -139,7 +139,10 @@ export const workspaceApi = {
       `/api/workspaces/${wsId}/messages?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
     ),
 
-  saveMessage: (wsId: string, msg: { role: string; content: string; agentType?: string; richBlocks?: string }) =>
+  saveMessage: (wsId: string, msg: {
+    role: string; content: string; agentType?: string; richBlocks?: string;
+    contextType?: string; requirementId?: string; executionId?: string;
+  }) =>
     request<{ data: any }>(`/api/workspaces/${wsId}/messages`, {
       method: 'POST',
       body: JSON.stringify(msg),
@@ -342,6 +345,19 @@ export const workspaceApi = {
   },
 }
 
+export const globalMessageApi = {
+  list: (cursor?: string, limit = 50) =>
+    request<{ data: any[]; cursor?: string; hasMore: boolean }>(
+      `/api/messages?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+    ),
+
+  save: (msg: { role: string; content: string; agentType?: string; richBlocks?: string }) =>
+    request<{ data: any }>('/api/messages', {
+      method: 'POST',
+      body: JSON.stringify(msg),
+    }).then(unwrap),
+}
+
 export const gitlabCredentialApi = {
   list: () =>
     request<{ data: GitLabCredential[] }>('/api/gitlab/credentials').then(unwrap),
@@ -535,6 +551,7 @@ function mapNLPResultToMessage(
     agentType: resp.target_agent as AgentType,
     timestamp: new Date().toISOString(),
     sessionId,
+    contextType: 'workspace' as const,
   }
 }
 
@@ -599,6 +616,7 @@ function mapAgentChatToMessage(
     richBlocks: richBlocks.length > 0 ? richBlocks : undefined,
     agentType: agentType as AgentType,
     timestamp: new Date().toISOString(),
+    contextType: 'agent_dm' as const,
   }
 }
 

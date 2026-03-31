@@ -1,6 +1,7 @@
 import type {
   Workspace,
   Message,
+  ConversationContext,
   PhaseStatus,
   WorkspaceColor,
   ActivityItem,
@@ -21,6 +22,12 @@ export interface AgentStatusEvent {
   status: import('../../types').AgentStatus
   detail?: string
   timestamp: number
+}
+
+export interface MessageScope {
+  contextType: ConversationContext
+  workspaceId?: string
+  requirementId?: string
 }
 
 export interface WorkspaceState {
@@ -72,6 +79,7 @@ export interface WorkspaceState {
   sendAgentChatMessage: (agentType: string, input: string) => void
   sendNLPMessageStream: (input: string) => void
   sendAgentChatMessageStream: (agentType: string, input: string) => void
+  fetchMessages: (scope: MessageScope) => Promise<void>
   fetchWorkspaceMessages: (workspaceId?: string) => Promise<void>
   updateAgentStatus: (
     workspaceId: string,
@@ -118,9 +126,11 @@ export interface WorkspaceState {
   resetRequirementPhase: (reqId: string, phaseType: string) => void
   loadRequirementDetail: (wsId: string, reqId: string) => void
 
-  loadOlderMessages: () => void
+  loadOlderMessages: (scope?: MessageScope) => void
   messagesCursor: string | null
   messagesHasMore: boolean
+  homeMessagesCursor: string | null
+  homeMessagesHasMore: boolean
 
   homeMessages: Message[]
   homeNlpLoading: boolean

@@ -161,6 +161,10 @@ const agent = {
   'execution.empty.desc': '通过 NLP 触发任务（如代码生成、构建、设计等）后，执行进度和结果将显示在这里。',
   'execution.linkedTasks': '关联任务',
   'execution.childExecutions': '子执行',
+  'execution.result': '执行结果',
+  'execution.viewDetails': '查看详情',
+  'task.plural': '个任务',
+  'workspace.open': '打开工作空间',
 }
 
 export default agent

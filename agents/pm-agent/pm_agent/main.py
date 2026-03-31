@@ -15,6 +15,7 @@ import json
 import random
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI
@@ -28,8 +29,10 @@ from vibeos_agent import (
     AgentType,
     LLMGatewayClient,
     MemoryClient,
+    RegistryClient,
     WSGatewayClient,
     WorkspaceClient,
+    load_manifest_from_yaml,
 )
 
 from .context import enrich_context_with_gitlab
@@ -38,6 +41,7 @@ from .handlers import execute_pm_intent
 from .home_actions import yield_home_events
 from .intent import (
     INTENT_LABELS,
+    load_intents_from_registry,
     parse_intent,
 )
 from .stream import build_action_event, build_error_event, build_timeline_event, yield_text_as_deltas
@@ -113,15 +117,26 @@ async def lifespan(app: FastAPI):
     app.state.ws = WSGatewayClient()
     app.state.ws_client = WorkspaceClient()
     app.state.memory = MemoryClient()
+    app.state.registry = RegistryClient()
     app.state.workflow = WorkflowEngine(
         app.state.dispatcher, app.state.ws_client, app.state.ws,
     )
+    # Seed built-in manifest and load intents from the global registry
+    _manifest_path = Path(__file__).resolve().parent.parent / "agent-manifest.yaml"
+    if _manifest_path.exists():
+        try:
+            manifest = load_manifest_from_yaml(_manifest_path)
+            await app.state.registry.register_manifest(manifest)
+        except Exception:
+            pass
+    await load_intents_from_registry(app.state.registry)
     yield
     await app.state.llm.close()
     await app.state.dispatcher.close()
     await app.state.ws.close()
     await app.state.ws_client.close()
     await app.state.memory.close()
+    await app.state.registry.close()
 
 
 app = FastAPI(title="PM Agent", version="0.1.0", lifespan=lifespan)
@@ -267,6 +282,7 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
         if parsed.target_agent == AgentType.PM:
             result = await execute_pm_intent(
                 parsed, req.workspace_id, req.message, req.context, llm, ws, ws_client, workflow, dispatcher,
+                registry=app.state.registry,
             )
             return NLPResponse(
                 intent=parsed.intent,
@@ -417,6 +433,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 
                 result = await execute_pm_intent(
                     parsed, req.workspace_id, req.message, req.context, llm, ws, ws_client, workflow, dispatcher,
+                    registry=app.state.registry,
                 )
                 summary = result.get("summary", parsed.summary)
 

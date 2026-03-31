@@ -33,10 +33,10 @@ func (s *PostgresStore) GetOrCreateChatSession(ctx context.Context, workspaceID,
 
 func (s *PostgresStore) SaveChatMessage(ctx context.Context, msg *models.ChatMessage) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO chat_messages (id, session_id, workspace_id, role, content, rich_blocks, agent_type, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		msg.ID, msg.SessionID, msg.WorkspaceID, msg.Role, msg.Content,
-		msg.RichBlocks, msg.AgentType, msg.CreatedAt,
+		`INSERT INTO chat_messages (id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		msg.ID, msg.SessionID, msg.WorkspaceID, msg.ContextType, msg.Role, msg.Content,
+		msg.RichBlocks, msg.AgentType, msg.RequirementID, msg.ExecutionID, msg.CreatedAt,
 	)
 	return err
 }
@@ -53,7 +53,7 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 	var err error
 	if cursor == "" {
 		rows, err = s.pool.Query(ctx,
-			`SELECT id, session_id, workspace_id, role, content, rich_blocks, agent_type, created_at
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
 			 FROM chat_messages
 			 WHERE workspace_id = $1
 			 ORDER BY created_at DESC, id DESC
@@ -71,7 +71,7 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 		}
 		cursorID := parts[1]
 		rows, err = s.pool.Query(ctx,
-			`SELECT id, session_id, workspace_id, role, content, rich_blocks, agent_type, created_at
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
 			 FROM chat_messages
 			 WHERE workspace_id = $1 AND (created_at, id) < ($2, $3)
 			 ORDER BY created_at DESC, id DESC
@@ -84,20 +84,74 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 	}
 	defer rows.Close()
 
+	msgs := scanChatMessages(rows, limit)
+	return buildCursorResult(msgs, limit)
+}
+
+// ListGlobalMessages returns home-context messages (workspace_id IS NULL).
+func (s *PostgresStore) ListGlobalMessages(ctx context.Context, cursor string, limit int) ([]models.ChatMessage, string, bool, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	fetchN := limit + 1
+
+	var rows pgx.Rows
+	var err error
+	if cursor == "" {
+		rows, err = s.pool.Query(ctx,
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
+			 FROM chat_messages
+			 WHERE context_type = 'home'
+			 ORDER BY created_at DESC, id DESC
+			 LIMIT $1`,
+			fetchN,
+		)
+	} else {
+		parts := strings.SplitN(cursor, "|", 2)
+		if len(parts) != 2 {
+			return nil, "", false, fmt.Errorf("invalid cursor format")
+		}
+		cursorTime, parseErr := time.Parse(time.RFC3339Nano, parts[0])
+		if parseErr != nil {
+			return nil, "", false, fmt.Errorf("invalid cursor time: %w", parseErr)
+		}
+		cursorID := parts[1]
+		rows, err = s.pool.Query(ctx,
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
+			 FROM chat_messages
+			 WHERE context_type = 'home' AND (created_at, id) < ($1, $2)
+			 ORDER BY created_at DESC, id DESC
+			 LIMIT $3`,
+			cursorTime, cursorID, fetchN,
+		)
+	}
+	if err != nil {
+		return nil, "", false, err
+	}
+	defer rows.Close()
+
+	msgs := scanChatMessages(rows, limit)
+	return buildCursorResult(msgs, limit)
+}
+
+func scanChatMessages(rows pgx.Rows, limit int) []models.ChatMessage {
 	var msgs []models.ChatMessage
 	for rows.Next() {
 		var m models.ChatMessage
-		var wsID *string
-		if err := rows.Scan(&m.ID, &m.SessionID, &wsID, &m.Role, &m.Content,
-			&m.RichBlocks, &m.AgentType, &m.CreatedAt); err != nil {
-			return nil, "", false, err
-		}
-		if wsID != nil {
-			m.WorkspaceID = *wsID
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.WorkspaceID, &m.ContextType,
+			&m.Role, &m.Content, &m.RichBlocks, &m.AgentType,
+			&m.RequirementID, &m.ExecutionID, &m.CreatedAt); err != nil {
+			continue
 		}
 		msgs = append(msgs, m)
 	}
+	if msgs == nil {
+		msgs = []models.ChatMessage{}
+	}
+	return msgs
+}
 
+func buildCursorResult(msgs []models.ChatMessage, limit int) ([]models.ChatMessage, string, bool, error) {
 	hasMore := len(msgs) > limit
 	if hasMore {
 		msgs = msgs[:limit]
@@ -106,9 +160,6 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 	if hasMore && len(msgs) > 0 {
 		last := msgs[len(msgs)-1]
 		nextCursor = last.CreatedAt.Format(time.RFC3339Nano) + "|" + last.ID
-	}
-	if msgs == nil {
-		msgs = []models.ChatMessage{}
 	}
 	return msgs, nextCursor, hasMore, nil
 }

@@ -422,6 +422,8 @@ export type NlpActionType =
   | 'navigate'
   | (string & {})
 
+export type ConversationContext = 'home' | 'workspace' | 'requirement' | 'agent_dm'
+
 export interface RichBlock {
   type:
     | 'action_card' | 'progress' | 'code' | 'task_card' | 'checklist'
@@ -432,6 +434,7 @@ export interface RichBlock {
     | 'cta_actions'
     | 'execution_timeline'
     | 'nlp_action'
+    | 'execution_result'
   title?: string
   description?: string
   actions?: RichAction[]
@@ -471,6 +474,13 @@ export interface RichBlock {
   actionPayload?: Record<string, unknown>
   actionLabel?: string
   actionVariant?: 'primary' | 'secondary' | 'danger'
+  // execution_result fields
+  executionId?: string
+  resultType?: ExecutionResultType
+  resultSummary?: string
+  linkedWorkspaceId?: string
+  linkedRequirementId?: string
+  linkedTaskIds?: string[]
 }
 
 export interface Message {
@@ -481,4 +491,8 @@ export interface Message {
   agentType?: AgentType
   timestamp: string
   sessionId?: string
+  contextType: ConversationContext
+  workspaceId?: string
+  requirementId?: string
+  executionId?: string
 }

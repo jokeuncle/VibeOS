@@ -9,6 +9,7 @@ export const NLP_CONVERSATION_CARD_TYPES = new Set<RichBlock['type']>([
   'action_card',
   'cta_actions',
   'requirement_preview',
+  'execution_result',
 ])
 
 export function partitionNlpConversationRichBlocks(blocks: RichBlock[] | undefined) {
