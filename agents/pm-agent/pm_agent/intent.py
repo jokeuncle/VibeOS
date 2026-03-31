@@ -37,6 +37,13 @@ INTENT_REGISTRY: tuple[IntentDef, ...] = (
     IntentDef("create_workspace",     AgentType.PM,           "创建工作空间", "Create Workspace",     "user wants a new empty workspace or project shell (incl. random / named title)"),
     IntentDef("create_task",          AgentType.PM,           "创建任务",     "Create Task",          "user wants to create a single task"),
     IntentDef("create_requirement",   AgentType.PM,           "创建需求",     "Create Requirement",   "user wants a new requirement or feature request"),
+    IntentDef(
+        "bind_workspace_repo",
+        AgentType.PM,
+        "绑定仓库",
+        "Bind Repository",
+        "user wants to link this workspace to an existing GitLab project (bind/connect/关联仓库, paste git@ or https clone URL)",
+    ),
     IntentDef("query_progress",       AgentType.PM,           "查询进度",     "Query Progress",       "user wants project/task status"),
     IntentDef("execute_task",         AgentType.PM,           "执行任务",     "Execute Task",         "user wants to run a specific task"),
     IntentDef("execute_phase",        AgentType.PM,           "执行阶段",     "Execute Phase",        "user wants to run a phase"),
@@ -110,6 +117,24 @@ class RequirementDraftSlot(BaseModel):
     @field_validator("description", mode="before")
     @classmethod
     def _desc(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, str):
+            s = v.strip()
+            return s[:2000] if s else ""
+        return ""
+
+
+class BindRepoSlots(BaseModel):
+    """Parameters for ``intent == bind_workspace_repo`` (GitLab project URL)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    repo_url: str = Field(default="", description="SSH or HTTPS git remote URL")
+
+    @field_validator("repo_url", mode="before")
+    @classmethod
+    def _repo_url(cls, v: Any) -> str:
         if v is None:
             return ""
         if isinstance(v, str):
@@ -244,6 +269,10 @@ def _structured_nlu_prompt() -> str:
         '    { "project": "<project name or ID>", "branch": "<branch>", "env": "<test|staging|prod>", '
         '"pipeline_id": "<id if viewing logs>", "version": "<tag for rollback>" }.\n'
         "  Extract what the user provides; omit fields they don't mention.\n"
+        '- For bind_workspace_repo set slots.bind_workspace_repo:\n'
+        '    { "repo_url": "<clone URL>" } — user binds/links the workspace to GitLab: 绑定仓库, 关联仓库, '
+        "添加仓库, connect repo, paste git@host:group/project.git or https://host/group/project.git.\n"
+        "  Put the full URL in repo_url; if multiple URLs, use the main one they asked to bind.\n"
         "- Never copy the full user message into title; extracted or invented short name only.\n"
         "confidence: 1.0 = sure; use alternatives when 0.5-0.8.\n\n"
         f"INTENT_TYPES: {', '.join(INTENT_TYPES)}\n\n"
@@ -309,6 +338,13 @@ def _normalize_slots_for_intent(intent_name: str, slots_raw: Any) -> dict[str, A
             return {"pipeline": ps.model_dump()}
         except Exception:
             return {"pipeline": PipelineSlots().model_dump()}
+
+    if intent_name == "bind_workspace_repo":
+        try:
+            br = BindRepoSlots.model_validate(slotsraw.get("bind_workspace_repo") or {})
+            return {"bind_workspace_repo": br.model_dump()}
+        except Exception:
+            return {"bind_workspace_repo": BindRepoSlots().model_dump()}
 
     out = {k: v for k, v in slotsraw.items() if k != "workspace_create"}
     return out

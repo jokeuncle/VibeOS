@@ -11,6 +11,7 @@ from .task import handle_create_task, handle_query_progress, handle_execute_task
 from .requirement import handle_discovery_or_preview, handle_create_requirement, handle_discovery_chat
 from .phase import handle_execute_phase, handle_run_project
 from .pipeline import handle_trigger_build, handle_view_build_log
+from .workspace_repo import handle_bind_workspace_repo
 from ..workflow import WorkflowEngine
 
 if TYPE_CHECKING:
@@ -40,6 +41,11 @@ async def execute_pm_intent(
         if zero_reqs:
             return await handle_discovery_or_preview(workspace_id, parsed.summary, message, llm, ws_client)
         return await handle_create_requirement(workspace_id, parsed.summary, message, ws_client)
+
+    if parsed.intent == "bind_workspace_repo":
+        return await handle_bind_workspace_repo(
+            workspace_id, message, parsed.slots, context, ws_client,
+        )
 
     if zero_reqs and parsed.intent == "general_chat":
         return await handle_discovery_chat(message, parsed.summary, llm)
