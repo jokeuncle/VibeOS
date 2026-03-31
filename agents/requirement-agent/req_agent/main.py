@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
@@ -11,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from vibeos_agent import AgentTask
+from vibeos_agent import AgentTask, sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
 
 from .agent import RequirementAgent
 
@@ -59,10 +58,18 @@ async def execute_task_stream(task: AgentTask) -> StreamingResponse:
     agent: RequirementAgent = app.state.agent
 
     async def event_gen() -> AsyncGenerator[str, None]:
-        async for event in agent.execute(task):
-            data = event.model_dump(mode="json", exclude_none=True)
-            yield f"event: {event.type}\ndata: {json.dumps(data)}\n\n"
-        yield "data: [DONE]\n\n"
+        sid, start = sse_session_start("requirement", "agent_execute")
+        yield start
+        try:
+            async for event in agent.execute(task):
+                data = event.model_dump(mode="json", exclude_none=True)
+                yield sse_event("agent", event.type, data, sid=sid)
+        except Exception as exc:
+            yield sse_session_error(sid, str(exc))
+            yield sse_done()
+            return
+        yield sse_session_complete(sid)
+        yield sse_done()
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
@@ -92,9 +99,12 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
     agent: RequirementAgent = app.state.agent
 
     async def token_gen() -> AsyncGenerator[str, None]:
+        sid, start = sse_session_start("requirement", "agent_chat")
+        yield start
         async for delta in agent.chat_stream(req.message, workspace_id=req.workspace_id):
-            yield f"data: {json.dumps({'delta': delta})}\n\n"
-        yield "data: [DONE]\n\n"
+            yield sse_delta(delta, sid=sid)
+        yield sse_session_complete(sid)
+        yield sse_done()
 
     return StreamingResponse(token_gen(), media_type="text/event-stream")
 

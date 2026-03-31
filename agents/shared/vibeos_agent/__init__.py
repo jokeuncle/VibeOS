@@ -41,6 +41,7 @@ from .registry import (
 )
 from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
 from .session import SessionManager
+from .sse import sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
 from .tools import BaseTool, ToolRegistry
 
 __all__ = [
@@ -84,6 +85,12 @@ __all__ = [
     "Workspace",
     "WorkspaceClient",
     "config",
+    "sse_event",
+    "sse_delta",
+    "sse_done",
+    "sse_session_start",
+    "sse_session_complete",
+    "sse_session_error",
 ]
 
 # Lazy import for adapters — available via vibeos_agent.adapters

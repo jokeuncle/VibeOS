@@ -103,7 +103,12 @@ class Dispatcher:
         agent_type: AgentType,
         task: AgentTask,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Forward agent execute as SSE stream, yielding parsed events."""
+        """Forward agent execute as SSE stream, yielding parsed events.
+
+        Domain agents emit unified SSE (``event: category:action``).
+        We parse both ``event:`` and ``data:`` lines and yield structured dicts
+        with ``_category``, ``_action`` keys alongside the payload.
+        """
         base = AGENT_ENDPOINTS.get(agent_type.value)
         if base is None:
             yield {"error": f"No endpoint registered for {agent_type}"}
@@ -121,18 +126,30 @@ class Dispatcher:
                 json=task.model_dump(mode="json"),
             ) as resp:
                 resp.raise_for_status()
+                current_event = ""
                 async for line in resp.aiter_lines():
                     line = line.strip()
                     if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("event: "):
+                        current_event = line[7:]
                         continue
                     if line.startswith("data: "):
                         data_str = line[6:]
                         if data_str == "[DONE]":
                             return
                         try:
-                            yield json.loads(data_str)
+                            data = json.loads(data_str)
                         except json.JSONDecodeError:
+                            current_event = ""
                             continue
+                        if current_event:
+                            parts = current_event.split(":", 1)
+                            if len(parts) == 2:
+                                data["_category"] = parts[0]
+                                data["_action"] = parts[1]
+                        current_event = ""
+                        yield data
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
             await self.ws.publish_agent_status(
                 task.workspace_id, agent_type, AgentStatus.ERROR, detail=str(exc),
@@ -199,7 +216,11 @@ class Dispatcher:
         workspace_id: str,
         message: str,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Forward chat to agent's /api/chat/stream and yield SSE chunks."""
+        """Forward chat to agent's /api/chat/stream and yield SSE chunks.
+
+        Domain agents now emit unified SSE (``event: content:delta``).
+        We parse the ``event:`` + ``data:`` pairs and yield dicts.
+        """
         base = AGENT_ENDPOINTS.get(agent_type.value)
         if base is None:
             yield {"error": f"No endpoint registered for {agent_type}"}
@@ -212,18 +233,30 @@ class Dispatcher:
                 json={"workspace_id": workspace_id, "message": message},
             ) as resp:
                 resp.raise_for_status()
+                current_event = ""
                 async for line in resp.aiter_lines():
                     line = line.strip()
                     if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("event: "):
+                        current_event = line[7:]
                         continue
                     if line.startswith("data: "):
                         data_str = line[6:]
                         if data_str == "[DONE]":
                             return
                         try:
-                            yield json.loads(data_str)
+                            data = json.loads(data_str)
                         except json.JSONDecodeError:
+                            current_event = ""
                             continue
+                        if current_event:
+                            parts = current_event.split(":", 1)
+                            if len(parts) == 2:
+                                data["_category"] = parts[0]
+                                data["_action"] = parts[1]
+                        current_event = ""
+                        yield data
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
             name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
             yield {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}

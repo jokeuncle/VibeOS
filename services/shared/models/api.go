@@ -257,17 +257,19 @@ type WSEvent struct {
 	WorkspaceID string `json:"workspaceId,omitempty"`
 }
 
+// Unified WS event types — all follow the category:action naming convention.
 const (
 	WSEventAgentStatus  = "agent:status"
 	WSEventAgentMessage = "agent:message"
 	WSEventAgentLog     = "agent:log"
-	WSEventActivity     = "activity"
-	WSEventChatMessage  = "chat_message"
-	WSEventTaskUpdate   = "task_update"
-	WSEventPhaseUpdate  = "phase_update"
-	WSEventNotification = "notification"
 
-	WSEventRequirementUpdate = "requirement_update"
+	WSEventChatMessage  = "chat:message"
+	WSEventActivity     = "activity:new"
+	WSEventNotification = "notification:new"
+
+	WSEventTaskUpdated        = "task:updated"
+	WSEventPhaseUpdated       = "phase:updated"
+	WSEventRequirementUpdated = "requirement:updated"
 
 	WSEventExecutionStart    = "execution:start"
 	WSEventExecutionUpdate   = "execution:update"

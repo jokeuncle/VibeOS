@@ -205,7 +205,7 @@ func (s *Service) UpdatePhaseStatus(ctx context.Context, wsID, phaseID, status s
 
 	s.logActivity(ctx, wsID, "phase_status_changed",
 		fmt.Sprintf("%s → %s", updated.Name, status), nil)
-	s.publishEvent(ctx, wsID, models.WSEventPhaseUpdate, updated)
+	s.publishEvent(ctx, wsID, models.WSEventPhaseUpdated, updated)
 
 	return updated, nil
 }
@@ -224,7 +224,7 @@ func (s *Service) ResetWorkspacePhasePipeline(ctx context.Context, wsID string) 
 	}
 	s.logActivity(ctx, wsID, "workspace_phases_reset",
 		"All phase statuses and tasks reset to pending", nil)
-	s.publishEvent(ctx, wsID, models.WSEventPhaseUpdate, map[string]string{
+	s.publishEvent(ctx, wsID, models.WSEventPhaseUpdated, map[string]string{
 		"workspaceId": wsID, "reset": "all",
 	})
 	return nil
@@ -265,7 +265,7 @@ func (s *Service) CreateTask(ctx context.Context, wsID, phaseID string, req mode
 	}
 
 	s.logActivity(ctx, wsID, "task_created", req.Title, nil)
-	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, task)
+	s.publishEvent(ctx, wsID, models.WSEventTaskUpdated, task)
 
 	return task, nil
 }
@@ -286,7 +286,7 @@ func (s *Service) UpdateTask(ctx context.Context, wsID, taskID string, req model
 	}
 
 	s.logActivity(ctx, wsID, "task_updated", task.Title, nil)
-	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, task)
+	s.publishEvent(ctx, wsID, models.WSEventTaskUpdated, task)
 
 	if req.Status != nil && *req.Status == string(models.StatusCompleted) {
 		if completed, err := s.AutoCompletePhaseIfDone(ctx, wsID, task.PhaseID); err != nil {
@@ -308,7 +308,7 @@ func (s *Service) ClaimTask(ctx context.Context, wsID, taskID, agent string) (*m
 		s.log.Error("failed to recalculate phase progress", "error", err)
 	}
 	s.logActivity(ctx, wsID, "task_updated", task.Title+" (claimed by "+agent+")", nil)
-	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, task)
+	s.publishEvent(ctx, wsID, models.WSEventTaskUpdated, task)
 	return task, nil
 }
 
@@ -330,7 +330,7 @@ func (s *Service) DeleteTask(ctx context.Context, wsID, taskID string) error {
 	}
 
 	s.logActivity(ctx, wsID, "task_deleted", task.Title, nil)
-	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, map[string]string{"id": taskID, "deleted": "true"})
+	s.publishEvent(ctx, wsID, models.WSEventTaskUpdated, map[string]string{"id": taskID, "deleted": "true"})
 
 	return nil
 }
@@ -339,7 +339,7 @@ func (s *Service) ReorderTasks(ctx context.Context, wsID, phaseID string, taskID
 	if err := s.store.ReorderTasks(ctx, phaseID, taskIDs); err != nil {
 		return err
 	}
-	s.publishEvent(ctx, wsID, models.WSEventTaskUpdate, map[string]any{"phaseId": phaseID, "reordered": true})
+	s.publishEvent(ctx, wsID, models.WSEventTaskUpdated, map[string]any{"phaseId": phaseID, "reordered": true})
 	return nil
 }
 
@@ -505,7 +505,7 @@ func (s *Service) CreateRequirement(ctx context.Context, wsID string, req models
 	}
 
 	s.logActivity(ctx, wsID, "requirement_created", r.Title, nil)
-	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, r)
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdated, r)
 
 	return s.store.GetRequirement(ctx, r.ID, wsID)
 }
@@ -524,7 +524,7 @@ func (s *Service) UpdateRequirement(ctx context.Context, wsID, reqID string, req
 		return nil, err
 	}
 	s.logActivity(ctx, wsID, "requirement_updated", r.Title, nil)
-	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, r)
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdated, r)
 	return r, nil
 }
 
@@ -533,7 +533,7 @@ func (s *Service) DeleteRequirement(ctx context.Context, wsID, reqID string) err
 		return err
 	}
 	s.logActivity(ctx, wsID, "requirement_deleted", reqID, nil)
-	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, map[string]string{"id": reqID, "deleted": "true"})
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdated, map[string]string{"id": reqID, "deleted": "true"})
 	return nil
 }
 
@@ -595,7 +595,7 @@ func (s *Service) ResetRequirementPhase(ctx context.Context, wsID, reqID, phaseT
 
 	s.logActivity(ctx, wsID, "requirement_phase_reset",
 		fmt.Sprintf("Reset %s phase for requirement %s", phaseType, reqID), nil)
-	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdate, map[string]string{
+	s.publishEvent(ctx, wsID, models.WSEventRequirementUpdated, map[string]string{
 		"id": reqID, "phaseReset": phaseType,
 	})
 	return nil

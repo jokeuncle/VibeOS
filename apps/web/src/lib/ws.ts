@@ -126,7 +126,7 @@ function handleWSEvent(event: Record<string, any>) {
   if (sid && activeSids.has(sid)) return
 
   // Chat messages
-  if (eventType === 'chat_message' && event.workspaceId === activeWsId && event.payload) {
+  if (eventType === 'chat:message' && event.workspaceId === activeWsId && event.payload) {
     const p = event.payload
     const existing = store.messages.find((m) => m.id === p.id)
     if (!existing) {

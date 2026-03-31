@@ -131,3 +131,27 @@ class SessionManager:
     @staticmethod
     def done() -> str:
         return "data: [DONE]\n\n"
+
+    @staticmethod
+    def parse(sse_str: str) -> tuple[str, str, dict[str, Any]] | None:
+        """Parse an SSE frame string back into (category, action, data).
+
+        Returns None for non-event lines (e.g. ``data: [DONE]``).
+        """
+        event_name = ""
+        data_str = ""
+        for line in sse_str.strip().split("\n"):
+            if line.startswith("event: "):
+                event_name = line[7:]
+            elif line.startswith("data: "):
+                data_str = line[6:]
+        if not event_name or not data_str:
+            return None
+        parts = event_name.split(":", 1)
+        if len(parts) != 2:
+            return None
+        try:
+            data = json.loads(data_str)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return (parts[0], parts[1], data)

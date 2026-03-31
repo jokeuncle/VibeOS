@@ -377,6 +377,10 @@ export const gitlabCredentialApi = {
     ).then(unwrap),
 }
 
+/**
+ * @deprecated Use ExecutionSession.run() directly with workflow endpoint URLs.
+ * Kept temporarily for any external callers; will be removed in a future release.
+ */
 export const workflowApi = {
   runTask: (workspaceId: string, taskId: string, userMessage = '') =>
     streamSSE('/api/workflow/run-task', {
@@ -450,18 +454,6 @@ export const agentApi = {
       },
     ),
 
-  nlpStream: (workspaceId: string, message: string, context?: Record<string, unknown>) =>
-    streamSSE('/api/nlp/stream', {
-      workspace_id: workspaceId,
-      message,
-      ...(context && Object.keys(context).length > 0 ? { context } : {}),
-    }),
-
-  chatStream: (agentType: string, workspaceId: string, message: string) =>
-    streamSSE(`/api/agents/${agentType}/chat/stream`, {
-      workspace_id: workspaceId,
-      message,
-    }),
 }
 
 export interface SSEEvent {
@@ -949,19 +941,6 @@ export const registryApi = {
       '/api/registry/manifest',
       { method: 'POST', body: JSON.stringify(manifest) },
     ).then(unwrap),
-
-  executeGraph: (
-    templateId: string,
-    graphDef?: Record<string, unknown>,
-    inputState: Record<string, unknown> = {},
-    workspaceId?: string,
-  ) =>
-    streamSSE('/api/graph/execute', {
-      template_id: templateId,
-      ...(graphDef ? { graph_def: graphDef } : {}),
-      input_state: inputState,
-      ...(workspaceId ? { workspace_id: workspaceId } : {}),
-    }),
 
   validateGraph: (graphDef: Record<string, unknown>) =>
     request<{ data: { valid: boolean; errors: string[] } }>(

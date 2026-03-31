@@ -1,4 +1,10 @@
-"""Handlers for phase/project execution PM intents."""
+"""Handlers for phase/project execution PM intents.
+
+These handlers are called from the synchronous NLP endpoint ``/api/nlp``
+and the streaming path ``_nlp_pm_path`` via ``execute_pm_intent``.
+They iterate the unified SSE strings from WorkflowEngine and collect
+results into a summary dict.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +13,7 @@ from typing import Any
 from vibeos_agent import WorkspaceClient
 
 from ..context import phase_type_from_nlp_context, start_phase_from_nlp_context
+from ..session import SessionManager
 from ..workflow import WorkflowEngine
 
 
@@ -34,16 +41,19 @@ async def handle_execute_phase(
     skipped = False
     skip_reason = ""
 
-    async for event in workflow.run_phase(workspace_id, phase_type, user_message):
-        et = event.get("type")
-        if et == "workflow:phase_skip":
+    async for sse_str in workflow.run_phase(workspace_id, phase_type, user_message):
+        parsed = SessionManager.parse(sse_str)
+        if not parsed:
+            continue
+        cat, action, data = parsed
+        if cat == "phase" and action == "skip":
             skipped = True
-            skip_reason = str(event.get("reason", ""))
+            skip_reason = str(data.get("reason", ""))
             break
-        if et == "workflow:task_complete":
+        if cat == "task" and action == "complete":
             tasks_done += 1
-        if et == "workflow:task_error":
-            errors.append({"phase": event.get("phase"), "task_title": event.get("task_title"), "error": event.get("error")})
+        if cat == "task" and action == "error":
+            errors.append({"phase": data.get("phase"), "task_title": data.get("task_title"), "error": data.get("error")})
 
     if skipped:
         return {
@@ -87,16 +97,19 @@ async def handle_run_project(
     errors: list[dict[str, Any]] = []
     success = False
 
-    async for event in workflow.run_project(workspace_id, user_message, start_phase=start_phase):
-        et = event.get("type")
-        if et == "workflow:phase_start":
-            phases_run.append(str(event.get("phase", "")))
-        elif et == "workflow:task_complete":
+    async for sse_str in workflow.run_project(workspace_id, user_message, start_phase=start_phase):
+        parsed = SessionManager.parse(sse_str)
+        if not parsed:
+            continue
+        cat, action, data = parsed
+        if cat == "phase" and action == "start":
+            phases_run.append(str(data.get("phase", "")))
+        elif cat == "task" and action == "complete":
             tasks_done += 1
-        elif et == "workflow:task_error":
-            errors.append({"phase": event.get("phase"), "task_title": event.get("task_title"), "error": event.get("error")})
-        elif et == "workflow:project_complete":
-            success = bool(event.get("success", False))
+        elif cat == "task" and action == "error":
+            errors.append({"phase": data.get("phase"), "task_title": data.get("task_title"), "error": data.get("error")})
+        elif cat == "project" and action == "complete":
+            success = bool(data.get("success", False))
 
     if errors:
         summary = f"Project run stopped ({errors[0].get('error', 'unknown')})"
