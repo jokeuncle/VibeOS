@@ -94,6 +94,8 @@ const workspace = {
   'gitlab.noReposHint': 'Link a GitLab project so agents can commit code automatically.',
   'gitlab.primary': 'PRIMARY',
   'gitlab.testConnection': 'Test connection',
+  'gitlab.connectionSuccess': 'Connection successful',
+  'gitlab.connectionFailed': 'Connection failed',
   'gitlab.addInstanceBtn': 'Add GitLab instance',
   'gitlab.bindRepoBtn': 'Bind repository',
   'gitlab.instances': 'GitLab instances',

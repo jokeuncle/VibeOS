@@ -90,7 +90,9 @@ export default function GitLabReposPanel({ workspaceId, onClose }: GitLabReposPa
     setTestingRepo(repoId)
     try {
       const result = await workspaceApi.testRepoConnection(workspaceId, repoId)
-      setTestResults((prev) => ({ ...prev, [repoId]: { ok: result.ok, message: result.message ?? '' } }))
+      const raw = result.message ?? ''
+      const msg = raw.replace(/^connection (failed|successful):\s*/i, '')
+      setTestResults((prev) => ({ ...prev, [repoId]: { ok: result.ok, message: msg } }))
     } catch (e: any) {
       setTestResults((prev) => ({ ...prev, [repoId]: { ok: false, message: e.message } }))
     } finally {
@@ -282,7 +284,9 @@ function RepoList({
               {testResults[repo.id] && (
                 <span className={`flex items-center gap-1 text-xs ${testResults[repo.id].ok ? 'text-green-400' : 'text-red-400'}`}>
                   {testResults[repo.id].ok ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                  {testResults[repo.id].message}
+                  {testResults[repo.id].ok
+                    ? t('gitlab.connectionSuccess')
+                    : `${t('gitlab.connectionFailed')}${testResults[repo.id].message ? ': ' + testResults[repo.id].message : ''}`}
                 </span>
               )}
             </div>

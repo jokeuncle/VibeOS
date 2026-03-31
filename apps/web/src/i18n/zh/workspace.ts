@@ -94,6 +94,8 @@ const workspace = {
   'gitlab.noReposHint': '绑定 GitLab 项目后，Agent 可自动提交代码',
   'gitlab.primary': '主仓库',
   'gitlab.testConnection': '测试连接',
+  'gitlab.connectionSuccess': '连接成功',
+  'gitlab.connectionFailed': '连接失败',
   'gitlab.addInstanceBtn': '添加 GitLab 实例',
   'gitlab.bindRepoBtn': '绑定仓库',
   'gitlab.instances': 'GitLab 实例',
