@@ -5,8 +5,5 @@
     "dev": "pnpm --filter @VibeOS/web dev",
     "build": "pnpm --filter @VibeOS/web build",
     "preview": "pnpm --filter @VibeOS/web preview"
-  },
-  "dependencies": {
-    "@rjsf/core": "^6.4.2"
   }
 }
