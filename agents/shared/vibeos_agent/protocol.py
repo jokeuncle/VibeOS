@@ -247,11 +247,11 @@ class WorkspaceClient:
         return resp.json()
 
     async def list_artifacts(
-        self, workspace_id: str, *, phase_id: str | None = None
+        self, workspace_id: str, *, execution_id: str | None = None
     ) -> list[dict[str, Any]]:
         url = f"/api/workspaces/{workspace_id}/artifacts"
-        if phase_id:
-            url = f"/api/workspaces/{workspace_id}/phases/{phase_id}/artifacts"
+        if execution_id:
+            url = f"/api/workspaces/{workspace_id}/executions/{execution_id}/artifacts"
         resp = await self._http.get(url)
         resp.raise_for_status()
         data = resp.json()
@@ -352,9 +352,7 @@ class WorkspaceClient:
         artifact_type: str,
         title: str,
         content: str,
-        phase_id: str | None = None,
-        task_id: str | None = None,
-        requirement_id: str | None = None,
+        execution_id: str | None = None,
         metadata: str = "{}",
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -364,12 +362,8 @@ class WorkspaceClient:
             "content": content,
             "metadata": metadata,
         }
-        if phase_id:
-            body["phaseId"] = phase_id
-        if task_id:
-            body["taskId"] = task_id
-        if requirement_id:
-            body["requirementId"] = requirement_id
+        if execution_id:
+            body["executionId"] = execution_id
         resp = await self._http.put(f"/api/workspaces/{workspace_id}/artifacts", json=body)
         resp.raise_for_status()
         return resp.json().get("data", {})
@@ -1401,21 +1395,17 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         artifact_type: str,
         title: str,
         content: str,
-        phase_id: str | None = None,
-        task_id: str | None = None,
-        requirement_id: str | None = None,
+        execution_id: str | None = None,
         metadata: str = "{}",
     ) -> dict[str, Any]:
-        """Upsert an artifact (update if same task_id+type exists, else insert)."""
+        """Upsert an artifact via its execution provenance."""
         result = await self.workspace_svc.upsert_artifact(
             workspace_id,
             agent_type=_enum_val(self.agent_type),
             artifact_type=artifact_type,
             title=title,
             content=content,
-            phase_id=phase_id,
-            task_id=task_id,
-            requirement_id=requirement_id,
+            execution_id=execution_id,
             metadata=metadata,
         )
         if self.rag and content and len(content) > 100:

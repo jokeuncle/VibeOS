@@ -310,18 +310,12 @@ class RequirementAgent(BaseAgent):
                 "progress", task.workspace_id, {"progress": 0.5, "detail": f"Saving {artifact_type}"}
             )
 
-            # Upsert artifact with task_id and requirement_id
             try:
-                req_phase_id = await self.workspace_svc.find_phase_by_type(task.workspace_id, "requirement")
-                requirement_id = task.context.get("requirement_id")
                 await self._upsert_artifact(
                     task.workspace_id,
                     artifact_type=artifact_type,
                     title=f"{task_title}: {task.description[:60]}" if task_title else f"Requirements: {task.description[:80]}",
                     content=raw_reply,
-                    phase_id=req_phase_id,
-                    task_id=task.task_id,
-                    requirement_id=requirement_id,
                 )
                 await _log(task.workspace_id, agent_name, f"Artifact ({artifact_type}) saved", level="success", task_id=task.task_id)
             except Exception as exc:

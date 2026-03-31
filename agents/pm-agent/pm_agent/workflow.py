@@ -434,11 +434,10 @@ class WorkflowEngine:
                         pass
 
                     try:
-                        arts = await self.ws_client.list_artifacts(workspace_id, phase_id=phase_id)
+                        arts = await self.ws_client.list_artifacts(workspace_id)
                         phase_artifacts = [
                             {"title": a["title"], "type": a["type"], "content": a.get("content", "")[:3000]}
                             for a in arts
-                            if a.get("requirementId") == requirement_id
                         ]
                     except Exception:
                         pass
