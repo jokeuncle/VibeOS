@@ -46,7 +46,10 @@ INTENT_REGISTRY: tuple[IntentDef, ...] = (
     IntentDef("ui_design",            AgentType.DESIGN,       "UI 设计",      "UI Design",            "UI/UX, wireframes, mockups"),
     IntentDef("generate_code",        AgentType.DEVELOPMENT,  "生成代码",     "Generate Code",        "implement features / code"),
     IntentDef("run_tests",            AgentType.TESTING,      "运行测试",     "Run Tests",            "tests, QA"),
-    IntentDef("deploy",               AgentType.CICD,         "部署",         "Deploy",               "deploy, CI/CD, release"),
+    IntentDef("trigger_build",         AgentType.PM,           "触发构建",     "Trigger Build",        "trigger a CI/CD pipeline build for a project or branch"),
+    IntentDef("view_build_log",        AgentType.PM,           "查看构建日志", "View Build Log",       "view build logs, check pipeline status, query CI/CD results"),
+    IntentDef("deploy",               AgentType.PM,           "部署",         "Deploy",               "deploy to an environment, CI/CD release"),
+    IntentDef("rollback",             AgentType.PM,           "回滚版本",     "Rollback",             "rollback a deployment to a previous version"),
     IntentDef("analyze_requirements", AgentType.REQUIREMENT,  "分析需求",     "Analyze Requirements", "analyze or refine requirements"),
     IntentDef("setup_monitoring",     AgentType.MONITORING,   "配置监控",     "Setup Monitoring",     "monitoring, alerts"),
     IntentDef("design_observability", AgentType.MONITORING,   "可观测性设计", "Observability Design", "SRE, SLOs, incidents"),
@@ -66,6 +69,25 @@ INTENT_LABELS: dict[str, dict[str, str]] = {
 # ---------------------------------------------------------------------------
 # Slot models (extend per intent)
 # ---------------------------------------------------------------------------
+
+class PipelineSlots(BaseModel):
+    """Parameters for pipeline-related intents (trigger_build, view_build_log, deploy, rollback)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    project: str = Field(default="", description="Project name or GitLab project ID")
+    branch: str = Field(default="", description="Branch or tag to build / deploy")
+    env: str = Field(default="", description="Target environment: test / staging / prod")
+    pipeline_id: str = Field(default="", description="Pipeline ID to query (for view_build_log)")
+    version: str = Field(default="", description="Version tag for rollback")
+
+    @field_validator("project", "branch", "env", "pipeline_id", "version", mode="before")
+    @classmethod
+    def _str_field(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v).strip()[:200] if isinstance(v, str) else str(v)[:200]
+
 
 class RequirementDraftSlot(BaseModel):
     """One draft requirement on workspace create (home NLP). At most 3 total on ``WorkspaceCreateSlots``."""
@@ -218,6 +240,10 @@ def _structured_nlu_prompt() -> str:
         "user names distinct features, epics, or bullets (e.g. 「先做A再做B」, login + payment, 包括…和…). "
         "Titles short; description optional one line. Use [] or omit if they only want a workspace shell "
         "(no separate requirement breakdown).\n"
+        "- For trigger_build, view_build_log, deploy, rollback set slots.pipeline:\n"
+        '    { "project": "<project name or ID>", "branch": "<branch>", "env": "<test|staging|prod>", '
+        '"pipeline_id": "<id if viewing logs>", "version": "<tag for rollback>" }.\n'
+        "  Extract what the user provides; omit fields they don't mention.\n"
         "- Never copy the full user message into title; extracted or invented short name only.\n"
         "confidence: 1.0 = sure; use alternatives when 0.5-0.8.\n\n"
         f"INTENT_TYPES: {', '.join(INTENT_TYPES)}\n\n"
@@ -276,7 +302,14 @@ def _normalize_slots_for_intent(intent_name: str, slots_raw: Any) -> dict[str, A
         except Exception:
             return {"workspace_create": WorkspaceCreateSlots().model_dump()}
 
-    # Drop workspace_create if model hallucinated it for wrong intent
+    _PIPELINE_INTENTS = {"trigger_build", "view_build_log", "deploy", "rollback"}
+    if intent_name in _PIPELINE_INTENTS:
+        try:
+            ps = PipelineSlots.model_validate(slotsraw.get("pipeline") or {})
+            return {"pipeline": ps.model_dump()}
+        except Exception:
+            return {"pipeline": PipelineSlots().model_dump()}
+
     out = {k: v for k, v in slotsraw.items() if k != "workspace_create"}
     return out
 

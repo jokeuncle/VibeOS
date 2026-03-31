@@ -169,9 +169,11 @@ class CicdAgent(BaseAgent):
         from vibeos_agent.tools.workspace_tools import create_workspace_tools
         from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
         from vibeos_agent.tools.delegation_tools import create_delegation_tools
+        from vibeos_agent.tools.pipeline_tools import create_pipeline_tools
         self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "cicd"))
         self.tool_registry.register_many(create_gitlab_tools())
         self.tool_registry.register_many(create_delegation_tools("cicd"))
+        self.tool_registry.register_many(create_pipeline_tools())
 
     async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})

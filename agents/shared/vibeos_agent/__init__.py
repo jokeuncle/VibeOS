@@ -65,3 +65,6 @@ __all__ = [
     "WorkspaceClient",
     "config",
 ]
+
+# Lazy import for adapters — available via vibeos_agent.adapters
+# Usage: from vibeos_agent.adapters import AdapterRegistry, GitLabPipelineAdapter

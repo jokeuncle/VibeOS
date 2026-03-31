@@ -10,10 +10,13 @@ from ..intent import ParsedIntent
 from .task import handle_create_task, handle_query_progress, handle_execute_task
 from .requirement import handle_discovery_or_preview, handle_create_requirement, handle_discovery_chat
 from .phase import handle_execute_phase, handle_run_project
+from .pipeline import handle_trigger_build, handle_view_build_log
 from ..workflow import WorkflowEngine
 
 if TYPE_CHECKING:
     from ..dispatch import Dispatcher
+
+_PIPELINE_INTENTS = {"trigger_build", "view_build_log", "deploy", "rollback"}
 
 
 async def execute_pm_intent(
@@ -52,5 +55,15 @@ async def execute_pm_intent(
 
     if parsed.intent == "run_project":
         return await handle_run_project(workspace_id, message, workflow, context)
+
+    pipeline_slots = parsed.slots.get("pipeline", {})
+    if parsed.intent == "trigger_build":
+        return await handle_trigger_build(workspace_id, message, pipeline_slots, ws_client, ws)
+
+    if parsed.intent == "view_build_log":
+        return await handle_view_build_log(workspace_id, message, pipeline_slots, ws_client, ws)
+
+    if parsed.intent in ("deploy", "rollback"):
+        return await handle_trigger_build(workspace_id, message, pipeline_slots, ws_client, ws)
 
     return {"handled_by": "pm", "summary": parsed.summary}

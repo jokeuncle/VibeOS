@@ -403,8 +403,17 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                     yield "data: [DONE]\n\n"
                     return
 
-                # PM intent execution
-                yield _build_timeline_event("exec", "执行中 / Executing", "running")
+                # PM intent execution — pipeline intents get specialised timeline labels
+                _PIPELINE_INTENTS = {"trigger_build", "view_build_log", "deploy", "rollback"}
+                is_pipeline = parsed.intent in _PIPELINE_INTENTS
+                timeline_label = (
+                    {"trigger_build": "触发构建 / Triggering build",
+                     "view_build_log": "查询日志 / Fetching logs",
+                     "deploy": "部署中 / Deploying",
+                     "rollback": "回滚中 / Rolling back"}.get(parsed.intent, "执行中 / Executing")
+                    if is_pipeline else "执行中 / Executing"
+                )
+                yield _build_timeline_event("exec", timeline_label, "running")
 
                 result = await execute_pm_intent(
                     parsed, req.workspace_id, req.message, req.context, llm, ws, ws_client, workflow, dispatcher,
@@ -422,10 +431,15 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                     payload_extras["created_tasks"] = result["created_tasks"]
                 if result.get("artifacts"):
                     payload_extras["artifacts"] = result["artifacts"]
+                if result.get("pipeline_task_id"):
+                    payload_extras["pipeline_task_id"] = result["pipeline_task_id"]
+                if result.get("pipeline_url"):
+                    payload_extras["pipeline_url"] = result["pipeline_url"]
                 if payload_extras:
                     yield f"data: {json.dumps({'payload': payload_extras})}\n\n"
 
-                yield _build_timeline_event("exec", "执行中 / Executing", "completed")
+                status = "completed" if "failed" not in result.get("action", "") else "error"
+                yield _build_timeline_event("exec", timeline_label, status)
 
                 action = result.get("action", "")
                 if action in ("requirement_preview", "requirement_created"):
@@ -435,6 +449,14 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
                     )
                     yield build_action_event(
                         "confirm", label="继续优化", variant="secondary",
+                    )
+                elif is_pipeline and result.get("pipeline_url"):
+                    yield build_action_event(
+                        "open_url", label="查看 Pipeline", variant="primary",
+                        payload={"url": result["pipeline_url"]},
+                    )
+                    yield build_action_event(
+                        "confirm", label="查看日志", variant="secondary",
                     )
                 elif result.get("created_tasks"):
                     yield build_action_event(
