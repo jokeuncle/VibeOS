@@ -16,6 +16,7 @@
  */
 
 import { streamSSE } from './api'
+import { registerActiveSid, unregisterActiveSid } from './ws'
 
 export type EventCategory =
   | 'session'
@@ -51,38 +52,45 @@ export class ExecutionSession {
   }
 
   async run(url: string, body: object): Promise<void> {
-    for await (const evt of streamSSE(url, body)) {
-      if (this._aborted) break
+    try {
+      for await (const evt of streamSSE(url, body)) {
+        if (this._aborted) break
 
-      const colonIdx = evt.event?.indexOf(':') ?? -1
-      let category: string
-      let action: string
+        const colonIdx = evt.event?.indexOf(':') ?? -1
+        let category: string
+        let action: string
 
-      if (colonIdx > 0 && evt.event) {
-        category = evt.event.slice(0, colonIdx)
-        action = evt.event.slice(colonIdx + 1)
-      } else {
-        category = 'content'
-        action = 'delta'
-      }
-
-      let data: any
-      try {
-        data = JSON.parse(evt.data)
-      } catch {
-        continue
-      }
-
-      const sid = data.sid || this._sid || ''
-      if (data.sid && !this._sid) {
-        this._sid = data.sid
-      }
-
-      const handlers = this.handlers.get(category as EventCategory)
-      if (handlers) {
-        for (const handler of handlers) {
-          handler(action, data, sid)
+        if (colonIdx > 0 && evt.event) {
+          category = evt.event.slice(0, colonIdx)
+          action = evt.event.slice(colonIdx + 1)
+        } else {
+          category = 'content'
+          action = 'delta'
         }
+
+        let data: any
+        try {
+          data = JSON.parse(evt.data)
+        } catch {
+          continue
+        }
+
+        const sid = data.sid || this._sid || ''
+        if (data.sid && !this._sid) {
+          this._sid = data.sid
+          registerActiveSid(sid)
+        }
+
+        const handlers = this.handlers.get(category as EventCategory)
+        if (handlers) {
+          for (const handler of handlers) {
+            handler(action, data, sid)
+          }
+        }
+      }
+    } finally {
+      if (this._sid) {
+        unregisterActiveSid(this._sid)
       }
     }
   }

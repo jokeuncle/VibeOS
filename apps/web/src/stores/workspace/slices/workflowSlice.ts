@@ -4,8 +4,8 @@ import type {
   AgentExecution,
   PhaseStatus,
   ConversationContext,
+  UnifiedEvent,
 } from '../../../types'
-import { workflowApi } from '../../../lib/api'
 import { ExecutionSession } from '../../../lib/executionSession'
 import { workflowEventToMessage } from '../helpers'
 import type { WorkspaceState } from '../types'
@@ -22,13 +22,6 @@ function makeSystemMsg(content: string, wsId: string): Message {
     contextType: 'workspace' as ConversationContext,
     workspaceId: wsId,
   }
-}
-
-type WorkflowEvent = {
-  category: string
-  action: string
-  data: any
-  sid: string
 }
 
 /**
@@ -51,7 +44,7 @@ function runWorkflowSession(
   let sid = ''
   let hasError = false
 
-  const pushEvent = (evt: WorkflowEvent) => {
+  const pushEvent = (evt: UnifiedEvent) => {
     set((s) => ({ workflowEvents: [...s.workflowEvents, evt] }))
   }
 
@@ -149,7 +142,7 @@ function runWorkflowSession(
 export function buildWorkflowSlice(set: SetState, get: GetState) {
   return {
     workflowRunning: false,
-    workflowEvents: [] as WorkflowEvent[],
+    workflowEvents: [] as UnifiedEvent[],
 
     runTask: (taskId: string) => {
       const wsId = get().activeWorkspaceId

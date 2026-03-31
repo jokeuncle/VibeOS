@@ -392,7 +392,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
 
       ;(async () => {
         try {
-          await session.run(`/api/agents/${agentType}/chat/stream`, { workspace_id: wsId, message: input })
+          await session.run(`/api/chat/${agentType}/stream`, { workspace_id: wsId, message: input })
         } catch (err: any) {
           if (!content) {
             set((s) => ({

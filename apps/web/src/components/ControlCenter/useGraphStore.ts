@@ -38,7 +38,7 @@ interface GraphState {
   graphConfig: Record<string, unknown>
   templates: GraphTemplate[]
   running: boolean
-  executionLog: { event: string; data: Record<string, unknown> }[]
+  executionLog: { category: string; action: string; data: Record<string, unknown> }[]
 
   workspaceId: string | null
   graphId: string | null
@@ -64,7 +64,7 @@ interface GraphState {
   setTemplates: (templates: GraphTemplate[]) => void
   setDirty: (dirty: boolean) => void
   setRunning: (running: boolean) => void
-  addExecutionEvent: (event: { event: string; data: Record<string, unknown> }) => void
+  addExecutionEvent: (event: { category: string; action: string; data: Record<string, unknown> }) => void
   clearExecutionLog: () => void
   reset: () => void
 
@@ -92,7 +92,7 @@ const initialState = {
   graphConfig: { checkpointer: 'memory', recursion_limit: 25 } as Record<string, unknown>,
   templates: [] as GraphTemplate[],
   running: false,
-  executionLog: [] as { event: string; data: Record<string, unknown> }[],
+  executionLog: [] as { category: string; action: string; data: Record<string, unknown> }[],
   workspaceId: null as string | null,
   graphId: null as string | null,
   workspaceGraphs: [] as WorkspaceGraph[],

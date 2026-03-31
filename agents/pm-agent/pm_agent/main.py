@@ -357,11 +357,13 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
 
             # --- PM agent path ---
             if parsed.target_agent == AgentType.PM:
-                yield from _nlp_pm_path(sid, sm, parsed, req, llm, ws_client, workflow, dispatcher)
+                async for evt in _nlp_pm_path(sid, sm, parsed, req, llm, ws_client, workflow, dispatcher):
+                    yield evt
                 return
 
             # --- Non-PM agent dispatch ---
-            yield from _nlp_dispatch_path(sid, sm, parsed, req, ws_client, dispatcher)
+            async for evt in _nlp_dispatch_path(sid, sm, parsed, req, ws_client, dispatcher):
+                yield evt
 
         except Exception as exc:
             error_str = str(exc)
@@ -566,16 +568,32 @@ async def handle_chat_stream(agent_type: str, req: ChatRequest) -> StreamingResp
         return StreamingResponse(err_gen(), media_type="text/event-stream")
 
     async def token_gen() -> AsyncGenerator[str, None]:
+        llm: LLMGatewayClient = app.state.llm
         sid = await sm.create("chat", req.workspace_id, user_message=req.message, agent_type=agent_type, triggered_by="user")
         yield sm.session_start(sid, "chat", req.workspace_id)
         try:
-            async for chunk in dispatcher.forward_chat_stream(at, req.workspace_id, req.message):
-                if chunk.get("delta"):
-                    yield sm.content_delta(sid, chunk["delta"])
-                elif chunk.get("summary"):
-                    yield sm.content_delta(sid, chunk["summary"])
-                else:
-                    yield sm.content_payload(sid, chunk)
+            if at == AgentType.PM:
+                messages = [
+                    {"role": "system", "content": "你是VibeOS项目管理助手，帮助用户分析需求、规划任务和协调团队工作。"},
+                    {"role": "user", "content": req.message},
+                ]
+                async for chunk in llm.chat_stream(messages):
+                    delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    if delta:
+                        yield sm.content_delta(sid, delta)
+            else:
+                async for chunk in dispatcher.forward_chat_stream(at, req.workspace_id, req.message):
+                    if chunk.get("error"):
+                        yield sm.session_error(sid, chunk["error"])
+                        await sm.finish(sid, req.workspace_id, "failed", chunk["error"])
+                        yield sm.done()
+                        return
+                    if chunk.get("delta"):
+                        yield sm.content_delta(sid, chunk["delta"])
+                    elif chunk.get("summary"):
+                        yield sm.content_delta(sid, chunk["summary"])
+                    else:
+                        yield sm.content_payload(sid, chunk)
         except Exception as exc:
             yield sm.session_error(sid, str(exc))
             await sm.finish(sid, req.workspace_id, "failed", str(exc))

@@ -28,7 +28,7 @@ function CustomNodeComponent({ id, data, selected }: CustomNodeProps) {
   const Icon = cfg.icon
 
   const isActive = running && executionLog.some(
-    (e) => e.event === 'graph:node_complete' && e.data?.node === id,
+    (e) => e.category === 'graph' && e.action === 'node_complete' && e.data?.node === id,
   )
 
   return (

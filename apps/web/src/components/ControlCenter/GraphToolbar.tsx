@@ -1,6 +1,7 @@
 import { Save, Play, CheckCircle, LayoutGrid, FilePlus, Loader2, Upload } from 'lucide-react'
 import { useGraphStore } from './useGraphStore'
 import { registryApi } from '../../lib/api'
+import { ExecutionSession } from '../../lib/executionSession'
 import { useUIStore } from '../../stores/ui'
 import { useT } from '../../i18n'
 
@@ -66,19 +67,22 @@ export default function GraphToolbar() {
     setRunning(true)
     clearExecutionLog()
 
-    try {
-      const gen = templateId
-        ? registryApi.executeGraph(templateId)
-        : registryApi.executeGraph('', graphDef as Record<string, unknown>, {}, workspaceId || undefined)
-
-      for await (const evt of gen) {
-        try {
-          const data = JSON.parse(evt.data)
-          addExecutionEvent({ event: evt.event || 'data', data })
-        } catch {
-          addExecutionEvent({ event: evt.event || 'data', data: { raw: evt.data } })
+    const session = new ExecutionSession()
+      .on('graph', (action, data) => {
+        addExecutionEvent({ category: 'graph', action, data })
+      })
+      .on('session', (action, data) => {
+        if (action === 'error') {
+          addToast({ type: 'error', message: data.error || 'Graph execution error' })
         }
-      }
+      })
+
+    try {
+      await session.run('/api/graph/execute', {
+        template_id: templateId || '',
+        graph_def: templateId ? undefined : graphDef,
+        workspace_id: workspaceId || '',
+      })
       addToast({ type: 'success', message: t('controlCenter.completed') })
     } catch (err) {
       addToast({ type: 'error', message: String(err) })
