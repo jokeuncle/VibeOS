@@ -155,12 +155,15 @@ class CodingAgent(BaseAgent):
         except Exception as exc:
             push_result = {"status": "push_failed", "error": str(exc)}
 
-        await self._save_artifact(
-            workspace_id=workspace_id,
-            title=f"Coding: {task.intent[:60]}",
-            content=result_text,
-            artifact_type="code",
-        )
+        try:
+            await self._save_artifact(
+                workspace_id=workspace_id,
+                title=f"Coding: {task.intent[:60]}",
+                content=result_text,
+                artifact_type="code",
+            )
+        except Exception:
+            logger.debug("Could not save artifact to workspace-svc (service may be down)")
 
         yield AgentEvent(
             type="result",
@@ -230,7 +233,8 @@ class CodingAgent(BaseAgent):
     ) -> AsyncIterator[Message]:
         reply = await self._call_llm(
             message,
-            system_prompt_override=CODING_SYSTEM_PROMPT,
+            workspace_id=workspace_id,
+            enrich_context=False,
         )
         yield Message(
             workspace_id=workspace_id,
@@ -247,6 +251,7 @@ class CodingAgent(BaseAgent):
     ) -> AsyncIterator[str]:
         async for delta in self._call_llm_stream(
             message,
-            system_prompt_override=CODING_SYSTEM_PROMPT,
+            workspace_id=workspace_id,
+            enrich_context=False,
         ):
             yield delta

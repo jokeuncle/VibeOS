@@ -1,7 +1,8 @@
 """Git workspace manager for coding sessions.
 
 Handles repo cloning, pulling, committing, and pushing with credential
-injection via GIT_ASKPASS so tokens never appear in clone URLs.
+injection via token-embedded HTTPS URLs (``oauth2:<pat>@host``).
+After clone the token is stripped from the remote URL for safety.
 """
 
 from __future__ import annotations
@@ -10,8 +11,6 @@ import asyncio
 import logging
 import os
 import shutil
-import stat
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -48,21 +47,33 @@ async def _fetch_credential(credential_id: str) -> tuple[str, str]:
     return url, tok
 
 
-def _resolve_clone_url(gitlab_url: str, project_path: str) -> str:
-    """Build HTTPS clone URL from base URL and project path."""
+def _resolve_clone_url(
+    gitlab_url: str, project_path: str, token: str | None = None,
+) -> str:
+    """Build HTTPS clone URL from base URL and project path.
+
+    When *token* is provided, embeds ``oauth2:<token>@`` in the URL for
+    GitLab PAT authentication.  The credential is stripped from the
+    remote URL after clone via ``git remote set-url``.
+    """
     parsed = urlparse(gitlab_url)
-    base = f"{parsed.scheme}://{parsed.hostname}"
+    host = parsed.hostname or ""
+    port_part = ""
     if parsed.port and parsed.port not in (80, 443):
-        base += f":{parsed.port}"
-    return f"{base}/{project_path}.git"
+        port_part = f":{parsed.port}"
+    if token:
+        return f"{parsed.scheme}://oauth2:{token}@{host}{port_part}/{project_path}.git"
+    return f"{parsed.scheme}://{host}{port_part}/{project_path}.git"
 
 
-def _write_askpass_script(token: str, workspace_dir: Path) -> str:
-    """Write a temporary GIT_ASKPASS script that echoes the token."""
-    script_path = workspace_dir / ".git-askpass.sh"
-    script_path.write_text(f"#!/bin/sh\necho '{token}'\n")
-    script_path.chmod(stat.S_IRWXU)
-    return str(script_path)
+def _clean_clone_url(gitlab_url: str, project_path: str) -> str:
+    """Clone URL without embedded credentials (for remote set-url)."""
+    parsed = urlparse(gitlab_url)
+    host = parsed.hostname or ""
+    port_part = ""
+    if parsed.port and parsed.port not in (80, 443):
+        port_part = f":{parsed.port}"
+    return f"{parsed.scheme}://{host}{port_part}/{project_path}.git"
 
 
 async def _run_git(
@@ -115,30 +126,40 @@ class WorkspaceManager:
     ) -> Path:
         """Clone a repo into a session workspace. Returns workspace path."""
         ws = self._session_path(session_id)
-        if ws.is_dir():
+        if ws.is_dir() and (ws / ".git").is_dir():
             logger.info("Workspace %s already exists, reusing", session_id)
             return ws
 
-        ws.mkdir(parents=True, exist_ok=True)
-        clone_url = _resolve_clone_url(gitlab_url, project_path)
+        if ws.exists():
+            shutil.rmtree(ws, ignore_errors=True)
 
-        git_env: dict[str, str] = {}
+        token: str | None = None
         if credential_id:
             _, token = await _fetch_credential(credential_id)
-            askpass = _write_askpass_script(token, ws)
-            git_env["GIT_ASKPASS"] = askpass
-            git_env["GIT_TERMINAL_PROMPT"] = "0"
         elif os.getenv("GITLAB_TOKEN"):
-            askpass = _write_askpass_script(os.environ["GITLAB_TOKEN"], ws)
-            git_env["GIT_ASKPASS"] = askpass
-            git_env["GIT_TERMINAL_PROMPT"] = "0"
+            token = os.environ["GITLAB_TOKEN"]
 
+        clone_url = _resolve_clone_url(gitlab_url, project_path, token=token)
+
+        git_env: dict[str, str] = {"GIT_TERMINAL_PROMPT": "0"}
         await _run_git(
             "clone", "--branch", branch, "--single-branch", clone_url, str(ws),
             cwd=self.root, env=git_env,
         )
+
+        clean_url = _clean_clone_url(gitlab_url, project_path)
+        await _run_git("remote", "set-url", "origin", clean_url, cwd=ws)
+
+        self._store_token(session_id, token)
         logger.info("Cloned %s (%s) into %s", project_path, branch, ws)
         return ws
+
+    def _store_token(self, session_id: str, token: str | None) -> None:
+        """Persist token for later push operations."""
+        if token:
+            self._tokens[session_id] = token
+
+    _tokens: dict[str, str] = {}
 
     async def pull_latest(self, session_id: str) -> str:
         ws = self.get_workspace(session_id)
@@ -171,17 +192,25 @@ class WorkspaceManager:
 
         await _run_git("commit", "-m", message, cwd=ws)
 
-        git_env: dict[str, str] = {}
-        if credential_id:
+        token: str | None = self._tokens.get(session_id)
+        if not token and credential_id:
             _, token = await _fetch_credential(credential_id)
-            askpass = _write_askpass_script(token, ws)
-            git_env["GIT_ASKPASS"] = askpass
-            git_env["GIT_TERMINAL_PROMPT"] = "0"
 
         branch = await _run_git("rev-parse", "--abbrev-ref", "HEAD", cwd=ws)
-        await _run_git("push", "-u", "origin", branch, cwd=ws, env=git_env)
-        commit_sha = await _run_git("rev-parse", "HEAD", cwd=ws)
 
+        if token:
+            current_url = await _run_git("remote", "get-url", "origin", cwd=ws)
+            parsed = urlparse(current_url)
+            host = parsed.hostname or ""
+            port_part = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
+            path_part = parsed.path
+            push_url = f"{parsed.scheme}://oauth2:{token}@{host}{port_part}{path_part}"
+            git_env: dict[str, str] = {"GIT_TERMINAL_PROMPT": "0"}
+            await _run_git("push", "-u", push_url, branch, cwd=ws, env=git_env)
+        else:
+            await _run_git("push", "-u", "origin", branch, cwd=ws)
+
+        commit_sha = await _run_git("rev-parse", "HEAD", cwd=ws)
         return {"status": "pushed", "branch": branch, "commit": commit_sha}
 
     def cleanup(self, session_id: str) -> None:
