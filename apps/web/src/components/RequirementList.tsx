@@ -145,7 +145,7 @@ function RequirementCard({ req, index, onOpen, onDelete }: {
 
 export default function RequirementList() {
   const t = useT()
-  const { workspaces, activeWorkspaceId, createRequirement, deleteRequirement, setActiveRequirement } = useWorkspaceStore()
+  const { workspaces, activeWorkspaceId, workspaceDetailReady, createRequirement, deleteRequirement, setActiveRequirement } = useWorkspaceStore()
   const { showConfirm, reqCreating, setReqCreating } = useUIStore()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -200,6 +200,16 @@ export default function RequirementList() {
   ].filter(g => g.items.length > 0)
 
   let globalIdx = 0
+
+  if (!workspaceDetailReady && requirements.length === 0 && !reqCreating) {
+    return (
+      <div className="space-y-3 pt-1" aria-busy="true">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-[4.5rem] rounded-xl border border-border-subtle/60 bg-surface-2/25 animate-pulse" />
+        ))}
+      </div>
+    )
+  }
 
   if (requirements.length === 0 && !reqCreating) {
     return null

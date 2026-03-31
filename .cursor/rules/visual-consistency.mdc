@@ -1,0 +1,26 @@
+---
+description: Whole-app VibeOS web visual contract — tokens, panels, lists; points to ui-chrome and design-system
+alwaysApply: true
+---
+
+# Visual consistency (`apps/web`)
+
+Keep **one visual language** across Dashboard, workspace views, requirements, settings, and NLP / CommandBar chrome.
+
+## Authoritative rules (use together)
+
+| Rule | Role |
+|------|------|
+| `design-system.mdc` | `@theme` tokens in `index.css`; **no raw hex**; fonts & global utilities |
+| `ui-chrome.mdc` | Panel shells, headers, list rows, inner blocks, inline forms, Dock clearance |
+| `frontend-react.mdc` | Component shape, Zustand, modals, **standalone** form field classes |
+
+## Non‑negotiables
+
+- **Outer panels / cards:** `rounded-xl border border-border-subtle bg-surface-1/30` (use `overflow-hidden` when splitting header / body). Avoid `border-accent/*` as the default section frame; reserve accent for focus rings, badges, and primary CTAs.
+- **Layering:** prefer fractional surfaces (`bg-surface-2/40`, `hover:bg-surface-2/35`, footer `bg-surface-2/20`) instead of solid blocks that fight neighbors.
+- **Type scale:** section / micro-labels → `text-text-secondary`; primary content → `text-text-primary` or `text-text-primary/90`; hints / meta → `text-text-tertiary` (and smaller sizes per `ui-chrome.mdc`).
+- **Lists inside panels:** row hover only — **no** full border + heavy background on every row (`ui-chrome.mdc`).
+- **Primary / secondary actions:** align with toolbars — e.g. primary `rounded-md bg-accent text-white text-[11px] font-medium`; secondary `rounded-md border border-border-subtle bg-surface-2/40 text-[11px] font-medium text-text-secondary`.
+
+New **recurring** layout primitives belong in `ui-chrome.mdc`; update `rules-maintenance.mdc` when triggers apply.

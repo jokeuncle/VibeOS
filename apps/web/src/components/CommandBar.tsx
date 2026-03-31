@@ -128,7 +128,7 @@ export default function CommandBar() {
   const [intentHint, setIntentHint] = useState<IntentHint | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const { activeWorkspaceId, activeRequirementId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading, homeNlpLoading, sendHomeNLPStream, clearHomeMessages } = useWorkspaceStore()
+  const { activeWorkspaceId, activeRequirementId, workspaces, workspaceDetailReady, sendNLPMessageStream: sendNLPMessage, nlpLoading, homeNlpLoading, sendHomeNLPStream, clearHomeMessages } = useWorkspaceStore()
   const { setHomeSearchQuery, unregisterNlpContext } = useUIStore()
   const activeCtx = useActiveNlpContext()
   const slashCommands = useSlashCommands()
@@ -137,9 +137,15 @@ export default function CommandBar() {
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const workspaceAgents = activeWorkspace?.agents || []
 
-  /** Only after the workspace row exists; otherwise `?? 0` falsely matched "zero reqs" while list was still loading. */
+  /**
+   * Workspace list rows omit requirements until GET /workspaces/:id; avoid discovery / zero-requirement
+   * copy until `workspaceDetailReady` (set when that request finishes for the active id).
+   */
   const isZeroRequirements =
-    !!activeWorkspaceId && !!activeWorkspace && (activeWorkspace.requirements?.length ?? 0) === 0
+    workspaceDetailReady &&
+    !!activeWorkspaceId &&
+    !!activeWorkspace &&
+    (activeWorkspace.requirements?.length ?? 0) === 0
   const activeRequirement = activeWorkspace?.requirements?.find((r) => r.id === activeRequirementId)
 
   /** Match `WorkspaceHome` NLP strip: max-w-2xl + px-6 sm:px-10 (same in workspace / requirement detail). */
@@ -340,6 +346,7 @@ export default function CommandBar() {
   const getPlaceholder = () => {
     if (activeCtx?.placeholderKey) return t(activeCtx.placeholderKey)
     if (!activeWorkspaceId) return t('command.placeholderHome')
+    if (activeWorkspaceId && !workspaceDetailReady) return t('command.placeholderNLP')
     if (isZeroRequirements) return t('command.placeholderDiscovery' as TranslationKey)
     if (activeRequirement && (activeRequirement.status === 'draft' || activeRequirement.status === 'designing')) {
       return t('requirement.designModeHint' as TranslationKey)

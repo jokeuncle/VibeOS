@@ -12,6 +12,7 @@ export function buildCoreSlice(set: SetState, get: GetState) {
     workspaces: [] as Workspace[],
     activeWorkspaceId: null as string | null,
     activePhaseId: null as string | null,
+    workspaceDetailReady: false,
     loading: false,
 
     fetchWorkspaces: async () => {
@@ -49,12 +50,13 @@ export function buildCoreSlice(set: SetState, get: GetState) {
             agents: mergedAgents,
           }
           if (!prev) {
-            return { workspaces: [...s.workspaces, merged] }
+            return { workspaces: [...s.workspaces, merged], workspaceDetailReady: true }
           }
-          return { workspaces: patchWorkspace(s.workspaces, id, () => merged) }
+          return { workspaces: patchWorkspace(s.workspaces, id, () => merged), workspaceDetailReady: true }
         })
       } catch (err) {
         console.error('Failed to refresh workspace document:', err)
+        if (get().activeWorkspaceId === id) set({ workspaceDetailReady: true })
       }
     },
 
@@ -88,16 +90,18 @@ export function buildCoreSlice(set: SetState, get: GetState) {
           })
           const merged = { ...ws, activities, agents: mergedAgents }
           if (!prev) {
-            return { workspaces: [...s.workspaces, merged] }
+            return { workspaces: [...s.workspaces, merged], workspaceDetailReady: true }
           }
-          return { workspaces: patchWorkspace(s.workspaces, id, () => merged) }
+          return { workspaces: patchWorkspace(s.workspaces, id, () => merged), workspaceDetailReady: true }
         })
       } catch (err) {
         console.error('Failed to refresh workspace:', err)
+        if (get().activeWorkspaceId === id) set({ workspaceDetailReady: true })
       }
     },
 
     setActiveWorkspace: (id: string | null) => {
+      const detailReady = id == null || id.startsWith('ws-temp-')
       set({
         activeWorkspaceId: id,
         activePhaseId: null,
@@ -105,6 +109,7 @@ export function buildCoreSlice(set: SetState, get: GetState) {
         workflowEvents: [],
         messagesCursor: null,
         messagesHasMore: false,
+        workspaceDetailReady: detailReady,
       })
       if (id && !id.startsWith('ws-temp-')) {
         void get().refreshActiveWorkspace()
@@ -124,6 +129,8 @@ export function buildCoreSlice(set: SetState, get: GetState) {
             workspaces: patchWorkspace(s.workspaces, tempId, () => ws),
             activeWorkspaceId:
               s.activeWorkspaceId === tempId ? ws.id : s.activeWorkspaceId,
+            workspaceDetailReady:
+              s.activeWorkspaceId === tempId ? true : s.workspaceDetailReady,
           }))
         })
         .catch((err) => {
@@ -175,6 +182,7 @@ export function buildCoreSlice(set: SetState, get: GetState) {
       set((s) => ({
         workspaces: s.workspaces.filter((w) => w.id !== wsId),
         activeWorkspaceId: s.activeWorkspaceId === wsId ? null : s.activeWorkspaceId,
+        workspaceDetailReady: s.activeWorkspaceId === wsId ? true : s.workspaceDetailReady,
       }))
       workspaceApi.delete(wsId).catch((err) => {
         console.error('Failed to delete workspace:', err)
@@ -192,6 +200,8 @@ export function buildCoreSlice(set: SetState, get: GetState) {
             workspaces: patchWorkspace(s.workspaces, tempId, () => ws),
             activeWorkspaceId:
               s.activeWorkspaceId === tempId ? ws.id : s.activeWorkspaceId,
+            workspaceDetailReady:
+              s.activeWorkspaceId === tempId ? true : s.workspaceDetailReady,
           }))
         })
         .catch((err) => {

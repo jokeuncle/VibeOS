@@ -34,7 +34,10 @@ Never use native `<select>`. Use the custom dropdown pattern (`FormSelect` in `u
 
 ## Form Input Styling
 
-Standard input class string (consistent across all forms):
+- **Standalone / modal / full-page settings** — use the standard string below.
+- **Inside a bordered panel** (inline create strips, dashboard cards, list headers) — use the inner-block field pattern in `ui-chrome.mdc` (`bg-surface-2/40`, `border-border-subtle`, often `text-xs`).
+
+Standard input (standalone):
 
 ```
 w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-quaternary focus:outline-none focus:ring-1 focus:ring-accent/50

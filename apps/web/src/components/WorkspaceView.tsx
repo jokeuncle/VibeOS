@@ -79,7 +79,7 @@ function ViewContent() {
 }
 
 export default function WorkspaceView() {
-  const { activeWorkspaceId, workspaces, activeRequirementId, requirementDetail, setActiveRequirement } = useWorkspaceStore()
+  const { activeWorkspaceId, workspaces, activeRequirementId, requirementDetail, setActiveRequirement, workspaceDetailReady } = useWorkspaceStore()
   const { viewMode, reqSubView, setReqSubView, setReqCreating, reqCreating } = useUIStore()
   const t = useT()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -154,7 +154,11 @@ export default function WorkspaceView() {
                     <h1 className="text-base font-semibold text-text-primary tracking-tight">
                       {t('sidebar.requirements')}
                     </h1>
-                    <span className="text-[11px] font-mono text-text-tertiary tabular-nums">{reqCount}</span>
+                    <span
+                      className={`text-[11px] font-mono text-text-tertiary tabular-nums min-w-[1.25rem] inline-block ${!workspaceDetailReady ? 'opacity-45' : ''}`}
+                    >
+                      {workspaceDetailReady ? reqCount : '—'}
+                    </span>
                   </div>
                   <p className="text-[12px] text-text-tertiary">{t('requirement.listDesc')}</p>
                 </div>
@@ -197,7 +201,7 @@ export default function WorkspaceView() {
 
               {/* Zero-requirement onboarding hero — hide while form is open */}
               <AnimatePresence>
-                {reqCount === 0 && reqSubView === 'list' && !reqCreating && (
+                {workspaceDetailReady && reqCount === 0 && reqSubView === 'list' && !reqCreating && (
                   <motion.div
                     key="empty-hero"
                     initial={{ opacity: 0, y: 12 }}

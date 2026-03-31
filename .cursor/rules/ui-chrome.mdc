@@ -20,6 +20,12 @@ Apply these alongside `design-system.mdc` and `frontend-react.mdc`. Goal: **one 
 - Prefer **StatCard-like** surfaces: `rounded-lg bg-surface-2/40 border border-border-subtle` — avoid solid `bg-surface-2` unless a single focused control (e.g. inputs).
 - Uppercase micro-labels in panels: `text-text-secondary` (not `text-tertiary`) for **section labels**; keep `text-tertiary` for de-emphasized hints only.
 
+## Inline forms (create / edit inside a panel or list)
+
+- Reuse the **primary panel shell** above; **header** may add a left icon rail `w-9 h-9 rounded-lg bg-accent/10` + `text-accent` icon (same family as list row `w-7 h-7` rails).
+- **Field labels:** `text-[10px] font-semibold text-text-secondary uppercase tracking-wider`; **controls** in dense panels: `text-xs`, `rounded-lg bg-surface-2/40 border border-border-subtle`, `focus:outline-none focus:ring-1 focus:ring-accent/35 focus:border-accent/30`.
+- **Footer:** `border-t border-border-subtle px-4 py-3 flex justify-end gap-2 bg-surface-2/20`; buttons match page toolbars (`text-[11px]`, `py-1.5`). See `visual-consistency.mdc` for primary/secondary action classes.
+
 ## List rows & “bubble” rows (requirements, phase tasks, chat)
 
 - Row container: `flex gap-2.5` + `rounded-lg -mx-1 px-1 py-1.5 hover:bg-surface-2/35 transition-colors` — **no** heavy bordered box per row.

@@ -34,6 +34,12 @@ export interface WorkspaceState {
   workspaces: Workspace[]
   activeWorkspaceId: string | null
   activePhaseId: string | null
+  /**
+   * True after the active workspace has been loaded via GET /workspaces/:id at least once
+   * since it became active. List responses omit requirements; until this is true, `requirements`
+   * on the row may be stale empty and must not drive zero-requirement UX or `zero_requirements` NLU.
+   */
+  workspaceDetailReady: boolean
   messages: Message[]
   loading: boolean
   nlpLoading: boolean
@@ -162,6 +168,7 @@ export type CoreSlice = Pick<
   | 'workspaces'
   | 'activeWorkspaceId'
   | 'activePhaseId'
+  | 'workspaceDetailReady'
   | 'loading'
   | 'fetchWorkspaces'
   | 'refreshWorkspaceDocument'

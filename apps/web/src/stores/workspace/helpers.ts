@@ -129,7 +129,7 @@ export function buildNlpPhaseContext(get: () => WorkspaceState): Record<string, 
   }
 
   const reqCount = ws?.requirements?.length ?? 0
-  if (reqCount === 0) ctx.zero_requirements = true
+  if (get().workspaceDetailReady && reqCount === 0) ctx.zero_requirements = true
 
   if (phaseRepos.length) {
     ctx.gitlab_repos = phaseRepos.map((r) => ({

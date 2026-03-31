@@ -18,7 +18,8 @@ When making code changes, check if any Cursor rules need updating. Stale rules p
 | Vite proxy rule changed | `project-overview.mdc` (proxy table) |
 | New WebSocket event type | `project-overview.mdc` (event lists) |
 | New Tailwind token in `@theme` | `design-system.mdc` (color table) |
-| Panel/list/Dock layout patterns change | `ui-chrome.mdc` |
+| Panel/list/Dock layout patterns change | `ui-chrome.mdc`, `visual-consistency.mdc` (if global rules shift) |
+| New whole-app visual rule or primitive | `visual-consistency.mdc` + `ui-chrome.mdc` (concrete classes) |
 | New i18n key namespace | `frontend-i18n.mdc` (key naming examples) |
 | New shared Go model | `project-overview.mdc`, `go-services.mdc` |
 | New Python tool class | `python-agents.mdc` (if new pattern) |
@@ -45,6 +46,7 @@ When making code changes, check if any Cursor rules need updating. Stale rules p
 | `frontend-react.mdc` | `apps/web/src/**/*.{ts,tsx}` | Components, Zustand stores, Tailwind tokens |
 | `frontend-i18n.mdc` | `apps/web/src/**/*.{ts,tsx}` | Dictionary keys, `useT()`, key naming |
 | `design-system.mdc` | `apps/web/src/**/*.{css,tsx}` | Color tokens, utility classes, fonts |
-| `ui-chrome.mdc` | `apps/web/src/**/*.tsx` | Panel chrome, list rows, Dock vs NLP bar |
+| `ui-chrome.mdc` | `apps/web/src/**/*.tsx` | Panel chrome, list rows, inline forms, Dock vs NLP bar |
+| `visual-consistency.mdc` | Always | Web UI contract; links design-system ↔ ui-chrome ↔ react |
 | `docker-deploy.mdc` | `deploy/**` | Compose naming, env vars, migrations |
 | `rules-maintenance.mdc` | Always | This file — when to update other rules |
