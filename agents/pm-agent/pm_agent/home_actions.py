@@ -145,6 +145,52 @@ async def _workspace_create(
             yield sm.content_delta(sid, delta)
     yield sm.timeline(sid, "exec", "生成回复 / Generating reply", "completed")
 
+    # JSON Schema for the editable card form (rendered by SchemaForm on the frontend).
+    # Fields here map 1-to-1 onto action_payload keys consumed by workspace_create.execute().
+    req_count = len(initial_requirements)
+    form_schema: dict = {
+        "type": "object",
+        "properties": {
+            "suggested_name": {
+                "type": "string",
+                "title": "工作空间名称",
+            },
+            "suggested_description": {
+                "type": "string",
+                "title": "项目描述",
+            },
+        },
+    }
+    form_ui_schema: dict = {
+        "suggested_name": {"ui:options": {"maxLength": 100}},
+        "suggested_description": {
+            "ui:widget": "textarea",
+            "ui:options": {"rows": 2, "maxLength": 500},
+        },
+    }
+    if req_count > 0:
+        form_schema["properties"]["initial_requirements"] = {
+            "type": "array",
+            "title": "首批需求草稿",
+            "maxItems": 3,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "title": "需求标题"},
+                    "description": {"type": "string", "title": "描述"},
+                },
+            },
+        }
+        form_ui_schema["initial_requirements"] = {
+            "items": {
+                "title": {"ui:options": {"maxLength": 200}},
+                "description": {
+                    "ui:widget": "textarea",
+                    "ui:options": {"rows": 2, "maxLength": 2000},
+                },
+            }
+        }
+
     yield sm.content_block(sid, "nlp_action", {
         "action_type": "workspace_create",
         "action_label": "创建工作空间并开始",
@@ -160,5 +206,8 @@ async def _workspace_create(
             "confidence": parsed.confidence,
             "original_query": user_message,
             "slots": parsed.slots,
+            # Schema-driven form — frontend SchemaForm reads these two keys.
+            "form_schema": form_schema,
+            "form_ui_schema": form_ui_schema,
         },
     })

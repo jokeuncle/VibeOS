@@ -8,8 +8,10 @@ import {
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import { getNlpAction } from '../lib/nlpActions'
+import { SchemaForm } from '../lib/schemaForm/SchemaForm'
 import type { RichBlock, RichAction, ClarificationOption, ExecutionStep } from '../types'
 import type { TranslationKey } from '../i18n/en'
+import type { RJSFSchema, UiSchema } from '@rjsf/utils'
 
 // ---------------------------------------------------------------------------
 // IntentFeedback: animated intent routing display
@@ -404,7 +406,18 @@ export function NlpActionBlock({
   const cardHeadline = block.title?.trim() || def?.cardHeadline?.(localPayload, t) || label
   const cardIcon = def?.cardIcon?.(localPayload) ?? icon
   const iconTint = def?.cardIconTint?.(localPayload) ?? 'bg-surface-3/70 text-text-secondary group-hover:text-accent'
-  const HasBody = def?.CardBody
+
+  // Schema-driven form body: prefer form_schema from payload, fall back to legacy CardBody
+  const formSchema = localPayload.form_schema as RJSFSchema | undefined
+  const formUiSchema = localPayload.form_ui_schema as UiSchema | undefined
+  // Strip meta-keys before passing formData to SchemaForm so it only sees field values
+  const schemaFormData = (() => {
+    if (!formSchema) return localPayload
+    const { form_schema: _fs, form_ui_schema: _fus, ...rest } = localPayload
+    return rest
+  })()
+
+  const hasBody = Boolean(formSchema)
 
   const cardShell =
     `rounded-2xl border transition-all duration-200 border-border-subtle/45 bg-surface-2/20 ` +
@@ -417,7 +430,7 @@ export function NlpActionBlock({
 
   const headlineSlot = loading ? t('nlp.action.creating' as TranslationKey) : cardHeadline
 
-  if (HasBody) {
+  if (hasBody) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 4 }}
@@ -437,7 +450,16 @@ export function NlpActionBlock({
           </div>
         </div>
 
-        {!loading ? <HasBody payload={localPayload} onPayloadChange={setLocalPayload} t={t} /> : null}
+        {!loading && formSchema && (
+          <div className="px-3.5 pb-2 border-t border-border-subtle/30 pt-2.5">
+            <SchemaForm
+              schema={formSchema}
+              uiSchema={formUiSchema}
+              formData={schemaFormData}
+              onChange={(fd) => setLocalPayload({ ...fd, form_schema: formSchema, form_ui_schema: formUiSchema })}
+            />
+          </div>
+        )}
 
         <button
           type="button"

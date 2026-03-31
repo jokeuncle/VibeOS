@@ -5,12 +5,14 @@
  *
  * 1. Call `registerNlpAction({ type: 'my_action', icon, execute, ... })`.
  * 2. (Optional) Add an i18n key `nlp.action.my_action` for the default chip label.
- * 3. (Optional) Supply `CardBody` for rich card rendering with editable slots.
+ * 3. For card forms: have the backend include `form_schema` (JSON Schema) and
+ *    optionally `form_ui_schema` (RJSF uiSchema) in `action_payload`.
+ *    SchemaForm renders automatically — no frontend code needed per action.
  *
  * No other file needs to be touched — NlpActionBlock reads from this registry.
  */
 
-import React, { useState } from 'react'
+import React from 'react'
 import { Sparkles, Play, ArrowRight, ChevronRight, LayoutTemplate } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
@@ -33,18 +35,10 @@ export interface ActionResult {
   markDone?: boolean
 }
 
-export interface CardBodyProps {
-  payload: Record<string, unknown>
-  onPayloadChange: (updated: Record<string, unknown>) => void
-  t: TFn
-}
-
 export interface NlpActionDef {
   type: string
   icon: React.ReactNode
   execute(payload: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult>
-  /** Custom card body rendered between header and confirm button (card layout only). */
-  CardBody?: React.ComponentType<CardBodyProps>
   /** Override icon in card mode (e.g. navigate shows LayoutTemplate for certain targets). */
   cardIcon?(payload: Record<string, unknown>): React.ReactNode | undefined
   /** Custom card headline — falls back to the i18n label when undefined. */
@@ -74,71 +68,9 @@ export function getActionIcon(type: string): React.ReactNode {
 }
 
 // ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-type RequirementDraft = { title: string; description: string }
-
-function normalizeInitialReqs(payload: Record<string, unknown>): RequirementDraft[] {
-  const raw = payload?.initial_requirements
-  if (!Array.isArray(raw)) return []
-  return raw.slice(0, 3).map((item) => {
-    if (item && typeof item === 'object' && 'title' in item) {
-      const o = item as Record<string, unknown>
-      return {
-        title: typeof o.title === 'string' ? o.title : '',
-        description: typeof o.description === 'string' ? o.description : '',
-      }
-    }
-    return { title: '', description: '' }
-  })
-}
-
-// ---------------------------------------------------------------------------
 // Built-in: workspace_create
+// Form fields come entirely from form_schema in action_payload (schema-driven).
 // ---------------------------------------------------------------------------
-
-function WorkspaceCreateCardBody({ payload, onPayloadChange, t }: CardBodyProps) {
-  const [drafts, setDrafts] = useState<RequirementDraft[]>(() => normalizeInitialReqs(payload))
-
-  function update(index: number, patch: Partial<RequirementDraft>) {
-    setDrafts((prev) => {
-      const next = prev.map((d, i) => (i === index ? { ...d, ...patch } : d))
-      onPayloadChange({ ...payload, initial_requirements: next })
-      return next
-    })
-  }
-
-  if (drafts.length === 0) return null
-
-  return (
-    <div className="px-3.5 pb-2 space-y-2 border-t border-border-subtle/30 pt-2.5">
-      <div className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide">
-        {t('nlp.homeInitialRequirements' as TranslationKey)}
-      </div>
-      {drafts.map((r, i) => (
-        <div key={i} className="space-y-1.5 rounded-xl bg-surface-2/30 border border-border-subtle/45 p-2.5">
-          <input
-            type="text"
-            value={r.title}
-            onChange={(e) => update(i, { title: e.target.value })}
-            maxLength={200}
-            placeholder={t('nlp.homeRequirementTitlePh' as TranslationKey)}
-            className="w-full px-2 py-1.5 rounded-lg bg-surface-1/50 border border-border-subtle text-[11px] text-text-primary placeholder:text-text-tertiary/80 outline-none focus:border-accent/35"
-          />
-          <textarea
-            value={r.description}
-            onChange={(e) => update(i, { description: e.target.value })}
-            maxLength={2000}
-            rows={2}
-            placeholder={t('nlp.homeRequirementDescPh' as TranslationKey)}
-            className="w-full px-2 py-1.5 rounded-lg bg-surface-1/50 border border-border-subtle text-[11px] text-text-secondary placeholder:text-text-tertiary/80 outline-none focus:border-accent/35 resize-none"
-          />
-        </div>
-      ))}
-    </div>
-  )
-}
 
 registerNlpAction({
   type: 'workspace_create',
@@ -151,11 +83,18 @@ registerNlpAction({
     useWorkspaceStore.setState((s) => ({ workspaces: [...s.workspaces, ws] }))
     useWorkspaceStore.getState().setActiveWorkspace(ws.id)
 
-    const reqs = normalizeInitialReqs(payload).filter((r) => r.title.trim())
+    const rawReqs = payload.initial_requirements
+    const reqs: { title: string; description: string }[] = Array.isArray(rawReqs)
+      ? rawReqs
+          .filter((r): r is Record<string, unknown> => r && typeof r === 'object' && 'title' in r)
+          .map((r) => ({ title: String(r.title ?? ''), description: String(r.description ?? '') }))
+          .filter((r) => r.title.trim())
+      : []
+
     for (const r of reqs) {
       await workspaceApi.createRequirement(ws.id, {
         title: r.title.trim(),
-        description: (r.description || '').trim(),
+        description: r.description.trim(),
       })
     }
     if (reqs.length > 0) await useWorkspaceStore.getState().refreshWorkspaceDocument()
@@ -164,8 +103,6 @@ registerNlpAction({
     useUIStore.getState().setConversationVisible('home', false)
     return { markDone: true }
   },
-
-  CardBody: WorkspaceCreateCardBody,
 
   cardHeadline(_payload, t) {
     return t('nlp.action.createWorkspace' as TranslationKey)
@@ -177,7 +114,8 @@ registerNlpAction({
     const bits: string[] = []
     if (name) bits.push(`${t('nlp.homeWorkspaceNameLine' as TranslationKey)} ${name}`)
     if (desc) bits.push(desc.length > 56 ? `${desc.slice(0, 56)}…` : desc)
-    const draftN = normalizeInitialReqs(payload).filter((r) => r.title.trim()).length
+    const reqs = Array.isArray(payload.initial_requirements) ? payload.initial_requirements : []
+    const draftN = reqs.filter((r: unknown) => r && typeof r === 'object' && 'title' in (r as object) && String((r as Record<string, unknown>).title ?? '').trim()).length
     if (draftN > 0) {
       bits.push(t('nlp.homeDraftRequirementsCount' as TranslationKey).replace(/\{count\}/g, String(draftN)))
     }
