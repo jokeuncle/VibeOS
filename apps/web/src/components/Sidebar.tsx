@@ -1,7 +1,7 @@
 import {
   PanelLeftClose, PanelLeftOpen,
   LayoutDashboard, FileStack,
-  GitBranch, Bot, Plug2,
+  GitBranch, Bot, Plug2, Workflow,
   Layers, Activity, Gauge,
   Settings,
 } from 'lucide-react'
@@ -18,6 +18,7 @@ type ViewMode =
   | 'pipeline'
   | 'agentTeam'
   | 'integrations'
+  | 'controlCenter'
   | 'context'
   | 'traces'
   | 'budget'
@@ -47,6 +48,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'pipeline', icon: GitBranch, label: 'sidebar.pipeline' },
       { key: 'agentTeam', icon: Bot, label: 'sidebar.agentTeam' },
       { key: 'integrations', icon: Plug2, label: 'sidebar.integrations' },
+      { key: 'controlCenter', icon: Workflow, label: 'sidebar.controlCenter' },
     ],
   },
   {

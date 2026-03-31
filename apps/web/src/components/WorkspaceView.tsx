@@ -20,6 +20,7 @@ import WorkspaceIntegrations from './WorkspaceIntegrations'
 import WorkspaceContext from './WorkspaceContext'
 import WorkspaceTraces from './WorkspaceTraces'
 import WorkspaceBudget from './WorkspaceBudget'
+import ControlCenter from './ControlCenter/ControlCenter'
 
 type ViewMode =
   | 'dashboard'
@@ -27,6 +28,7 @@ type ViewMode =
   | 'pipeline'
   | 'agentTeam'
   | 'integrations'
+  | 'controlCenter'
   | 'context'
   | 'traces'
   | 'budget'
@@ -63,6 +65,7 @@ function ViewContent() {
   if (currentMode === 'pipeline') return <WorkspacePipeline />
   if (currentMode === 'agentTeam') return <WorkspaceAgentTeam />
   if (currentMode === 'integrations') return <WorkspaceIntegrations />
+  if (currentMode === 'controlCenter') return <ControlCenter />
   if (currentMode === 'context') return <WorkspaceContext />
   if (currentMode === 'traces') return <WorkspaceTraces />
   if (currentMode === 'budget') return <WorkspaceBudget />
@@ -98,6 +101,7 @@ export default function WorkspaceView() {
   const inReqDetail = currentViewMode === 'requirements' && !!activeRequirementId
   const showReqToolbar = currentViewMode === 'requirements' && !activeRequirementId
 
+  const isControlCenter = currentViewMode === 'controlCenter'
   const wideWorkspaceViews =
     currentViewMode === 'requirements' ||
     currentViewMode === 'knowledgeBase' ||
@@ -109,7 +113,7 @@ export default function WorkspaceView() {
     currentViewMode === 'context' ||
     currentViewMode === 'traces' ||
     currentViewMode === 'budget'
-  const maxW = wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
+  const maxW = isControlCenter ? 'max-w-none' : wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
 
   return (
     <motion.main

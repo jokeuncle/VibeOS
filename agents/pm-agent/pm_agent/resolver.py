@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Coroutine, TYPE_CHECKING
 
-from vibeos_agent import RegistryClient, ResolvedTemplate
+from vibeos_agent import GraphExecutor, HAS_LANGGRAPH, RegistryClient, ResolvedTemplate
 
 if TYPE_CHECKING:
     from .intent import ParsedIntent
@@ -104,6 +104,17 @@ async def dispatch_intent(
                 "task_type": template.task_type,
                 "required_capabilities": template.required_capabilities,
                 "params_mapping": template.params_mapping,
+            }
+
+        if template.handler_type == "graph" and template.graph_def:
+            return {
+                "resolved_by": "template",
+                "handler_type": "graph",
+                "template_id": template.id,
+                "graph_def": template.graph_def,
+                "state_schema": template.state_schema,
+                "task_type": template.task_type,
+                "required_capabilities": template.required_capabilities,
             }
 
     local = get_local_handler(parsed.intent, context_scope)

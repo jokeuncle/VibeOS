@@ -272,4 +272,10 @@ const (
 	WSEventExecutionStart    = "execution:start"
 	WSEventExecutionUpdate   = "execution:update"
 	WSEventExecutionComplete = "execution:complete"
+
+	WSEventGraphStart        = "graph:start"
+	WSEventGraphNodeStart    = "graph:node_start"
+	WSEventGraphNodeComplete = "graph:node_complete"
+	WSEventGraphComplete     = "graph:complete"
+	WSEventGraphError        = "graph:error"
 )

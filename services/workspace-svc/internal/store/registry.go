@@ -102,7 +102,8 @@ func (s *PostgresStore) DeleteIntent(ctx context.Context, name string) error {
 
 func (s *PostgresStore) ListTaskTemplates(ctx context.Context, enabledOnly bool) ([]models.TaskTemplateEntry, error) {
 	q := `SELECT id, intent_pattern, context, task_type, required_capabilities,
-	             params_mapping, handler_type, handler_ref, priority, enabled, source, created_at, updated_at
+	             params_mapping, handler_type, handler_ref, graph_def, state_schema,
+	             priority, enabled, source, created_at, updated_at
 	      FROM task_template_registry`
 	if enabledOnly {
 		q += ` WHERE enabled = true`
@@ -129,7 +130,8 @@ func (s *PostgresStore) ListTaskTemplates(ctx context.Context, enabledOnly bool)
 func (s *PostgresStore) ResolveTaskTemplate(ctx context.Context, intentName, ctxScope string) (*models.TaskTemplateEntry, error) {
 	row := s.pool.QueryRow(ctx,
 		`SELECT id, intent_pattern, context, task_type, required_capabilities,
-		        params_mapping, handler_type, handler_ref, priority, enabled, source, created_at, updated_at
+		        params_mapping, handler_type, handler_ref, graph_def, state_schema,
+		        priority, enabled, source, created_at, updated_at
 		 FROM task_template_registry
 		 WHERE enabled = true
 		   AND (intent_pattern = $1 OR $1 LIKE REPLACE(REPLACE(intent_pattern,'*','%'),'?','_'))
@@ -164,6 +166,14 @@ func (s *PostgresStore) UpsertTaskTemplate(ctx context.Context, req models.Creat
 	if hType == "" {
 		hType = "capability"
 	}
+	graphDef := req.GraphDef
+	if graphDef == nil {
+		graphDef = []byte("{}")
+	}
+	stateSchema := req.StateSchema
+	if stateSchema == nil {
+		stateSchema = []byte("{}")
+	}
 	priority := 0
 	if req.Priority != nil {
 		priority = *req.Priority
@@ -180,12 +190,12 @@ func (s *PostgresStore) UpsertTaskTemplate(ctx context.Context, req models.Creat
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO task_template_registry
 		   (intent_pattern, context, task_type, required_capabilities, params_mapping,
-		    handler_type, handler_ref, priority, enabled, source, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
+		    handler_type, handler_ref, graph_def, state_schema, priority, enabled, source, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)
 		 RETURNING id, intent_pattern, context, task_type, required_capabilities, params_mapping,
-		           handler_type, handler_ref, priority, enabled, source, created_at, updated_at`,
+		           handler_type, handler_ref, graph_def, state_schema, priority, enabled, source, created_at, updated_at`,
 		req.IntentPattern, ctxVal, taskType, caps, mapping,
-		hType, req.HandlerRef, priority, enabled, source, now)
+		hType, req.HandlerRef, graphDef, stateSchema, priority, enabled, source, now)
 	return scanTaskTemplate(row)
 }
 
@@ -207,7 +217,9 @@ func (s *PostgresStore) DeleteTaskTemplate(ctx context.Context, id string) error
 func (s *PostgresStore) ListCapabilities(ctx context.Context, enabledOnly bool) ([]models.CapabilityEntry, error) {
 	q := `SELECT id, name, description, provider, endpoint,
 	             input_schema, output_schema, constraints,
-	             version, health, last_heartbeat, enabled, source, created_at, updated_at
+	             version, health, last_heartbeat,
+	             node_config_schema, supports_streaming,
+	             enabled, source, created_at, updated_at
 	      FROM capability_registry`
 	if enabledOnly {
 		q += ` WHERE enabled = true`
@@ -235,7 +247,9 @@ func (s *PostgresStore) ListCapabilitiesByProvider(ctx context.Context, provider
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, name, description, provider, endpoint,
 		        input_schema, output_schema, constraints,
-		        version, health, last_heartbeat, enabled, source, created_at, updated_at
+		        version, health, last_heartbeat,
+		        node_config_schema, supports_streaming,
+		        enabled, source, created_at, updated_at
 		 FROM capability_registry
 		 WHERE provider = $1 AND enabled = true
 		 ORDER BY name`, provider)
@@ -259,7 +273,9 @@ func (s *PostgresStore) FindCapabilityProviders(ctx context.Context, capabilityN
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, name, description, provider, endpoint,
 		        input_schema, output_schema, constraints,
-		        version, health, last_heartbeat, enabled, source, created_at, updated_at
+		        version, health, last_heartbeat,
+		        node_config_schema, supports_streaming,
+		        enabled, source, created_at, updated_at
 		 FROM capability_registry
 		 WHERE name = $1 AND enabled = true AND health = 'healthy'
 		 ORDER BY priority_score(version) DESC, created_at`, capabilityName)
@@ -268,7 +284,9 @@ func (s *PostgresStore) FindCapabilityProviders(ctx context.Context, capabilityN
 			rows, err = s.pool.Query(ctx,
 				`SELECT id, name, description, provider, endpoint,
 				        input_schema, output_schema, constraints,
-				        version, health, last_heartbeat, enabled, source, created_at, updated_at
+				        version, health, last_heartbeat,
+				        node_config_schema, supports_streaming,
+				        enabled, source, created_at, updated_at
 				 FROM capability_registry
 				 WHERE name = $1 AND enabled = true AND health = 'healthy'
 				 ORDER BY created_at`, capabilityName)
@@ -310,6 +328,14 @@ func (s *PostgresStore) UpsertCapability(ctx context.Context, req models.CreateC
 	if ver == "" {
 		ver = "1.0.0"
 	}
+	nodeConf := req.NodeConfigSchema
+	if nodeConf == nil {
+		nodeConf = []byte("{}")
+	}
+	streaming := false
+	if req.SupportsStreaming != nil {
+		streaming = *req.SupportsStreaming
+	}
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -322,19 +348,25 @@ func (s *PostgresStore) UpsertCapability(ctx context.Context, req models.CreateC
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO capability_registry
 		   (name, description, provider, endpoint, input_schema, output_schema,
-		    constraints, version, health, last_heartbeat, enabled, source, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'healthy',$9,$10,$11,$9,$9)
+		    constraints, version, health, last_heartbeat,
+		    node_config_schema, supports_streaming,
+		    enabled, source, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'healthy',$9,$10,$11,$12,$13,$9,$9)
 		 ON CONFLICT (name, provider) DO UPDATE SET
 		   description=EXCLUDED.description, endpoint=EXCLUDED.endpoint,
 		   input_schema=EXCLUDED.input_schema, output_schema=EXCLUDED.output_schema,
 		   constraints=EXCLUDED.constraints, version=EXCLUDED.version,
 		   health='healthy', last_heartbeat=EXCLUDED.last_heartbeat,
+		   node_config_schema=EXCLUDED.node_config_schema,
+		   supports_streaming=EXCLUDED.supports_streaming,
 		   enabled=EXCLUDED.enabled, source=EXCLUDED.source, updated_at=EXCLUDED.updated_at
 		 RETURNING id, name, description, provider, endpoint,
 		           input_schema, output_schema, constraints,
-		           version, health, last_heartbeat, enabled, source, created_at, updated_at`,
+		           version, health, last_heartbeat,
+		           node_config_schema, supports_streaming,
+		           enabled, source, created_at, updated_at`,
 		req.Name, req.Description, req.Provider, req.Endpoint,
-		iSchema, oSchema, cons, ver, now, enabled, source)
+		iSchema, oSchema, cons, ver, now, nodeConf, streaming, enabled, source)
 	return scanCapability(row)
 }
 
@@ -384,6 +416,7 @@ func scanTaskTemplate(s rowScanner) (*models.TaskTemplateEntry, error) {
 	var e models.TaskTemplateEntry
 	err := s.Scan(&e.ID, &e.IntentPattern, &e.Context, &e.TaskType,
 		&e.RequiredCapabilities, &e.ParamsMapping, &e.HandlerType, &e.HandlerRef,
+		&e.GraphDef, &e.StateSchema,
 		&e.Priority, &e.Enabled, &e.Source, &e.CreatedAt, &e.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotFound
@@ -395,8 +428,9 @@ func scanCapability(s rowScanner) (*models.CapabilityEntry, error) {
 	var e models.CapabilityEntry
 	err := s.Scan(&e.ID, &e.Name, &e.Description, &e.Provider, &e.Endpoint,
 		&e.InputSchema, &e.OutputSchema, &e.Constraints,
-		&e.Version, &e.Health, &e.LastHeartbeat, &e.Enabled,
-		&e.Source, &e.CreatedAt, &e.UpdatedAt)
+		&e.Version, &e.Health, &e.LastHeartbeat,
+		&e.NodeConfigSchema, &e.SupportsStreaming,
+		&e.Enabled, &e.Source, &e.CreatedAt, &e.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotFound
 	}

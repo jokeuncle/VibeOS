@@ -27,6 +27,8 @@ from vibeos_agent import (
     AgentStatus,
     AgentTask,
     AgentType,
+    GraphExecutor,
+    HAS_LANGGRAPH,
     LLMGatewayClient,
     MemoryClient,
     RegistryClient,
@@ -118,6 +120,7 @@ async def lifespan(app: FastAPI):
     app.state.ws_client = WorkspaceClient()
     app.state.memory = MemoryClient()
     app.state.registry = RegistryClient()
+    app.state.graph_executor = GraphExecutor(app.state.registry) if HAS_LANGGRAPH else None
     app.state.workflow = WorkflowEngine(
         app.state.dispatcher, app.state.ws_client, app.state.ws,
     )
@@ -715,6 +718,93 @@ async def handle_run_requirement(req: RunRequirementRequest) -> StreamingRespons
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Graph execution routes
+# ---------------------------------------------------------------------------
+
+class GraphExecuteRequest(BaseModel):
+    template_id: str = ""
+    graph_def: dict[str, Any] | None = None
+    input_state: dict[str, Any] = {}
+
+
+class GraphValidateRequest(BaseModel):
+    graphDef: dict[str, Any]
+
+
+@app.post("/api/graph/execute")
+async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
+    """SSE: compile and execute a LangGraph workflow from a template or inline graph_def."""
+    executor: GraphExecutor | None = app.state.graph_executor
+    registry: RegistryClient = app.state.registry
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        if not executor:
+            yield f"event: error\ndata: {json.dumps({'error': 'LangGraph not available'})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        graph_def = req.graph_def
+        if not graph_def and req.template_id:
+            templates = await registry.list_templates(enabled_only=False)
+            for t in templates:
+                if t.get("id") == req.template_id:
+                    graph_def = t.get("graphDef", {})
+                    break
+
+        if not graph_def or not graph_def.get("nodes"):
+            yield f"event: error\ndata: {json.dumps({'error': 'No graph definition found'})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        try:
+            async for event in executor.execute(graph_def, req.input_state):
+                yield f"event: {event['event']}\ndata: {json.dumps(event.get('data', {}))}\n\n"
+        except Exception as exc:
+            yield f"event: graph:error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@app.post("/api/graph/validate")
+async def handle_graph_validate(req: GraphValidateRequest) -> dict[str, Any]:
+    """Validate a graph_def: check that all capability refs exist in registry."""
+    registry: RegistryClient = app.state.registry
+    errors: list[str] = []
+
+    nodes = req.graphDef.get("nodes", [])
+    edges = req.graphDef.get("edges", [])
+
+    if not nodes:
+        errors.append("Graph has no nodes")
+
+    node_ids = {n.get("id", "") for n in nodes}
+    node_ids.add("__start__")
+    node_ids.add("__end__")
+
+    for edge in edges:
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        if src not in node_ids:
+            errors.append(f"Edge source '{src}' not found in nodes")
+        if tgt not in node_ids:
+            errors.append(f"Edge target '{tgt}' not found in nodes")
+
+    cap_refs = [n.get("capability_ref", n.get("capabilityRef", "")) for n in nodes if n.get("type") == "capability"]
+    if cap_refs:
+        try:
+            caps = await registry.list_capabilities()
+            known = {c.get("name", "") for c in caps}
+            for ref in cap_refs:
+                if ref and ref not in known:
+                    errors.append(f"Capability '{ref}' not found in registry")
+        except Exception:
+            errors.append("Could not verify capabilities (registry unavailable)")
+
+    return {"data": {"valid": len(errors) == 0, "errors": errors}}
 
 
 # ---------------------------------------------------------------------------

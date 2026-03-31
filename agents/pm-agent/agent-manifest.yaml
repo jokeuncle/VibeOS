@@ -42,6 +42,9 @@ intents:
   - name: general_chat
     labels: { zh: "自由对话", en: "General Chat" }
     hint: "greetings, product help, chit-chat, or nothing else fits"
+  - name: requirement_to_code
+    labels: { zh: "需求转代码", en: "Requirement to Code" }
+    hint: "full pipeline: analyze requirement → design → review → implement → test"
 
   # Domain agent intents (PM routes these to other agents)
   - name: design_system
@@ -182,22 +185,86 @@ templates:
     handler_ref: create_workspace
     capabilities: [pm.create_workspace]
 
+  # --- Graph-type templates (LangGraph workflows) ---
+  - intent: requirement_to_code
+    context: workspace
+    handler_type: graph
+    task_type: graph
+    capabilities: [requirement.analyze, architecture.design, development.code_gen, testing.run]
+    graph_def:
+      nodes:
+        - id: analyze
+          type: capability
+          capability_ref: requirement.analyze
+          position: { x: 100, y: 80 }
+          config: { timeout: 60 }
+        - id: design
+          type: capability
+          capability_ref: architecture.design
+          position: { x: 100, y: 230 }
+          config: { timeout: 120 }
+        - id: review_gate
+          type: human_in_loop
+          position: { x: 100, y: 380 }
+          config: { approval_required: true }
+        - id: implement
+          type: capability
+          capability_ref: development.code_gen
+          position: { x: 100, y: 530 }
+          config: { timeout: 300, retry: 2 }
+        - id: test
+          type: capability
+          capability_ref: testing.run
+          position: { x: 100, y: 680 }
+          config: { timeout: 180 }
+      edges:
+        - { source: __start__, target: analyze }
+        - { source: analyze, target: design }
+        - { source: design, target: review_gate }
+        - { source: review_gate, target: implement }
+        - { source: implement, target: test }
+        - { source: test, target: __end__ }
+      state_schema:
+        messages: { type: list, reducer: append }
+        requirement: { type: string, default: "" }
+        design_doc: { type: string, default: "" }
+        code_artifacts: { type: list, reducer: append }
+        test_results: { type: dict, default: {} }
+      config:
+        checkpointer: memory
+        recursion_limit: 15
+
 capabilities:
   - name: pm.create_task
     description: "Create tasks within a workspace phase"
+    supports_streaming: false
   - name: pm.create_requirement
     description: "Create or discover requirements"
+    supports_streaming: false
   - name: pm.bind_workspace_repo
     description: "Bind a GitLab repository to a workspace"
+    supports_streaming: false
   - name: pm.query_progress
     description: "Query project/task status"
+    supports_streaming: false
   - name: pm.execute_task
     description: "Execute a specific task via agent dispatch"
+    supports_streaming: true
   - name: pm.workflow
     description: "Run phase/project lifecycle workflows"
+    supports_streaming: true
   - name: pm.pipeline
     description: "Trigger CI/CD pipeline operations"
+    supports_streaming: true
   - name: pm.create_workspace
     description: "Create a new workspace"
+    supports_streaming: false
   - name: llm.chat
     description: "General LLM chat completion"
+    supports_streaming: true
+    node_config_schema:
+      type: object
+      properties:
+        model: { type: string, default: "default" }
+        temperature: { type: number, default: 0.7 }
+        max_tokens: { type: integer, default: 4096 }

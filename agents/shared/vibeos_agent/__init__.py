@@ -39,6 +39,7 @@ from .registry import (
     TaskTemplateDef,
     load_manifest_from_yaml,
 )
+from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
 from .session import SessionManager
 from .tools import BaseTool, ToolRegistry
 
@@ -57,11 +58,14 @@ __all__ = [
     "CapabilityContract",
     "CapabilityDef",
     "Config",
+    "GraphExecutor",
+    "HAS_LANGGRAPH",
     "IntentDef",
     "KnowledgeClient",
     "LLMGatewayClient",
     "MemoryClient",
     "PHASE_CONTEXT",
+    "ParsedGraphDef",
     "RAGClient",
     "Message",
     "Phase",

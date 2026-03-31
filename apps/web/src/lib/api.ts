@@ -772,4 +772,134 @@ export const platformApi = {
   },
 }
 
+// ---------------------------------------------------------------------------
+// Global Registry API (intents, task templates, capabilities)
+// ---------------------------------------------------------------------------
+
+export interface RegistryIntent {
+  id: string
+  name: string
+  labelZh: string
+  labelEn: string
+  hint: string
+  slotsSchema: Record<string, unknown>
+  contextScopes: string[]
+  priority: number
+  enabled: boolean
+  source: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RegistryTaskTemplate {
+  id: string
+  intentPattern: string
+  context: string
+  taskType: string
+  requiredCapabilities: string[]
+  paramsMapping: Record<string, unknown>
+  handlerType: string
+  handlerRef: string
+  graphDef: Record<string, unknown>
+  stateSchema: Record<string, unknown>
+  priority: number
+  enabled: boolean
+  source: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RegistryCapability {
+  id: string
+  name: string
+  description: string
+  provider: string
+  endpoint: string
+  inputSchema: Record<string, unknown>
+  outputSchema: Record<string, unknown>
+  constraints: Record<string, unknown>
+  version: string
+  health: string
+  lastHeartbeat: string | null
+  nodeConfigSchema: Record<string, unknown>
+  supportsStreaming: boolean
+  enabled: boolean
+  source: string
+  createdAt: string
+  updatedAt: string
+}
+
+export const registryApi = {
+  listIntents: (enabledOnly = true) =>
+    request<{ data: RegistryIntent[] }>(
+      `/api/registry/intents${enabledOnly ? '' : '?enabled=false'}`,
+    ).then(unwrap),
+
+  upsertIntent: (intent: Partial<RegistryIntent> & { name: string }) =>
+    request<{ data: RegistryIntent }>('/api/registry/intents', {
+      method: 'POST',
+      body: JSON.stringify(intent),
+    }).then(unwrap),
+
+  deleteIntent: (name: string) =>
+    request<{ data: string }>(`/api/registry/intents/${name}`, { method: 'DELETE' }),
+
+  listTemplates: (enabledOnly = true) =>
+    request<{ data: RegistryTaskTemplate[] }>(
+      `/api/registry/templates${enabledOnly ? '' : '?enabled=false'}`,
+    ).then(unwrap),
+
+  resolveTemplate: (intent: string, context = '*') =>
+    request<{ data: RegistryTaskTemplate }>(
+      `/api/registry/templates/resolve?intent=${encodeURIComponent(intent)}&context=${context}`,
+    ).then(unwrap),
+
+  createTemplate: (t: Partial<RegistryTaskTemplate> & { intentPattern: string }) =>
+    request<{ data: RegistryTaskTemplate }>('/api/registry/templates', {
+      method: 'POST',
+      body: JSON.stringify(t),
+    }).then(unwrap),
+
+  deleteTemplate: (id: string) =>
+    request<{ data: string }>(`/api/registry/templates/${id}`, { method: 'DELETE' }),
+
+  listCapabilities: (provider?: string) =>
+    request<{ data: RegistryCapability[] }>(
+      `/api/registry/capabilities${provider ? `?provider=${provider}` : ''}`,
+    ).then(unwrap),
+
+  upsertCapability: (c: Partial<RegistryCapability> & { name: string; provider: string }) =>
+    request<{ data: RegistryCapability }>('/api/registry/capabilities', {
+      method: 'POST',
+      body: JSON.stringify(c),
+    }).then(unwrap),
+
+  deleteCapability: (name: string, provider: string) =>
+    request<{ data: string }>(
+      `/api/registry/capabilities/${name}?provider=${encodeURIComponent(provider)}`,
+      { method: 'DELETE' },
+    ),
+
+  registerManifest: (manifest: {
+    agentType: string
+    version?: string
+    intents?: Partial<RegistryIntent>[]
+    templates?: Partial<RegistryTaskTemplate>[]
+    capabilities?: Partial<RegistryCapability>[]
+  }) =>
+    request<{ data: { intents: number; templates: number; capabilities: number } }>(
+      '/api/registry/manifest',
+      { method: 'POST', body: JSON.stringify(manifest) },
+    ).then(unwrap),
+
+  executeGraph: (templateId: string, inputState: Record<string, unknown> = {}) =>
+    streamSSE('/api/graph/execute', { template_id: templateId, input_state: inputState }),
+
+  validateGraph: (graphDef: Record<string, unknown>) =>
+    request<{ data: { valid: boolean; errors: string[] } }>(
+      '/api/graph/validate',
+      { method: 'POST', body: JSON.stringify({ graphDef }) },
+    ).then(unwrap),
+}
+
 export { mapNLPResultToMessage, mapAgentChatToMessage }

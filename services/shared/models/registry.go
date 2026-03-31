@@ -60,6 +60,8 @@ type TaskTemplateEntry struct {
 	ParamsMapping        json.RawMessage `json:"paramsMapping" db:"params_mapping"`
 	HandlerType          string          `json:"handlerType" db:"handler_type"`
 	HandlerRef           string          `json:"handlerRef" db:"handler_ref"`
+	GraphDef             json.RawMessage `json:"graphDef" db:"graph_def"`
+	StateSchema          json.RawMessage `json:"stateSchema" db:"state_schema"`
 	Priority             int             `json:"priority" db:"priority"`
 	Enabled              bool            `json:"enabled" db:"enabled"`
 	Source               string          `json:"source" db:"source"`
@@ -75,6 +77,8 @@ type CreateTaskTemplateReq struct {
 	ParamsMapping        json.RawMessage `json:"paramsMapping,omitempty"`
 	HandlerType          string          `json:"handlerType,omitempty"`
 	HandlerRef           string          `json:"handlerRef,omitempty"`
+	GraphDef             json.RawMessage `json:"graphDef,omitempty"`
+	StateSchema          json.RawMessage `json:"stateSchema,omitempty"`
 	Priority             *int            `json:"priority,omitempty"`
 	Enabled              *bool           `json:"enabled,omitempty"`
 	Source               string          `json:"source,omitempty"`
@@ -88,6 +92,8 @@ type UpdateTaskTemplateReq struct {
 	ParamsMapping        *json.RawMessage `json:"paramsMapping,omitempty"`
 	HandlerType          *string          `json:"handlerType,omitempty"`
 	HandlerRef           *string          `json:"handlerRef,omitempty"`
+	GraphDef             *json.RawMessage `json:"graphDef,omitempty"`
+	StateSchema          *json.RawMessage `json:"stateSchema,omitempty"`
 	Priority             *int             `json:"priority,omitempty"`
 	Enabled              *bool            `json:"enabled,omitempty"`
 	Source               *string          `json:"source,omitempty"`
@@ -98,46 +104,52 @@ type UpdateTaskTemplateReq struct {
 // ---------------------------------------------------------------------------
 
 type CapabilityEntry struct {
-	ID            string          `json:"id" db:"id"`
-	Name          string          `json:"name" db:"name"`
-	Description   string          `json:"description" db:"description"`
-	Provider      string          `json:"provider" db:"provider"`
-	Endpoint      string          `json:"endpoint" db:"endpoint"`
-	InputSchema   json.RawMessage `json:"inputSchema" db:"input_schema"`
-	OutputSchema  json.RawMessage `json:"outputSchema" db:"output_schema"`
-	Constraints   json.RawMessage `json:"constraints" db:"constraints"`
-	Version       string          `json:"version" db:"version"`
-	Health        string          `json:"health" db:"health"`
-	LastHeartbeat *time.Time      `json:"lastHeartbeat,omitempty" db:"last_heartbeat"`
-	Enabled       bool            `json:"enabled" db:"enabled"`
-	Source        string          `json:"source" db:"source"`
-	CreatedAt     time.Time       `json:"createdAt" db:"created_at"`
-	UpdatedAt     time.Time       `json:"updatedAt" db:"updated_at"`
+	ID               string          `json:"id" db:"id"`
+	Name             string          `json:"name" db:"name"`
+	Description      string          `json:"description" db:"description"`
+	Provider         string          `json:"provider" db:"provider"`
+	Endpoint         string          `json:"endpoint" db:"endpoint"`
+	InputSchema      json.RawMessage `json:"inputSchema" db:"input_schema"`
+	OutputSchema     json.RawMessage `json:"outputSchema" db:"output_schema"`
+	Constraints      json.RawMessage `json:"constraints" db:"constraints"`
+	Version          string          `json:"version" db:"version"`
+	Health           string          `json:"health" db:"health"`
+	LastHeartbeat    *time.Time      `json:"lastHeartbeat,omitempty" db:"last_heartbeat"`
+	NodeConfigSchema json.RawMessage `json:"nodeConfigSchema" db:"node_config_schema"`
+	SupportsStreaming bool           `json:"supportsStreaming" db:"supports_streaming"`
+	Enabled          bool            `json:"enabled" db:"enabled"`
+	Source           string          `json:"source" db:"source"`
+	CreatedAt        time.Time       `json:"createdAt" db:"created_at"`
+	UpdatedAt        time.Time       `json:"updatedAt" db:"updated_at"`
 }
 
 type CreateCapabilityReq struct {
-	Name         string          `json:"name"`
-	Description  string          `json:"description,omitempty"`
-	Provider     string          `json:"provider"`
-	Endpoint     string          `json:"endpoint,omitempty"`
-	InputSchema  json.RawMessage `json:"inputSchema,omitempty"`
-	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
-	Constraints  json.RawMessage `json:"constraints,omitempty"`
-	Version      string          `json:"version,omitempty"`
-	Enabled      *bool           `json:"enabled,omitempty"`
-	Source       string          `json:"source,omitempty"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description,omitempty"`
+	Provider         string          `json:"provider"`
+	Endpoint         string          `json:"endpoint,omitempty"`
+	InputSchema      json.RawMessage `json:"inputSchema,omitempty"`
+	OutputSchema     json.RawMessage `json:"outputSchema,omitempty"`
+	Constraints      json.RawMessage `json:"constraints,omitempty"`
+	Version          string          `json:"version,omitempty"`
+	NodeConfigSchema json.RawMessage `json:"nodeConfigSchema,omitempty"`
+	SupportsStreaming *bool          `json:"supportsStreaming,omitempty"`
+	Enabled          *bool           `json:"enabled,omitempty"`
+	Source           string          `json:"source,omitempty"`
 }
 
 type UpdateCapabilityReq struct {
-	Description  *string          `json:"description,omitempty"`
-	Endpoint     *string          `json:"endpoint,omitempty"`
-	InputSchema  *json.RawMessage `json:"inputSchema,omitempty"`
-	OutputSchema *json.RawMessage `json:"outputSchema,omitempty"`
-	Constraints  *json.RawMessage `json:"constraints,omitempty"`
-	Version      *string          `json:"version,omitempty"`
-	Health       *string          `json:"health,omitempty"`
-	Enabled      *bool            `json:"enabled,omitempty"`
-	Source       *string          `json:"source,omitempty"`
+	Description      *string          `json:"description,omitempty"`
+	Endpoint         *string          `json:"endpoint,omitempty"`
+	InputSchema      *json.RawMessage `json:"inputSchema,omitempty"`
+	OutputSchema     *json.RawMessage `json:"outputSchema,omitempty"`
+	Constraints      *json.RawMessage `json:"constraints,omitempty"`
+	Version          *string          `json:"version,omitempty"`
+	Health           *string          `json:"health,omitempty"`
+	NodeConfigSchema *json.RawMessage `json:"nodeConfigSchema,omitempty"`
+	SupportsStreaming *bool           `json:"supportsStreaming,omitempty"`
+	Enabled          *bool            `json:"enabled,omitempty"`
+	Source           *string          `json:"source,omitempty"`
 }
 
 // ---------------------------------------------------------------------------

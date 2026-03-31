@@ -48,6 +48,8 @@ class TaskTemplateDef:
     params_mapping: dict[str, Any] = field(default_factory=dict)
     handler_type: str = "capability"
     handler_ref: str = ""
+    graph_def: dict[str, Any] = field(default_factory=dict)
+    state_schema: dict[str, Any] = field(default_factory=dict)
     priority: int = 0
     enabled: bool = True
     source: str = "system"
@@ -63,6 +65,8 @@ class CapabilityDef:
     output_schema: dict[str, Any] = field(default_factory=dict)
     constraints: dict[str, Any] = field(default_factory=dict)
     version: str = "1.0.0"
+    node_config_schema: dict[str, Any] = field(default_factory=dict)
+    supports_streaming: bool = False
     enabled: bool = True
     source: str = "system"
 
@@ -78,7 +82,9 @@ class ResolvedTemplate:
     params_mapping: dict[str, Any]
     handler_type: str
     handler_ref: str
-    priority: int
+    graph_def: dict[str, Any] = field(default_factory=dict)
+    state_schema: dict[str, Any] = field(default_factory=dict)
+    priority: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +172,8 @@ class RegistryClient:
             params_mapping=data.get("paramsMapping", {}),
             handler_type=data.get("handlerType", "capability"),
             handler_ref=data.get("handlerRef", ""),
+            graph_def=data.get("graphDef", {}),
+            state_schema=data.get("stateSchema", {}),
             priority=data.get("priority", 0),
         )
 
@@ -250,6 +258,10 @@ def _template_to_api(t: TaskTemplateDef) -> dict[str, Any]:
         d["handlerType"] = t.handler_type
     if t.handler_ref:
         d["handlerRef"] = t.handler_ref
+    if t.graph_def:
+        d["graphDef"] = t.graph_def
+    if t.state_schema:
+        d["stateSchema"] = t.state_schema
     if t.priority:
         d["priority"] = t.priority
     d["enabled"] = t.enabled
@@ -271,6 +283,10 @@ def _capability_to_api(c: CapabilityDef) -> dict[str, Any]:
         d["constraints"] = c.constraints
     if c.version != "1.0.0":
         d["version"] = c.version
+    if c.node_config_schema:
+        d["nodeConfigSchema"] = c.node_config_schema
+    if c.supports_streaming:
+        d["supportsStreaming"] = c.supports_streaming
     d["enabled"] = c.enabled
     d["source"] = c.source
     return d
@@ -327,6 +343,8 @@ def load_manifest_from_yaml(path: str | Path) -> AgentManifest:
             params_mapping=t.get("params_mapping", t.get("paramsMapping", {})),
             handler_type=t.get("handler_type", t.get("handlerType", "capability")),
             handler_ref=t.get("handler_ref", t.get("handlerRef", "")),
+            graph_def=t.get("graph_def", t.get("graphDef", {})),
+            state_schema=t.get("state_schema", t.get("stateSchema", {})),
             priority=t.get("priority", 0),
             source=source,
         )
@@ -343,6 +361,8 @@ def load_manifest_from_yaml(path: str | Path) -> AgentManifest:
             output_schema=c.get("output_schema", c.get("outputSchema", {})),
             constraints=c.get("constraints", {}),
             version=c.get("version", "1.0.0"),
+            node_config_schema=c.get("node_config_schema", c.get("nodeConfigSchema", {})),
+            supports_streaming=c.get("supports_streaming", c.get("supportsStreaming", False)),
             source=source,
         )
         for c in data.get("capabilities", [])
