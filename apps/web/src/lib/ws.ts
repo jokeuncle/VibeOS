@@ -146,6 +146,39 @@ function handleWSEvent(event: Record<string, any>) {
     )
   }
 
+  // Execution tracking — upsert / patch from ws-gateway events
+  if (event.type === 'execution:start' && event.workspaceId === activeWsId && event.payload) {
+    store.upsertExecution({
+      id: event.payload.id || `exec-${Date.now()}`,
+      workspaceId: event.workspaceId,
+      requirementId: event.payload.requirementId,
+      intentType: event.payload.intentType || 'general_chat',
+      intentSummary: event.payload.intentSummary || '',
+      triggeredBy: event.payload.triggeredBy || 'nlp',
+      userMessage: event.payload.userMessage,
+      status: 'running',
+      agentType: event.payload.agentType || 'pm',
+      steps: event.payload.steps || [],
+      resultType: event.payload.resultType || 'general',
+      startedAt: event.payload.startedAt || new Date().toISOString(),
+      estimatedDuration: event.payload.estimatedDuration,
+    })
+  }
+  if (event.type === 'execution:update' && event.workspaceId === activeWsId && event.payload) {
+    const p = event.payload
+    if (p.step) store.patchExecutionStep(p.executionId, p.step)
+    if (p.status) store.patchExecutionStatus(p.executionId, p.status, {
+      errorMessage: p.errorMessage,
+      resultPayload: p.resultPayload,
+    })
+  }
+  if (event.type === 'execution:complete' && event.workspaceId === activeWsId && event.payload) {
+    store.patchExecutionStatus(event.payload.executionId, event.payload.status || 'success', {
+      resultPayload: event.payload.resultPayload,
+      errorMessage: event.payload.errorMessage,
+    })
+  }
+
   // Directly patch task status from workflow events broadcast via WS gateway
   if (event.workspaceId === activeWsId) {
     if (event.type === 'workflow:task_start' && event.task_id) {

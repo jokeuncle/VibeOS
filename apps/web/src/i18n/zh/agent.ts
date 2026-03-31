@@ -143,6 +143,22 @@ const agent = {
   'notification.workflowCompleted': '项目工作流已完成',
   'notification.taskError': '任务失败：{task}',
   'notification.feedbackRecorded': '反馈已记录',
+
+  'requirement.detail.tab.activity': '动态',
+  'execution.status.queued': '排队中',
+  'execution.status.running': '执行中',
+  'execution.status.success': '完成',
+  'execution.status.failed': '失败',
+  'execution.status.cancelled': '已取消',
+  'execution.running': '个执行中',
+  'execution.todayCount': '今日 {count} 次执行',
+  'execution.history': '历史记录',
+  'execution.retry': '重试',
+  'execution.time.justNow': '刚刚',
+  'execution.time.minAgo': '分钟前',
+  'execution.time.hrAgo': '小时前',
+  'execution.empty.title': '暂无执行记录',
+  'execution.empty.desc': '通过 NLP 触发任务（如代码生成、构建、设计等）后，执行进度和结果将显示在这里。',
 }
 
 export default agent

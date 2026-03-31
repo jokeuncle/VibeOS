@@ -392,6 +392,42 @@ export interface ExecutionStep {
   detail?: string
 }
 
+// ---------------------------------------------------------------------------
+// Agent execution tracking (NLP-triggered tasks)
+// ---------------------------------------------------------------------------
+
+export type ExecutionStatus = 'queued' | 'running' | 'success' | 'failed' | 'cancelled'
+
+export type ExecutionResultType =
+  | 'pipeline'
+  | 'code_gen'
+  | 'design_doc'
+  | 'test_report'
+  | 'requirement_analysis'
+  | 'architecture'
+  | 'deployment'
+  | 'general'
+  | (string & {})
+
+export interface AgentExecution {
+  id: string
+  workspaceId: string
+  requirementId?: string
+  intentType: string
+  intentSummary: string
+  triggeredBy: 'nlp' | 'workflow' | 'manual'
+  userMessage?: string
+  status: ExecutionStatus
+  agentType: AgentType
+  steps: ExecutionStep[]
+  resultType: ExecutionResultType
+  resultPayload?: Record<string, unknown>
+  errorMessage?: string
+  startedAt: string
+  completedAt?: string
+  estimatedDuration?: string
+}
+
 export type NlpActionType =
   | 'workspace_create'
   | 'task_execute'

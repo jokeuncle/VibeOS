@@ -11,6 +11,7 @@ import { buildChatSlice } from './slices/chatSlice'
 import { buildLogsSlice } from './slices/logsSlice'
 import { buildWorkflowSlice } from './slices/workflowSlice'
 import { buildRequirementsSlice } from './slices/requirementsSlice'
+import { buildExecutionSlice } from './slices/executionSlice'
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
@@ -21,6 +22,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       ...buildLogsSlice(set, get),
       ...buildWorkflowSlice(set, get),
       ...buildRequirementsSlice(set, get),
+      ...buildExecutionSlice(set, get),
     }),
     {
       name: 'vibeos-workspace',

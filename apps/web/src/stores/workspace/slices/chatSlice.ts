@@ -1,5 +1,5 @@
 import type { StoreApi } from 'zustand'
-import type { AgentType, Message, RichBlock, ExecutionStep } from '../../../types'
+import type { AgentType, AgentExecution, Message, RichBlock, ExecutionStep } from '../../../types'
 import {
   workspaceApi,
   agentApi,
@@ -199,6 +199,9 @@ export function buildChatSlice(set: SetState, get: GetState) {
         let agentType: AgentType = 'pm'
         const richBlocks: RichBlock[] = []
         const timelineSteps: ExecutionStep[] = []
+        const execId = `exec-${msgId}`
+        let execCreated = false
+        let execHadError = false
 
         const updateMsg = () => {
           set((s) => ({
@@ -215,6 +218,17 @@ export function buildChatSlice(set: SetState, get: GetState) {
           const block: RichBlock = { type: 'execution_timeline', steps: [...timelineSteps] }
           if (idx !== -1) richBlocks[idx] = block
           else richBlocks.unshift(block)
+        }
+
+        const intentToResultType = (intent: string): string => {
+          const map: Record<string, string> = {
+            trigger_build: 'pipeline', view_build_log: 'pipeline',
+            deploy: 'deployment', rollback: 'deployment',
+            generate_code: 'code_gen', ui_design: 'design_doc',
+            design_system: 'architecture', architecture_design: 'architecture',
+            run_tests: 'test_report', analyze_requirements: 'requirement_analysis',
+          }
+          return map[intent] || 'general'
         }
 
         try {
@@ -253,15 +267,39 @@ export function buildChatSlice(set: SetState, get: GetState) {
               }
               upsertTimeline()
               updateMsg()
+              if (execCreated) {
+                get().patchExecutionStep(execId, { ...step })
+              }
               continue
             }
 
-            // --- Intent event ---
+            // --- Intent event → create execution ---
             if (evt.event === 'intent' && data.target_agent) {
               const { block: intentBlock, agentType: at } = parseIntentBlock(data)
               agentType = at
               richBlocks.push(intentBlock)
               updateMsg()
+
+              const intentType = data.intent || 'general_chat'
+              if (intentType !== 'general_chat') {
+                const reqId = typeof nlpCtx?.requirement_id === 'string' ? nlpCtx.requirement_id : undefined
+                const exec: AgentExecution = {
+                  id: execId,
+                  workspaceId: wsId,
+                  requirementId: reqId || undefined,
+                  intentType,
+                  intentSummary: data.summary || input.slice(0, 60),
+                  triggeredBy: 'nlp',
+                  userMessage: input,
+                  status: 'running',
+                  agentType: at,
+                  steps: [...timelineSteps],
+                  resultType: intentToResultType(intentType),
+                  startedAt: new Date().toISOString(),
+                }
+                get().upsertExecution(exec)
+                execCreated = true
+              }
               continue
             }
 
@@ -321,6 +359,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
             updateMsg()
           }
         } catch (err: any) {
+          execHadError = true
           if (!content) {
             content = friendlyError(err.message)
             richBlocks.push({
@@ -331,8 +370,14 @@ export function buildChatSlice(set: SetState, get: GetState) {
             })
             updateMsg()
           }
+          if (execCreated) {
+            get().patchExecutionStatus(execId, 'failed', { errorMessage: content })
+          }
         } finally {
           set({ nlpLoading: false })
+          if (execCreated && !execHadError) {
+            get().patchExecutionStatus(execId, 'success')
+          }
           if (persist && content) {
             workspaceApi
               .saveMessage(wsId, {

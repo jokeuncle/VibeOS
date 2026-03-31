@@ -141,6 +141,22 @@ const agent = {
   'notification.workflowCompleted': 'Project workflow completed',
   'notification.taskError': 'Task failed: {task}',
   'notification.feedbackRecorded': 'Feedback recorded',
+
+  'requirement.detail.tab.activity': 'Activity',
+  'execution.status.queued': 'Queued',
+  'execution.status.running': 'Running',
+  'execution.status.success': 'Done',
+  'execution.status.failed': 'Failed',
+  'execution.status.cancelled': 'Cancelled',
+  'execution.running': 'running',
+  'execution.todayCount': '{count} executions today',
+  'execution.history': 'History',
+  'execution.retry': 'Retry',
+  'execution.time.justNow': 'just now',
+  'execution.time.minAgo': 'm ago',
+  'execution.time.hrAgo': 'h ago',
+  'execution.empty.title': 'No executions yet',
+  'execution.empty.desc': 'When you trigger tasks via NLP — like code generation, builds, or design — execution progress and results will appear here.',
 } as const
 
 export default agent

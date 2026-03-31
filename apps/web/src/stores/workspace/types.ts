@@ -5,6 +5,9 @@ import type {
   WorkspaceColor,
   ActivityItem,
   AgentType,
+  AgentExecution,
+  ExecutionStatus,
+  ExecutionStep,
   Task,
   TaskPriority,
   LabelColor,
@@ -136,4 +139,15 @@ export interface WorkspaceState {
   sendHomeNLPStream: (input: string) => void
   clearHomeMessages: () => void
   clearWorkspaceConversation: () => void
+
+  executions: AgentExecution[]
+  upsertExecution: (exec: AgentExecution) => void
+  patchExecutionStatus: (
+    executionId: string,
+    status: ExecutionStatus,
+    extra?: Partial<Pick<AgentExecution, 'errorMessage' | 'completedAt' | 'resultPayload'>>,
+  ) => void
+  patchExecutionStep: (executionId: string, step: ExecutionStep) => void
+  removeExecution: (executionId: string) => void
+  clearExecutions: () => void
 }

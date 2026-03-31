@@ -15,6 +15,7 @@ import type { RequirementDetailTab } from './types'
 import { TaskDrawer } from './TaskDrawer'
 import { RequirementDetailHeader } from './RequirementDetailHeader'
 import { RequirementDetailWorkTab } from './RequirementDetailWorkTab'
+import { RequirementDetailActivityTab } from './RequirementDetailActivityTab'
 import { RequirementDetailRelationsTab } from './RequirementDetailRelationsTab'
 import { RequirementDetailAgentsTab } from './RequirementDetailAgentsTab'
 
@@ -193,6 +194,7 @@ export default function RequirementDetail() {
         <Tabs.List className="flex flex-wrap gap-0.5 sm:gap-1 border-b border-border-subtle overflow-x-auto pb-px [-webkit-overflow-scrolling:touch]">
           {([
             { id: 'work' as const, label: t('requirement.detail.tab.work' as TranslationKey) },
+            { id: 'activity' as const, label: t('requirement.detail.tab.activity' as TranslationKey) },
             { id: 'relations' as const, label: t('phase.tab.relations'), badge: relations.length },
             { id: 'agents' as const, label: t('requirement.detail.tab.agents' as TranslationKey) },
           ]).map((tab) => (
@@ -224,6 +226,10 @@ export default function RequirementDetail() {
             sendNLPMessageStream={sendNLPMessageStream}
             t={t}
           />
+        </Tabs.Content>
+
+        <Tabs.Content value="activity" className="outline-none focus-visible:ring-0 mt-0">
+          <RequirementDetailActivityTab requirementId={req.id} t={t} />
         </Tabs.Content>
 
         <Tabs.Content value="relations" className="outline-none focus-visible:ring-0 mt-0">
