@@ -157,6 +157,8 @@ const agent = {
   'execution.time.hrAgo': 'h ago',
   'execution.empty.title': 'No executions yet',
   'execution.empty.desc': 'When you trigger tasks via NLP — like code generation, builds, or design — execution progress and results will appear here.',
+  'execution.linkedTasks': 'Linked tasks',
+  'execution.childExecutions': 'Sub-executions',
 } as const
 
 export default agent

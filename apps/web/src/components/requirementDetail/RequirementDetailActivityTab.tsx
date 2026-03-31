@@ -1,12 +1,42 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, Zap } from 'lucide-react'
+import { Activity, Zap, FileText } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { ExecutionRow } from './ExecutionRow'
-import type { AgentExecution } from '../../types'
+import type { AgentExecution, ActivityItem } from '../../types'
 import type { TranslationKey } from '../../i18n/en'
 
 type TFn = (k: any) => string
+
+type TimelineEntry =
+  | { kind: 'execution'; data: AgentExecution; ts: number }
+  | { kind: 'event'; data: ActivityItem; ts: number }
+
+function SystemEventRow({ event, t }: { event: ActivityItem; t: TFn }) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 hover:bg-surface-2/35 transition-colors">
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-surface-3 text-text-tertiary">
+        <FileText className="w-3.5 h-3.5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-text-secondary truncate">{event.description}</p>
+      </div>
+      <span className="text-[10px] text-text-tertiary shrink-0">
+        {timeAgo(event.timestamp)}
+      </span>
+    </div>
+  )
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 1) return '<1m'
+  if (mins < 60) return `${mins}m`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h`
+  return `${Math.floor(hrs / 24)}d`
+}
 
 export function RequirementDetailActivityTab({
   requirementId,
@@ -16,10 +46,21 @@ export function RequirementDetailActivityTab({
   t: TFn
 }) {
   const executions = useWorkspaceStore((s) => s.executions)
+  const fetchExecutions = useWorkspaceStore((s) => s.fetchExecutions)
+  const workspace = useWorkspaceStore((s) => {
+    const wsId = s.activeWorkspaceId
+    return wsId ? s.workspaces.find((w) => w.id === wsId) : undefined
+  })
 
-  const { running, history } = useMemo(() => {
+  useEffect(() => {
+    fetchExecutions(requirementId)
+  }, [requirementId, fetchExecutions])
+
+  const { running, history, timeline } = useMemo(() => {
     const relevant = executions.filter(
-      (e) => e.requirementId === requirementId || (!e.requirementId && !requirementId),
+      (e) =>
+        (e.requirementId === requirementId || (!e.requirementId && !requirementId)) &&
+        !e.parentExecutionId,
     )
 
     const active: AgentExecution[] = []
@@ -33,8 +74,25 @@ export function RequirementDetailActivityTab({
       }
     }
 
-    return { running: active, history: past }
-  }, [executions, requirementId])
+    const entries: TimelineEntry[] = past.map((e) => ({
+      kind: 'execution' as const,
+      data: e,
+      ts: new Date(e.startedAt).getTime(),
+    }))
+
+    const activities = workspace?.activities ?? []
+    for (const act of activities) {
+      entries.push({
+        kind: 'event' as const,
+        data: act,
+        ts: new Date(act.timestamp).getTime(),
+      })
+    }
+
+    entries.sort((a, b) => b.ts - a.ts)
+
+    return { running: active, history: past, timeline: entries }
+  }, [executions, requirementId, workspace?.activities])
 
   const totalToday = useMemo(() => {
     const dayStart = new Date()
@@ -44,7 +102,7 @@ export function RequirementDetailActivityTab({
     ).length
   }, [running, history])
 
-  const isEmpty = running.length === 0 && history.length === 0
+  const isEmpty = running.length === 0 && timeline.length === 0
 
   return (
     <div className="space-y-4">
@@ -83,7 +141,7 @@ export function RequirementDetailActivityTab({
       )}
 
       {/* Divider */}
-      {running.length > 0 && history.length > 0 && (
+      {running.length > 0 && timeline.length > 0 && (
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-border-subtle" />
           <span className="text-[10px] text-text-tertiary uppercase tracking-wider shrink-0">
@@ -93,12 +151,16 @@ export function RequirementDetailActivityTab({
         </div>
       )}
 
-      {/* Historical executions */}
-      {history.length > 0 && (
+      {/* Unified timeline: executions + system events */}
+      {timeline.length > 0 && (
         <div className="space-y-1.5">
-          {history.map((exec) => (
-            <ExecutionRow key={exec.id} execution={exec} t={t} />
-          ))}
+          {timeline.map((entry) =>
+            entry.kind === 'execution' ? (
+              <ExecutionRow key={entry.data.id} execution={entry.data} t={t} />
+            ) : (
+              <SystemEventRow key={entry.data.id} event={entry.data} t={t} />
+            ),
+          )}
         </div>
       )}
 

@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle2, Circle, Loader2, XCircle,
-  ChevronDown, Clock, RotateCcw, ExternalLink,
+  ChevronDown, Clock, RotateCcw, ExternalLink, Link2, GitBranch,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { getExecutionRenderer } from '../../lib/executionRegistry'
-import type { AgentExecution, ExecutionStatus, ExecutionStep } from '../../types'
+import type { AgentExecution, ExecutionStatus, ExecutionStep, Task } from '../../types'
 import type { TranslationKey } from '../../i18n/en'
 
 type TFn = (k: any) => string
@@ -113,6 +113,24 @@ export function ExecutionRow({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || execution.status === 'running')
   const { sendNLPMessageStream } = useWorkspaceStore()
+  const workspace = useWorkspaceStore((s) => {
+    const wsId = s.activeWorkspaceId
+    return wsId ? s.workspaces.find((w) => w.id === wsId) : undefined
+  })
+  const executions = useWorkspaceStore((s) => s.executions)
+
+  const linkedTasks = useMemo(() => {
+    if (!execution.taskIds?.length || !workspace) return []
+    const allTasks: Task[] = workspace.phases.flatMap((p) => p.tasks ?? [])
+    return execution.taskIds
+      .map((tid) => allTasks.find((t) => t.id === tid))
+      .filter((t): t is Task => !!t)
+  }, [execution.taskIds, workspace])
+
+  const childExecutions = useMemo(() => {
+    if (!execution.id) return []
+    return executions.filter((e) => e.parentExecutionId === execution.id)
+  }, [execution.id, executions])
 
   const renderer = getExecutionRenderer(execution.resultType)
   const summaryText = renderer?.summaryLine(execution.resultPayload || {}, t) || ''
@@ -162,6 +180,18 @@ export function ExecutionRow({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {execution.taskIds?.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-text-tertiary">
+              <Link2 className="w-2.5 h-2.5" />
+              {execution.taskIds.length}
+            </span>
+          )}
+          {childExecutions.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-text-tertiary">
+              <GitBranch className="w-2.5 h-2.5" />
+              {childExecutions.length}
+            </span>
+          )}
           {execution.estimatedDuration && isActive && (
             <span className="inline-flex items-center gap-1 text-[10px] text-text-tertiary">
               <Clock className="w-2.5 h-2.5" />
@@ -189,6 +219,54 @@ export function ExecutionRow({
               {execution.steps.length > 0 && (
                 <div className="px-3 pt-3 pb-1">
                   <MiniTimeline steps={execution.steps} />
+                </div>
+              )}
+
+              {/* Linked tasks */}
+              {linkedTasks.length > 0 && (
+                <div className="px-3 py-2">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Link2 className="w-3 h-3 text-text-tertiary" />
+                    <span className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
+                      {t('execution.linkedTasks' as TranslationKey)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {linkedTasks.map((task) => (
+                      <span
+                        key={task.id}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border ${
+                          task.status === 'completed'
+                            ? 'bg-success/5 text-success border-success/15'
+                            : task.status === 'in_progress'
+                              ? 'bg-accent/5 text-accent border-accent/15'
+                              : 'bg-surface-3 text-text-secondary border-border-subtle'
+                        }`}
+                      >
+                        {task.status === 'completed' ? <CheckCircle2 className="w-2.5 h-2.5" /> :
+                         task.status === 'in_progress' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> :
+                         <Circle className="w-2.5 h-2.5" />}
+                        {task.title}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Child executions (workflow nesting) */}
+              {childExecutions.length > 0 && (
+                <div className="px-3 py-2">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <GitBranch className="w-3 h-3 text-text-tertiary" />
+                    <span className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">
+                      {t('execution.childExecutions' as TranslationKey)}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {childExecutions.map((child) => (
+                      <ExecutionRow key={child.id} execution={child} t={t} />
+                    ))}
+                  </div>
                 </div>
               )}
 

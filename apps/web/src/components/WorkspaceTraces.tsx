@@ -2,25 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Activity, ChevronDown, ChevronUp,
-  MessageSquare, Clock, CheckCircle2,
-  AlertCircle, ArrowRight, Filter, Info,
+  Clock, CheckCircle2,
+  AlertCircle, Filter, Info, Zap,
 } from 'lucide-react'
-import { useWorkspaceStore, type LogEntry } from '../stores/workspace'
+import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
+import type { AgentExecution } from '../types'
+import type { TranslationKey } from '../i18n/en'
 
 type TraceStatus = 'success' | 'error' | 'running' | 'info'
-
-interface TraceGroup {
-  id: string
-  agentType: string
-  agentLabel: string
-  agentColor: string
-  status: TraceStatus
-  taskId?: string
-  entries: LogEntry[]
-  firstTimestamp: string
-  lastTimestamp: string
-}
 
 const AGENT_META: Record<string, { label: string; color: string }> = {
   pm:           { label: 'PM Agent',           color: 'text-violet-400' },
@@ -35,67 +25,11 @@ const AGENT_META: Record<string, { label: string; color: string }> = {
 
 const AGENT_FILTER_OPTIONS = ['All', 'pm', 'requirement', 'architecture', 'design', 'development', 'testing', 'cicd', 'monitoring']
 
-function groupLogs(logs: LogEntry[]): TraceGroup[] {
-  const taskGroups = new Map<string, LogEntry[]>()
-  const looseEntries: LogEntry[] = []
-
-  for (const entry of logs) {
-    if (entry.taskId) {
-      const key = `${entry.agent}:${entry.taskId}`
-      if (!taskGroups.has(key)) taskGroups.set(key, [])
-      taskGroups.get(key)!.push(entry)
-    } else {
-      looseEntries.push(entry)
-    }
-  }
-
-  const groups: TraceGroup[] = []
-
-  taskGroups.forEach((entries, key) => {
-    const [agent] = key.split(':')
-    const meta = AGENT_META[agent] ?? { label: agent, color: 'text-text-secondary' }
-    const hasError = entries.some(e => e.level === 'error')
-    const hasSuccess = entries.some(e => e.level === 'success')
-    const status: TraceStatus = hasError ? 'error' : hasSuccess ? 'success' : 'running'
-    groups.push({
-      id: key,
-      agentType: agent,
-      agentLabel: meta.label,
-      agentColor: meta.color,
-      status,
-      taskId: entries[0].taskId,
-      entries,
-      firstTimestamp: entries[0].timestamp,
-      lastTimestamp: entries[entries.length - 1].timestamp,
-    })
-  })
-
-  // Group loose entries by agent into batches of max 5
-  const agentLoose = new Map<string, LogEntry[]>()
-  for (const entry of looseEntries) {
-    if (!agentLoose.has(entry.agent)) agentLoose.set(entry.agent, [])
-    agentLoose.get(entry.agent)!.push(entry)
-  }
-  agentLoose.forEach((entries, agent) => {
-    const meta = AGENT_META[agent] ?? { label: agent, color: 'text-text-secondary' }
-    const hasError = entries.some(e => e.level === 'error')
-    const hasSuccess = entries.some(e => e.level === 'success')
-    const status: TraceStatus = hasError ? 'error' : hasSuccess ? 'success' : 'info'
-    groups.push({
-      id: `loose:${agent}:${entries[0].id}`,
-      agentType: agent,
-      agentLabel: meta.label,
-      agentColor: meta.color,
-      status,
-      entries,
-      firstTimestamp: entries[0].timestamp,
-      lastTimestamp: entries[entries.length - 1].timestamp,
-    })
-  })
-
-  return groups.sort((a, b) =>
-    new Date(b.firstTimestamp).getTime() - new Date(a.firstTimestamp).getTime()
-  )
+function execToStatus(exec: AgentExecution): TraceStatus {
+  if (exec.status === 'failed') return 'error'
+  if (exec.status === 'success') return 'success'
+  if (exec.status === 'running' || exec.status === 'queued') return 'running'
+  return 'info'
 }
 
 function relativeTime(iso: string): string {
@@ -115,45 +49,39 @@ function StatusIcon({ status }: { status: TraceStatus }) {
   return <Info className="w-3.5 h-3.5 text-text-tertiary" />
 }
 
-function levelColor(level: LogEntry['level']): string {
-  if (level === 'error')   return 'text-danger'
-  if (level === 'success') return 'text-success'
-  if (level === 'warn')    return 'text-warning'
-  return 'text-text-tertiary'
-}
-
-function TraceRow({ group }: { group: TraceGroup }) {
+function ExecutionTraceRow({ exec }: { exec: AgentExecution }) {
   const [expanded, setExpanded] = useState(false)
-  const summary = group.entries[group.entries.length - 1]?.message ?? ''
-  const durationMs = new Date(group.lastTimestamp).getTime() - new Date(group.firstTimestamp).getTime()
+  const status = execToStatus(exec)
+  const meta = AGENT_META[exec.agentType] ?? { label: exec.agentType, color: 'text-text-secondary' }
+  const durationMs = exec.completedAt
+    ? new Date(exec.completedAt).getTime() - new Date(exec.startedAt).getTime()
+    : 0
 
   return (
     <div className={`rounded-xl border transition-all
-      ${group.status === 'error' ? 'border-danger/20 bg-danger/4' : 'border-border-subtle bg-surface-1/30'}`}
+      ${status === 'error' ? 'border-danger/20 bg-danger/4' : 'border-border-subtle bg-surface-1/30'}`}
     >
       <button
         onClick={() => setExpanded(v => !v)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer"
       >
-        <StatusIcon status={group.status} />
+        <StatusIcon status={status} />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className={`text-[11px] font-semibold ${group.agentColor}`}>{group.agentLabel}</span>
-            {group.taskId && (
-              <>
-                <ArrowRight className="w-3 h-3 text-text-tertiary/50" />
-                <span className="text-[10px] font-mono text-text-tertiary truncate">task:{group.taskId.slice(0, 8)}</span>
-              </>
-            )}
+            <span className={`text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
+            <span className="text-[10px] font-mono text-text-tertiary truncate">{exec.intentSummary}</span>
           </div>
-          <p className="text-[11px] text-text-tertiary truncate">{summary}</p>
+          <p className="text-[11px] text-text-tertiary truncate">
+            {exec.triggeredBy} &middot; {exec.intentType}
+            {exec.errorMessage && ` — ${exec.errorMessage}`}
+          </p>
         </div>
 
         <div className="flex items-center gap-3 shrink-0 text-[10px] font-mono text-text-tertiary">
           <span className="flex items-center gap-1">
-            <MessageSquare className="w-2.5 h-2.5" />
-            {group.entries.length}
+            <Zap className="w-2.5 h-2.5" />
+            {exec.steps.length}
           </span>
           {durationMs > 0 && (
             <span className="flex items-center gap-1">
@@ -161,7 +89,7 @@ function TraceRow({ group }: { group: TraceGroup }) {
               {(durationMs / 1000).toFixed(1)}s
             </span>
           )}
-          <span>{relativeTime(group.firstTimestamp)}</span>
+          <span>{relativeTime(exec.startedAt)}</span>
           {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </div>
       </button>
@@ -176,22 +104,33 @@ function TraceRow({ group }: { group: TraceGroup }) {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 border-t border-border-subtle pt-3 space-y-1.5">
-              {group.entries.map((entry, i) => (
-                <div key={entry.id} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-surface-2/60 border border-border-subtle">
+              {exec.steps.length === 0 && (
+                <p className="text-[11px] text-text-tertiary">No execution steps recorded.</p>
+              )}
+              {exec.steps.map((step, i) => (
+                <div key={step.id} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-surface-2/60 border border-border-subtle">
                   <span className="text-[10px] font-mono text-text-tertiary shrink-0 mt-0.5">{i + 1}.</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-mono font-semibold uppercase ${levelColor(entry.level)}`}>
-                        {entry.level}
-                      </span>
-                      <span className="text-[10px] font-mono text-text-tertiary">
-                        {new Date(entry.timestamp).toLocaleTimeString()}
+                      <span className={`text-[10px] font-mono font-semibold uppercase ${
+                        step.status === 'error' ? 'text-danger'
+                        : step.status === 'completed' ? 'text-success'
+                        : step.status === 'running' ? 'text-accent'
+                        : 'text-text-tertiary'
+                      }`}>
+                        {step.status}
                       </span>
                     </div>
-                    <p className="text-[11px] text-text-secondary mt-0.5 break-words">{entry.message}</p>
+                    <p className="text-[11px] text-text-secondary mt-0.5 break-words">{step.label}</p>
+                    {step.detail && <p className="text-[10px] text-text-tertiary mt-0.5">{step.detail}</p>}
                   </div>
                 </div>
               ))}
+              {exec.errorMessage && (
+                <div className="px-3 py-2 rounded-lg bg-danger/5 border border-danger/20">
+                  <p className="text-[11px] text-danger break-words">{exec.errorMessage}</p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -203,15 +142,14 @@ function TraceRow({ group }: { group: TraceGroup }) {
 export default function WorkspaceTraces() {
   const t = useT()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
-  const executionLogs = useWorkspaceStore((s) => s.executionLogs)
-  const fetchExecutionLogs = useWorkspaceStore((s) => s.fetchExecutionLogs)
-  const logs = activeWorkspaceId ? (executionLogs[activeWorkspaceId] ?? []) : []
+  const executions = useWorkspaceStore((s) => s.executions)
+  const fetchExecutions = useWorkspaceStore((s) => s.fetchExecutions)
 
   useEffect(() => {
     if (activeWorkspaceId && !activeWorkspaceId.startsWith('ws-temp-')) {
-      void fetchExecutionLogs(activeWorkspaceId)
+      void fetchExecutions()
     }
-  }, [activeWorkspaceId, fetchExecutionLogs])
+  }, [activeWorkspaceId, fetchExecutions])
 
   const [agentFilter, setAgentFilter] = useState('All')
   const [statusFilter, setStatusFilter] = useState<TraceStatus | 'all'>('all')
@@ -223,21 +161,20 @@ export default function WorkspaceTraces() {
     { value: 'running', label: t('traces.status.running') },
   ]
 
-  const allGroups = useMemo(() => groupLogs(logs), [logs])
+  const filtered = useMemo(() => {
+    return executions.filter(exec => {
+      if (agentFilter !== 'All' && exec.agentType !== agentFilter) return false
+      if (statusFilter !== 'all' && execToStatus(exec) !== statusFilter) return false
+      return true
+    })
+  }, [executions, agentFilter, statusFilter])
 
-  const filtered = allGroups.filter(g => {
-    if (agentFilter !== 'All' && g.agentType !== agentFilter) return false
-    if (statusFilter !== 'all' && g.status !== statusFilter) return false
-    return true
-  })
-
-  const errorCount = allGroups.filter(g => g.status === 'error').length
-  const totalEntries = logs.length
+  const errorCount = executions.filter(e => e.status === 'failed').length
 
   const stats = [
-    { label: t('traces.totalExecutions'), value: allGroups.length.toString(),  icon: Activity,   color: 'text-text-primary' },
-    { label: t('traces.totalTokens'),     value: `${totalEntries} ${t('traces.totalLogsCount')}`, icon: MessageSquare, color: 'text-accent' },
-    { label: t('traces.errors'),          value: errorCount.toString(),          icon: AlertCircle, color: errorCount > 0 ? 'text-danger' : 'text-text-tertiary' },
+    { label: t('traces.totalExecutions'), value: executions.length.toString(), icon: Activity, color: 'text-text-primary' },
+    { label: t('traces.totalTokens'),     value: `${executions.filter(e => e.status === 'running' || e.status === 'queued').length} ${t('agent.active' as TranslationKey)}`, icon: Zap, color: 'text-accent' },
+    { label: t('traces.errors'),          value: errorCount.toString(), icon: AlertCircle, color: errorCount > 0 ? 'text-danger' : 'text-text-tertiary' },
   ]
 
   return (
@@ -296,7 +233,7 @@ export default function WorkspaceTraces() {
       </div>
 
       <div className="space-y-2">
-        {logs.length === 0 ? (
+        {executions.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border-default bg-surface-1/20 py-14 text-center">
             <Activity className="w-8 h-8 text-text-tertiary/40 mx-auto mb-3" />
             <p className="text-[12px] text-text-tertiary">{t('traces.noResults')}</p>
@@ -305,7 +242,7 @@ export default function WorkspaceTraces() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-[12px] text-text-tertiary">{t('traces.noResults')}</div>
         ) : (
-          filtered.map(group => <TraceRow key={group.id} group={group} />)
+          filtered.map(exec => <ExecutionTraceRow key={exec.id} exec={exec} />)
         )}
       </div>
     </motion.div>

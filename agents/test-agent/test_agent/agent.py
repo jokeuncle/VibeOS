@@ -187,13 +187,11 @@ class TestingAgent(BaseAgent):
 
             # Save test plan as artifact
             try:
-                test_phase_id = await self.workspace_svc.find_phase_by_type(task.workspace_id, "testing")
                 await self._save_artifact(
                     task.workspace_id,
                     artifact_type="test_plan",
                     title=f"Test plan: {task.description[:80]}",
                     content=raw_reply,
-                    phase_id=test_phase_id,
                 )
                 await _log(task.workspace_id, agent_name, "Test plan saved as artifact", level="success", task_id=task.task_id)
             except Exception as exc:

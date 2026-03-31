@@ -16,15 +16,6 @@ import type {
 } from '../../types'
 import type { WorkflowEvent } from '../../types'
 
-export interface LogEntry {
-  id: string
-  timestamp: string
-  agent: string
-  level: 'info' | 'warn' | 'error' | 'success'
-  message: string
-  taskId?: string
-}
-
 export interface AgentStatusEvent {
   agentType: string
   status: import('../../types').AgentStatus
@@ -40,7 +31,6 @@ export interface WorkspaceState {
   loading: boolean
   nlpLoading: boolean
   chatLoading: boolean
-  executionLogs: Record<string, LogEntry[]>
   agentStatusHistory: Record<string, AgentStatusEvent[]>
 
   fetchWorkspaces: () => Promise<void>
@@ -81,9 +71,6 @@ export interface WorkspaceState {
   sendAgentChatMessage: (agentType: string, input: string) => void
   sendNLPMessageStream: (input: string) => void
   sendAgentChatMessageStream: (agentType: string, input: string) => void
-  appendExecutionLog: (workspaceId: string, entry: LogEntry) => void
-  setExecutionLogs: (workspaceId: string, entries: LogEntry[]) => void
-  fetchExecutionLogs: (workspaceId?: string) => Promise<void>
   fetchWorkspaceMessages: (workspaceId?: string) => Promise<void>
   updateAgentStatus: (
     workspaceId: string,
@@ -150,4 +137,10 @@ export interface WorkspaceState {
   patchExecutionStep: (executionId: string, step: ExecutionStep) => void
   removeExecution: (executionId: string) => void
   clearExecutions: () => void
+  fetchExecutions: (requirementId?: string) => Promise<void>
+  persistExecution: (exec: AgentExecution) => Promise<void>
+  persistExecutionUpdate: (executionId: string, updates: {
+    status?: string; steps?: string; resultPayload?: string;
+    errorMessage?: string; taskIds?: string[]; chatMessageId?: string;
+  }) => Promise<void>
 }

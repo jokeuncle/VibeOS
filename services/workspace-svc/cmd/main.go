@@ -75,7 +75,7 @@ func main() {
 	reqHandler := handler.NewRequirementHandler(svc, logger)
 	budgetHandler := handler.NewBudgetHandler(svc, logger)
 	pipelineConfigHandler := handler.NewPipelineConfigHandler(svc, logger)
-	execLogHandler := handler.NewExecutionLogHandler(svc, logger)
+	execHandler := handler.NewExecutionHandler(svc, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -122,7 +122,7 @@ func main() {
 			r.Put("/artifacts", artifactHandler.Upsert)
 			r.Get("/artifacts/meta", chatHandler.ListArtifactsMeta)
 			r.Get("/artifacts/{artifactId}", artifactHandler.Get)
-			r.Get("/phases/{phaseId}/artifacts", artifactHandler.ListByPhase)
+			r.Get("/executions/{execId}/artifacts", artifactHandler.ListByExecution)
 
 			// GitLab repo bindings
 			r.Get("/repos", repoHandler.List)
@@ -161,9 +161,11 @@ func main() {
 			r.Get("/pipeline", pipelineConfigHandler.Get)
 			r.Patch("/pipeline", pipelineConfigHandler.Update)
 
-			// Execution logs
-			r.Get("/execution-logs", execLogHandler.List)
-			r.Post("/execution-logs", execLogHandler.Create)
+			// Agent executions
+			r.Get("/executions", execHandler.List)
+			r.Post("/executions", execHandler.Create)
+			r.Get("/executions/{execId}", execHandler.Get)
+			r.Patch("/executions/{execId}", execHandler.Update)
 
 			// Feedback signals
 			r.Post("/feedback", feedbackHandler.Create)

@@ -1,5 +1,7 @@
-import { CheckCircle2, ChevronRight, Circle } from 'lucide-react'
+import { useMemo } from 'react'
+import { CheckCircle2, ChevronRight, Circle, Zap, XCircle } from 'lucide-react'
 import { translateSeedTaskCopy } from '../../lib/seedTaskI18n'
+import { useWorkspaceStore } from '../../stores/workspace'
 import type { PhaseType, Task } from '../../types'
 import type { TranslationKey } from '../../i18n/en'
 import { getTaskTypeInfo } from './phaseMeta'
@@ -11,6 +13,12 @@ export function PhaseTaskRow({ task, phase, onClick, t }: {
   const taskCopy = translateSeedTaskCopy(task.title, task.description, t as (k: TranslationKey) => string)
   const typeInfo = getTaskTypeInfo(phase, task)
   const typeLabel = t(`task.type.${typeInfo.key}` as any)
+  const executions = useWorkspaceStore((s) => s.executions)
+
+  const lastExec = useMemo(() => {
+    if (!task.lastExecutionId) return null
+    return executions.find((e) => e.id === task.lastExecutionId) ?? null
+  }, [task.lastExecutionId, executions])
 
   const avatarClass = task.status === 'completed'
     ? 'bg-success/10 text-success'
@@ -49,6 +57,25 @@ export function PhaseTaskRow({ task, phase, onClick, t }: {
               {task.priority && (
                 <span className={`px-1.5 py-0.5 text-[9px] font-semibold rounded-md uppercase shrink-0 ${PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.p3}`}>
                   {task.priority}
+                </span>
+              )}
+              {lastExec && (
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium rounded-md shrink-0 ${
+                  lastExec.status === 'success' ? 'bg-success/10 text-success' :
+                  lastExec.status === 'failed' ? 'bg-danger/10 text-danger' :
+                  lastExec.status === 'running' ? 'bg-accent/10 text-accent' :
+                  'bg-surface-3 text-text-tertiary'
+                }`}>
+                  {lastExec.status === 'success' ? <CheckCircle2 className="w-2.5 h-2.5" /> :
+                   lastExec.status === 'failed' ? <XCircle className="w-2.5 h-2.5" /> :
+                   <Zap className="w-2.5 h-2.5" />}
+                  {lastExec.agentType}
+                </span>
+              )}
+              {(task.executionCount ?? 0) > 0 && !lastExec && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium rounded-md shrink-0 bg-surface-3 text-text-tertiary">
+                  <Zap className="w-2.5 h-2.5" />
+                  {task.executionCount}x
                 </span>
               )}
             </div>

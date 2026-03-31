@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/vibeos/shared/models"
 )
@@ -120,7 +119,7 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 
 func (s *PostgresStore) ListArtifactMetaByWorkspace(ctx context.Context, workspaceID string) ([]models.ArtifactMeta, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title,
+		`SELECT id, workspace_id, execution_id, agent_type, type, title,
 		        COALESCE(content_size, octet_length(content)) AS content_size,
 		        metadata, version, created_at, updated_at
 		 FROM artifacts WHERE workspace_id = $1
@@ -134,7 +133,7 @@ func (s *PostgresStore) ListArtifactMetaByWorkspace(ctx context.Context, workspa
 	var out []models.ArtifactMeta
 	for rows.Next() {
 		var a models.ArtifactMeta
-		if err := rows.Scan(&a.ID, &a.WorkspaceID, &a.PhaseID, &a.TaskID, &a.RequirementID,
+		if err := rows.Scan(&a.ID, &a.WorkspaceID, &a.ExecutionID,
 			&a.AgentType, &a.Type, &a.Title, &a.ContentSize,
 			&a.Metadata, &a.Version, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
@@ -281,15 +280,6 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 		args = append(args, *req.Status)
 		idx++
 	}
-	if req.CurrentTask != nil {
-		if *req.CurrentTask == "" {
-			sets = append(sets, "current_task = NULL")
-		} else {
-			sets = append(sets, fmt.Sprintf("current_task = $%d", idx))
-			args = append(args, *req.CurrentTask)
-			idx++
-		}
-	}
 	if req.PreferredModel != nil {
 		sets = append(sets, fmt.Sprintf("preferred_model = $%d", idx))
 		args = append(args, *req.PreferredModel)
@@ -301,7 +291,7 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 
 	sets = append(sets, "updated_at = NOW()")
 	query := fmt.Sprintf(
-		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING id, workspace_id, type, name, status, current_task, preferred_model, avatar, created_at, updated_at",
+		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING id, workspace_id, type, name, status, preferred_model, avatar, created_at, updated_at",
 		strings.Join(sets, ", "), idx, idx+1,
 	)
 	args = append(args, id, workspaceID)
@@ -310,7 +300,7 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 	var agentType, status string
 	err := s.pool.QueryRow(ctx, query, args...).Scan(
 		&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
-		&a.CurrentTask, &a.PreferredModel, &a.Avatar, &a.CreatedAt, &a.UpdatedAt,
+		&a.PreferredModel, &a.Avatar, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -550,85 +540,3 @@ func (s *PostgresStore) UpsertPipelineConfigs(ctx context.Context, workspaceID s
 	return s.GetPipelineConfigs(ctx, workspaceID)
 }
 
-// =========================================================================
-// Execution logs
-// =========================================================================
-
-func (s *PostgresStore) CreateExecutionLog(ctx context.Context, entry *models.ExecutionLog) error {
-	if entry.ID == "" {
-		entry.ID = uuid.NewString()
-	}
-	return s.pool.QueryRow(ctx,
-		`INSERT INTO execution_logs (id, workspace_id, agent_type, level, message, task_id)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING created_at`,
-		entry.ID, entry.WorkspaceID, entry.AgentType, entry.Level, entry.Message, entry.TaskID,
-	).Scan(&entry.CreatedAt)
-}
-
-func (s *PostgresStore) ListExecutionLogs(ctx context.Context, workspaceID string, cursor string, limit int) ([]models.ExecutionLog, string, error) {
-	var (
-		query string
-		args  []any
-	)
-	if cursor != "" {
-		query = `SELECT id, workspace_id, agent_type, level, message, task_id, created_at
-			 FROM execution_logs
-			 WHERE workspace_id = $1 AND created_at < (SELECT created_at FROM execution_logs WHERE id = $2)
-			 ORDER BY created_at DESC LIMIT $3`
-		args = []any{workspaceID, cursor, limit}
-	} else {
-		query = `SELECT id, workspace_id, agent_type, level, message, task_id, created_at
-			 FROM execution_logs WHERE workspace_id = $1
-			 ORDER BY created_at DESC LIMIT $2`
-		args = []any{workspaceID, limit}
-	}
-	rows, err := s.pool.Query(ctx, query, args...)
-	if err != nil {
-		return nil, "", err
-	}
-	defer rows.Close()
-
-	var out []models.ExecutionLog
-	for rows.Next() {
-		var e models.ExecutionLog
-		if err := rows.Scan(&e.ID, &e.WorkspaceID, &e.AgentType, &e.Level, &e.Message, &e.TaskID, &e.CreatedAt); err != nil {
-			return nil, "", err
-		}
-		out = append(out, e)
-	}
-	if out == nil {
-		out = []models.ExecutionLog{}
-	}
-	var nextCursor string
-	if len(out) == limit {
-		nextCursor = out[len(out)-1].ID
-	}
-	return out, nextCursor, nil
-}
-
-func (s *PostgresStore) ListExecutionLogsSince(ctx context.Context, workspaceID string, since time.Time, limit int) ([]models.ExecutionLog, string, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, workspace_id, agent_type, level, message, task_id, created_at
-		 FROM execution_logs
-		 WHERE workspace_id = $1 AND created_at >= $2
-		 ORDER BY created_at DESC LIMIT $3`,
-		workspaceID, since, limit)
-	if err != nil {
-		return nil, "", err
-	}
-	defer rows.Close()
-
-	var out []models.ExecutionLog
-	for rows.Next() {
-		var e models.ExecutionLog
-		if err := rows.Scan(&e.ID, &e.WorkspaceID, &e.AgentType, &e.Level, &e.Message, &e.TaskID, &e.CreatedAt); err != nil {
-			return nil, "", err
-		}
-		out = append(out, e)
-	}
-	if out == nil {
-		out = []models.ExecutionLog{}
-	}
-	return out, "", nil
-}

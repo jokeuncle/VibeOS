@@ -1,10 +1,13 @@
+import { useMemo } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
-  FileText, X, CheckCircle2, Circle, FileCode2, ChevronDown, MessageSquare,
+  FileText, X, CheckCircle2, Circle, FileCode2, ChevronDown, MessageSquare, Zap,
 } from 'lucide-react'
 import { translateSeedTaskCopy } from '../../lib/seedTaskI18n'
+import { useWorkspaceStore } from '../../stores/workspace'
 import { TaskLinksAndAttachments, type TaskRefLink, type TaskLocalFile } from '../TaskLinksAndAttachments'
+import { ExecutionRow } from './ExecutionRow'
 import type { PhaseType, Task, Artifact } from '../../types'
 import { getTaskTypeInfo } from './phaseMeta'
 import { PHASE_CHECKLIST, getPhaseDrawerSections } from './phaseStatus'
@@ -19,12 +22,20 @@ export function TaskDrawer({ task, phase, artifacts, open, onClose, t, refLinks,
   localFiles: TaskLocalFile[]
   onLocalFilesChange: (files: TaskLocalFile[]) => void
 }) {
+  const executions = useWorkspaceStore((s) => s.executions)
+
+  const taskExecutions = useMemo(() => {
+    if (!task) return []
+    return executions.filter((e) => e.taskIds?.includes(task.id))
+  }, [task, executions])
+
   if (!task) return null
 
   const taskCopy = translateSeedTaskCopy(task.title, task.description, t)
   const typeInfo = getTaskTypeInfo(phase, task)
   const typeLabel = t(`task.type.${typeInfo.key}` as any)
-  const linkedArtifacts = artifacts.filter(a => a.taskId === task.id)
+  const taskExecIds = new Set(taskExecutions.map(e => e.id))
+  const linkedArtifacts = artifacts.filter(a => a.executionId && taskExecIds.has(a.executionId))
   const checklist = PHASE_CHECKLIST[phase]
   const sections = getPhaseDrawerSections(phase, task, t)
 
@@ -73,9 +84,10 @@ export function TaskDrawer({ task, phase, artifacts, open, onClose, t, refLinks,
           <Tabs.Root key={task.id} defaultValue="detail" className="flex-1 flex flex-col overflow-hidden">
             <Tabs.List className="flex border-b border-border-subtle px-5 bg-surface-1/30 shrink-0">
               {([
-                { id: 'detail',    icon: <FileText className="w-3 h-3" />,      label: t('task.detail') },
-                { id: 'checklist', icon: <CheckCircle2 className="w-3 h-3" />,  label: t('task.checklist' as any) },
-                { id: 'artifacts', icon: <FileCode2 className="w-3 h-3" />,     label: t('phase.tab.artifacts') },
+                { id: 'detail',     icon: <FileText className="w-3 h-3" />,      label: t('task.detail'),                   count: 0 },
+                { id: 'checklist',  icon: <CheckCircle2 className="w-3 h-3" />,  label: t('task.checklist' as any),         count: 0 },
+                { id: 'artifacts',  icon: <FileCode2 className="w-3 h-3" />,     label: t('phase.tab.artifacts'),           count: linkedArtifacts.length },
+                { id: 'executions', icon: <Zap className="w-3 h-3" />,           label: t('execution.history' as any),      count: taskExecutions.length },
               ] as const).map(tab => (
                 <Tabs.Trigger
                   key={tab.id}
@@ -83,8 +95,8 @@ export function TaskDrawer({ task, phase, artifacts, open, onClose, t, refLinks,
                   className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium border-b-2 -mb-px transition-colors cursor-pointer outline-none text-text-tertiary border-transparent hover:text-text-secondary data-[state=active]:text-accent data-[state=active]:border-accent"
                 >
                   {tab.icon}{tab.label}
-                  {tab.id === 'artifacts' && linkedArtifacts.length > 0 && (
-                    <span className="text-[10px] font-mono opacity-60">({linkedArtifacts.length})</span>
+                  {tab.count > 0 && (
+                    <span className="text-[10px] font-mono opacity-60">({tab.count})</span>
                   )}
                 </Tabs.Trigger>
               ))}
@@ -150,6 +162,20 @@ export function TaskDrawer({ task, phase, artifacts, open, onClose, t, refLinks,
                   })}
                 </div>
                 <p className="text-[10px] text-text-tertiary/60 mt-4 text-center">{t('task.checklistHint' as any)}</p>
+              </Tabs.Content>
+
+              <Tabs.Content value="executions" className="p-5 space-y-2 outline-none">
+                {taskExecutions.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <Zap className="w-8 h-8 mx-auto mb-3 text-text-tertiary/25" />
+                    <p className="text-xs text-text-tertiary">{t('execution.empty.title' as any)}</p>
+                    <p className="text-[11px] text-text-tertiary/50 mt-1">{t('execution.empty.desc' as any)}</p>
+                  </div>
+                ) : (
+                  taskExecutions.map((exec) => (
+                    <ExecutionRow key={exec.id} execution={exec} t={t} />
+                  ))
+                )}
               </Tabs.Content>
 
               <Tabs.Content value="artifacts" className="p-5 space-y-2 outline-none">

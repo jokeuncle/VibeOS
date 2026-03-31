@@ -116,6 +116,79 @@ class WorkspaceClient:
                     return {**task, "phaseId": phase["id"], "phaseType": phase.get("type")}
         return None
 
+    # ------------------------------------------------------------------
+    # Agent executions (persistent)
+    # ------------------------------------------------------------------
+
+    async def create_execution(
+        self,
+        workspace_id: str,
+        *,
+        execution_id: str | None = None,
+        requirement_id: str | None = None,
+        task_ids: list[str] | None = None,
+        intent_type: str,
+        intent_summary: str = "",
+        triggered_by: str = "nlp",
+        user_message: str = "",
+        agent_type: str = "pm",
+        result_type: str = "general",
+        parent_execution_id: str | None = None,
+        chat_message_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "intentType": intent_type,
+            "intentSummary": intent_summary,
+            "triggeredBy": triggered_by,
+            "userMessage": user_message,
+            "agentType": agent_type,
+            "resultType": result_type,
+        }
+        if execution_id:
+            body["id"] = execution_id
+        if requirement_id:
+            body["requirementId"] = requirement_id
+        if task_ids:
+            body["taskIds"] = task_ids
+        if parent_execution_id:
+            body["parentExecutionId"] = parent_execution_id
+        if chat_message_id:
+            body["chatMessageId"] = chat_message_id
+        resp = await self._http.post(
+            f"/api/workspaces/{workspace_id}/executions", json=body,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def update_execution(
+        self,
+        workspace_id: str,
+        execution_id: str,
+        *,
+        status: str | None = None,
+        error_message: str | None = None,
+        task_ids: list[str] | None = None,
+        chat_message_id: str | None = None,
+        steps: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if status:
+            body["status"] = status
+        if error_message is not None:
+            body["errorMessage"] = error_message
+        if task_ids is not None:
+            body["taskIds"] = task_ids
+        if chat_message_id is not None:
+            body["chatMessageId"] = chat_message_id
+        if steps is not None:
+            body["steps"] = steps
+        resp = await self._http.patch(
+            f"/api/workspaces/{workspace_id}/executions/{execution_id}",
+            json=body,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def get_tasks_by_phase(
         self, workspace_id: str, phase_id: str
     ) -> list[dict[str, Any]]:
@@ -155,8 +228,7 @@ class WorkspaceClient:
         artifact_type: str,
         title: str,
         content: str,
-        phase_id: str | None = None,
-        task_id: str | None = None,
+        execution_id: str | None = None,
         metadata: str = "{}",
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -166,10 +238,8 @@ class WorkspaceClient:
             "content": content,
             "metadata": metadata,
         }
-        if phase_id:
-            body["phaseId"] = phase_id
-        if task_id:
-            body["taskId"] = task_id
+        if execution_id:
+            body["executionId"] = execution_id
         resp = await self._http.post(
             f"/api/workspaces/{workspace_id}/artifacts", json=body
         )
@@ -1295,8 +1365,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         artifact_type: str,
         title: str,
         content: str,
-        phase_id: str | None = None,
-        task_id: str | None = None,
+        execution_id: str | None = None,
         metadata: str = "{}",
     ) -> dict[str, Any]:
         """Persist an artifact to workspace-svc and auto-index to RAG."""
@@ -1306,8 +1375,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             artifact_type=artifact_type,
             title=title,
             content=content,
-            phase_id=phase_id,
-            task_id=task_id,
+            execution_id=execution_id,
             metadata=metadata,
         )
         if len(content) > 100:

@@ -133,11 +133,7 @@ function AgentActivityIndicator({
             ? `${t(`agent.name.${runningAgents[0].type}` as TranslationKey)} ${t('agent.status.running')}`
             : `${runningAgents.length} ${t('agent.active')} ${t('agent.status.running')}`}
         </span>
-        {runningAgents[0]?.currentTask && (
-          <span className="text-[10px] text-text-tertiary truncate max-w-[200px]">
-            · {runningAgents[0].currentTask}
-          </span>
-        )}
+        
       </div>
     </motion.div>
   )
@@ -157,7 +153,9 @@ export default function CommandBar() {
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const workspaceAgents = activeWorkspace?.agents || []
 
-  const isZeroRequirements = !!activeWorkspaceId && (activeWorkspace?.requirements?.length ?? 0) === 0
+  /** Only after the workspace row exists; otherwise `?? 0` falsely matched "zero reqs" while list was still loading. */
+  const isZeroRequirements =
+    !!activeWorkspaceId && !!activeWorkspace && (activeWorkspace.requirements?.length ?? 0) === 0
   const activeRequirement = activeWorkspace?.requirements?.find((r) => r.id === activeRequirementId)
 
   /** Match `WorkspaceHome` NLP strip: max-w-2xl + px-6 sm:px-10 (same in workspace / requirement detail). */
@@ -384,7 +382,7 @@ export default function CommandBar() {
   const placeholder = getPlaceholder()
 
   return (
-    <div className="relative z-[55] w-full max-w-2xl mx-auto px-6 sm:px-10">
+    <div className="relative z-[55] w-full max-w-2xl mx-auto">
       {/* Suggestion dropdown (above input) */}
       <AnimatePresence>
         {showSuggestions && (

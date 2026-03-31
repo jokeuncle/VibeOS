@@ -179,14 +179,7 @@ export function buildTasksSlice(set: SetState, get: GetState) {
         workspaces: patchWorkspace(s.workspaces, workspaceId, (w) => ({
           ...w,
           agents: w.agents.map((a) =>
-            a.type === agentType
-              ? {
-                  ...a,
-                  status,
-                  currentTask:
-                    status === 'idle' ? undefined : detail !== undefined ? detail : a.currentTask,
-                }
-              : a,
+            a.type === agentType ? { ...a, status } : a,
           ),
         })),
         agentStatusHistory: {

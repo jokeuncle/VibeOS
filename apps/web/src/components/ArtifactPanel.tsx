@@ -4,9 +4,8 @@ import { FileCode2, FileText, Database, Network, ChevronDown, ChevronRight, Copy
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import { workspaceApi } from '../lib/api'
-import type { Artifact, PhaseType } from '../types'
+import type { Artifact } from '../types'
 import type { TranslationKey } from '../i18n/en'
-import FormSelect from './ui/FormSelect'
 
 const ICON_MAP: Record<string, typeof FileCode2> = {
   schema: Database,
@@ -126,8 +125,6 @@ const LANG_MAP: Record<string, string> = {
   diagram: 'mermaid',
 }
 
-const PHASE_TYPES: PhaseType[] = ['requirement', 'design', 'architecture', 'development', 'testing', 'deployment', 'monitoring']
-
 function ArtifactCard({ artifact }: { artifact: Artifact }) {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
@@ -189,12 +186,11 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
 }
 
 export default function ArtifactPanel() {
-  const { activeWorkspaceId, workflowRunning, workspaces, activeRequirementId } = useWorkspaceStore()
+  const { activeWorkspaceId, workflowRunning, workspaces, activeRequirementId, executions } = useWorkspaceStore()
   const t = useT()
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(false)
   const [prevRunning, setPrevRunning] = useState(false)
-  const [phaseFilter, setPhaseFilter] = useState<string>('all')
 
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
@@ -225,24 +221,17 @@ export default function ArtifactPanel() {
   const filteredArtifacts = useMemo(() => {
     let filtered = artifacts
     if (activeRequirementId) {
-      filtered = filtered.filter(a => a.requirementId === activeRequirementId)
-    }
-    if (phaseFilter !== 'all') {
-      filtered = filtered.filter(a => a.phaseId === phaseFilter)
+      const reqExecIds = new Set(
+        executions
+          .filter(e => e.requirementId === activeRequirementId)
+          .map(e => e.id),
+      )
+      filtered = filtered.filter(a => a.executionId && reqExecIds.has(a.executionId))
     }
     return filtered
-  }, [artifacts, phaseFilter, activeRequirementId])
+  }, [artifacts, activeRequirementId, executions])
 
   if (!activeWorkspaceId) return null
-
-  const phases = workspace?.phases || []
-  const phaseFilterOptions = useMemo(
-    () => [
-      { value: 'all', label: t('artifact.filterAll' as TranslationKey) },
-      ...phases.map((p) => ({ value: p.id, label: t(`phase.${p.type}` as TranslationKey) })),
-    ],
-    [phases, t],
-  )
 
   return (
     <div>
@@ -259,17 +248,6 @@ export default function ArtifactPanel() {
           ({filteredArtifacts.length})
         </span>
         <div className="flex-1 h-px bg-border-subtle" />
-        {artifacts.length > 0 && (
-          <FormSelect
-            size="sm"
-            fullWidth={false}
-            value={phaseFilter}
-            options={phaseFilterOptions}
-            onChange={setPhaseFilter}
-            triggerClassName="min-w-[8rem] max-w-[10rem]"
-            aria-label={t('artifact.filterAll' as TranslationKey)}
-          />
-        )}
       </div>
 
       {loading && (

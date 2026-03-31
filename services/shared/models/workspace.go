@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 func TimeNow() time.Time {
 	return time.Now().UTC()
@@ -140,20 +143,22 @@ type Phase struct {
 }
 
 type Task struct {
-	ID            string        `json:"id" db:"id"`
-	PhaseID       string        `json:"phaseId" db:"phase_id"`
-	WorkspaceID   string        `json:"workspaceId" db:"workspace_id"`
-	RequirementID *string       `json:"requirementId,omitempty" db:"requirement_id"`
-	Title         string        `json:"title" db:"title"`
-	Description   string        `json:"description" db:"description"`
-	Status        PhaseStatus   `json:"status" db:"status"`
-	Priority      *TaskPriority `json:"priority,omitempty" db:"priority"`
-	Labels        []string      `json:"labels" db:"labels"`
-	DueDate       *time.Time    `json:"dueDate,omitempty" db:"due_date"`
-	AssignedAgent *AgentType    `json:"assignedAgent,omitempty" db:"assigned_agent"`
-	SortOrder     int           `json:"sortOrder" db:"sort_order"`
-	CreatedAt     time.Time     `json:"createdAt" db:"created_at"`
-	UpdatedAt     time.Time     `json:"updatedAt" db:"updated_at"`
+	ID              string        `json:"id" db:"id"`
+	PhaseID         string        `json:"phaseId" db:"phase_id"`
+	WorkspaceID     string        `json:"workspaceId" db:"workspace_id"`
+	RequirementID   *string       `json:"requirementId,omitempty" db:"requirement_id"`
+	Title           string        `json:"title" db:"title"`
+	Description     string        `json:"description" db:"description"`
+	Status          PhaseStatus   `json:"status" db:"status"`
+	Priority        *TaskPriority `json:"priority,omitempty" db:"priority"`
+	Labels          []string      `json:"labels" db:"labels"`
+	DueDate         *time.Time    `json:"dueDate,omitempty" db:"due_date"`
+	AssignedAgent   *AgentType    `json:"assignedAgent,omitempty" db:"assigned_agent"`
+	LastExecutionID *string       `json:"lastExecutionId,omitempty" db:"last_execution_id"`
+	ExecutionCount  int           `json:"executionCount" db:"execution_count"`
+	SortOrder       int           `json:"sortOrder" db:"sort_order"`
+	CreatedAt       time.Time     `json:"createdAt" db:"created_at"`
+	UpdatedAt       time.Time     `json:"updatedAt" db:"updated_at"`
 }
 
 type Agent struct {
@@ -162,7 +167,6 @@ type Agent struct {
 	Type           AgentType   `json:"type" db:"type"`
 	Name           string      `json:"name" db:"name"`
 	Status         AgentStatus `json:"status" db:"status"`
-	CurrentTask    *string     `json:"currentTask,omitempty" db:"current_task"`
 	PreferredModel *string     `json:"preferredModel,omitempty" db:"preferred_model"`
 	Avatar         string      `json:"avatar" db:"avatar"`
 	CreatedAt      time.Time   `json:"createdAt" db:"created_at"`
@@ -215,27 +219,46 @@ type PipelinePhaseConfig struct {
 }
 
 // ---------------------------------------------------------------------------
-// Execution log models
+// Agent execution models (execution-centric SDLC)
 // ---------------------------------------------------------------------------
 
-// ExecutionLog records a single agent log entry (persisted to DB for history).
-type ExecutionLog struct {
-	ID          string    `json:"id" db:"id"`
-	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
-	AgentType   string    `json:"agent" db:"agent_type"`
-	Level       string    `json:"level" db:"level"`
-	Message     string    `json:"message" db:"message"`
-	TaskID      *string   `json:"taskId,omitempty" db:"task_id"`
-	CreatedAt   time.Time `json:"timestamp" db:"created_at"`
+type ExecutionStatus string
+
+const (
+	ExecQueued    ExecutionStatus = "queued"
+	ExecRunning   ExecutionStatus = "running"
+	ExecSuccess   ExecutionStatus = "success"
+	ExecFailed    ExecutionStatus = "failed"
+	ExecCancelled ExecutionStatus = "cancelled"
+)
+
+// AgentExecution is a persistent, first-class record of an AI agent run.
+type AgentExecution struct {
+	ID                string          `json:"id" db:"id"`
+	WorkspaceID       string          `json:"workspaceId" db:"workspace_id"`
+	RequirementID     *string         `json:"requirementId,omitempty" db:"requirement_id"`
+	TaskIDs           []string        `json:"taskIds" db:"task_ids"`
+	IntentType        string          `json:"intentType" db:"intent_type"`
+	IntentSummary     string          `json:"intentSummary" db:"intent_summary"`
+	TriggeredBy       string          `json:"triggeredBy" db:"triggered_by"`
+	UserMessage       string          `json:"userMessage,omitempty" db:"user_message"`
+	ChatMessageID     *string         `json:"chatMessageId,omitempty" db:"chat_message_id"`
+	Status            ExecutionStatus `json:"status" db:"status"`
+	AgentType         string          `json:"agentType" db:"agent_type"`
+	Steps             json.RawMessage `json:"steps" db:"steps"`
+	ResultType        string          `json:"resultType" db:"result_type"`
+	ResultPayload     json.RawMessage `json:"resultPayload,omitempty" db:"result_payload"`
+	ErrorMessage      string          `json:"errorMessage,omitempty" db:"error_message"`
+	ParentExecutionID *string         `json:"parentExecutionId,omitempty" db:"parent_execution_id"`
+	StartedAt         time.Time       `json:"startedAt" db:"started_at"`
+	CompletedAt       *time.Time      `json:"completedAt,omitempty" db:"completed_at"`
 }
 
 type Artifact struct {
-	ID            string    `json:"id" db:"id"`
-	WorkspaceID   string    `json:"workspaceId" db:"workspace_id"`
-	PhaseID       *string   `json:"phaseId,omitempty" db:"phase_id"`
-	TaskID        *string   `json:"taskId,omitempty" db:"task_id"`
-	RequirementID *string   `json:"requirementId,omitempty" db:"requirement_id"`
-	AgentType     AgentType `json:"agentType" db:"agent_type"`
+	ID          string    `json:"id" db:"id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	ExecutionID *string   `json:"executionId,omitempty" db:"execution_id"`
+	AgentType   AgentType `json:"agentType" db:"agent_type"`
 	Type          string    `json:"type" db:"type"`
 	Title         string    `json:"title" db:"title"`
 	Content       string    `json:"content" db:"content"`
@@ -246,9 +269,10 @@ type Artifact struct {
 }
 
 type Activity struct {
-	ID          string     `json:"id" db:"id"`
-	WorkspaceID string     `json:"workspaceId" db:"workspace_id"`
-	Type        string     `json:"type" db:"type"`
+	ID            string     `json:"id" db:"id"`
+	WorkspaceID   string     `json:"workspaceId" db:"workspace_id"`
+	RequirementID *string    `json:"requirementId,omitempty" db:"requirement_id"`
+	Type          string     `json:"type" db:"type"`
 	Description string     `json:"description" db:"description"`
 	AgentType   *AgentType `json:"agentType,omitempty" db:"agent_type"`
 	CreatedAt   time.Time  `json:"timestamp" db:"created_at"`
@@ -293,12 +317,10 @@ type ConversationSummary struct {
 // ArtifactMeta is a lightweight projection of Artifact without the content field,
 // used for listing to avoid transferring large payloads.
 type ArtifactMeta struct {
-	ID            string    `json:"id" db:"id"`
-	WorkspaceID   string    `json:"workspaceId" db:"workspace_id"`
-	PhaseID       *string   `json:"phaseId,omitempty" db:"phase_id"`
-	TaskID        *string   `json:"taskId,omitempty" db:"task_id"`
-	RequirementID *string   `json:"requirementId,omitempty" db:"requirement_id"`
-	AgentType     AgentType `json:"agentType" db:"agent_type"`
+	ID          string    `json:"id" db:"id"`
+	WorkspaceID string    `json:"workspaceId" db:"workspace_id"`
+	ExecutionID *string   `json:"executionId,omitempty" db:"execution_id"`
+	AgentType   AgentType `json:"agentType" db:"agent_type"`
 	Type          string    `json:"type" db:"type"`
 	Title         string    `json:"title" db:"title"`
 	ContentSize   int       `json:"contentSize" db:"content_size"`

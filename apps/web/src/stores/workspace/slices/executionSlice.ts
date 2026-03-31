@@ -1,25 +1,35 @@
 import type { StoreApi } from 'zustand'
 import type { AgentExecution, ExecutionStatus, ExecutionStep } from '../../../types'
 import type { WorkspaceState } from '../types'
+import { workspaceApi } from '../../../lib/api'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
 
 const MAX_EXECUTIONS = 200
 
-export function buildExecutionSlice(set: SetState, _get: GetState) {
+function normalizeExec(e: AgentExecution): AgentExecution {
+  return {
+    ...e,
+    taskIds: e.taskIds ?? [],
+    steps: e.steps ?? [],
+  }
+}
+
+export function buildExecutionSlice(set: SetState, get: GetState) {
   return {
     executions: [] as AgentExecution[],
 
     upsertExecution: (exec: AgentExecution) => {
+      const normalized = normalizeExec(exec)
       set((s) => {
-        const idx = s.executions.findIndex((e) => e.id === exec.id)
+        const idx = s.executions.findIndex((e) => e.id === normalized.id)
         if (idx !== -1) {
           const updated = [...s.executions]
-          updated[idx] = { ...updated[idx], ...exec }
+          updated[idx] = { ...updated[idx], ...normalized }
           return { executions: updated }
         }
-        return { executions: [exec, ...s.executions].slice(0, MAX_EXECUTIONS) }
+        return { executions: [normalized, ...s.executions].slice(0, MAX_EXECUTIONS) }
       })
     },
 
@@ -67,8 +77,61 @@ export function buildExecutionSlice(set: SetState, _get: GetState) {
     clearExecutions: () => {
       set({ executions: [] })
     },
+
+    fetchExecutions: async (requirementId?: string) => {
+      const wsId = get().activeWorkspaceId
+      if (!wsId) return
+      try {
+        const resp = await workspaceApi.listExecutions(wsId, requirementId)
+        const fetched = (resp.data ?? []).map(normalizeExec)
+        set((s) => {
+          const existingIds = new Set(fetched.map((e) => e.id))
+          const running = s.executions.filter(
+            (e) => !existingIds.has(e.id) && (e.status === 'running' || e.status === 'queued'),
+          )
+          return { executions: [...running, ...fetched].slice(0, MAX_EXECUTIONS) }
+        })
+      } catch {
+        // API may not be available yet; keep existing state
+      }
+    },
+
+    persistExecution: async (exec: AgentExecution) => {
+      const wsId = get().activeWorkspaceId
+      if (!wsId) return
+      try {
+        await workspaceApi.createExecution(wsId, {
+          id: exec.id,
+          requirementId: exec.requirementId,
+          taskIds: exec.taskIds,
+          intentType: exec.intentType,
+          intentSummary: exec.intentSummary,
+          triggeredBy: exec.triggeredBy,
+          userMessage: exec.userMessage,
+          agentType: exec.agentType,
+          resultType: exec.resultType,
+          parentExecutionId: exec.parentExecutionId,
+        })
+      } catch {
+        // fire-and-forget; SSE/WS will keep local state in sync
+      }
+    },
+
+    persistExecutionUpdate: async (executionId: string, updates: {
+      status?: string; steps?: string; resultPayload?: string;
+      errorMessage?: string; taskIds?: string[]; chatMessageId?: string;
+    }) => {
+      const wsId = get().activeWorkspaceId
+      if (!wsId) return
+      try {
+        await workspaceApi.updateExecution(wsId, executionId, updates)
+      } catch {
+        // fire-and-forget
+      }
+    },
   } satisfies Pick<
     WorkspaceState,
-    'executions' | 'upsertExecution' | 'patchExecutionStatus' | 'patchExecutionStep' | 'removeExecution' | 'clearExecutions'
+    'executions' | 'upsertExecution' | 'patchExecutionStatus' | 'patchExecutionStep' |
+    'removeExecution' | 'clearExecutions' | 'fetchExecutions' | 'persistExecution' | 'persistExecutionUpdate'
   >
 }

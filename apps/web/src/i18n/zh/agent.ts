@@ -159,6 +159,8 @@ const agent = {
   'execution.time.hrAgo': '小时前',
   'execution.empty.title': '暂无执行记录',
   'execution.empty.desc': '通过 NLP 触发任务（如代码生成、构建、设计等）后，执行进度和结果将显示在这里。',
+  'execution.linkedTasks': '关联任务',
+  'execution.childExecutions': '子执行',
 }
 
 export default agent

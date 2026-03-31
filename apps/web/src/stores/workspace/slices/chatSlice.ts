@@ -287,6 +287,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
                   id: execId,
                   workspaceId: wsId,
                   requirementId: reqId || undefined,
+                  taskIds: [],
                   intentType,
                   intentSummary: data.summary || input.slice(0, 60),
                   triggeredBy: 'nlp',
@@ -298,6 +299,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
                   startedAt: new Date().toISOString(),
                 }
                 get().upsertExecution(exec)
+                get().persistExecution(exec)
                 execCreated = true
               }
               continue
@@ -372,11 +374,13 @@ export function buildChatSlice(set: SetState, get: GetState) {
           }
           if (execCreated) {
             get().patchExecutionStatus(execId, 'failed', { errorMessage: content })
+            get().persistExecutionUpdate(execId, { status: 'failed', errorMessage: content })
           }
         } finally {
           set({ nlpLoading: false })
           if (execCreated && !execHadError) {
             get().patchExecutionStatus(execId, 'success')
+            get().persistExecutionUpdate(execId, { status: 'success' })
           }
           if (persist && content) {
             workspaceApi

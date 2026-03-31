@@ -77,7 +77,6 @@ class Phase(BaseModel):
 class Agent(BaseModel):
     type: AgentType
     status: AgentStatus = AgentStatus.IDLE
-    current_task: str | None = None
     progress: float = 0.0
     capabilities: list[str] = Field(default_factory=list)
 

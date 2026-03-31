@@ -137,14 +137,12 @@ function statusDot(status: AgentStatus) {
 function AgentCard({
   meta,
   liveStatus,
-  liveTask,
   liveModel,
   agentId,
   wsId,
 }: {
   meta: AgentMeta
   liveStatus: AgentStatus
-  liveTask?: string
   liveModel?: string
   agentId?: string
   wsId: string
@@ -197,9 +195,6 @@ function AgentCard({
             </div>
           </div>
           <p className="text-[11px] text-text-tertiary leading-relaxed">{t(meta.descKey)}</p>
-          {liveTask && liveStatus !== 'idle' && (
-            <p className="text-[10px] text-accent/80 mt-1 truncate">↳ {liveTask}</p>
-          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -333,7 +328,6 @@ export default function WorkspaceAgentTeam() {
               key={meta.type}
               meta={meta}
               liveStatus={live?.status ?? 'idle'}
-              liveTask={live?.currentTask}
               liveModel={live?.preferredModel}
               agentId={live?.id}
               wsId={activeWorkspaceId ?? ''}

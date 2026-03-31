@@ -194,7 +194,6 @@ export default function AgentTopology({ agents }: { agents: Agent[] }) {
           const highlighted = isHighlighted(type)
           const isPM = type === 'pm'
           const nodeR = isPM ? 32 : 26
-          const currentTask = agentMap.get(type)?.currentTask
 
           return (
             <g
@@ -253,19 +252,7 @@ export default function AgentTopology({ agents }: { agents: Agent[] }) {
                 {t(`agent.name.${type}` as TranslationKey)}
               </text>
 
-              {/* Current task tooltip on hover */}
-              {hoveredAgent === type && currentTask && (
-                <foreignObject
-                  x={pos.x - 60}
-                  y={pos.y + nodeR + 8}
-                  width={120}
-                  height={32}
-                >
-                  <div className="px-2 py-1 rounded bg-surface-3 border border-border-subtle text-center">
-                    <span className="text-[8px] text-text-tertiary line-clamp-2">{currentTask}</span>
-                  </div>
-                </foreignObject>
-              )}
+              
             </g>
           )
         })}

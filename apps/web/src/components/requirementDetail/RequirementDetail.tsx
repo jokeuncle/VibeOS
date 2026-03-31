@@ -72,7 +72,7 @@ export default function RequirementDetail() {
   const otherReqs = (workspace?.requirements || []).filter(r => r.id !== req.id)
 
   const getTasksForPhase = (ph: PhaseType) => tasks.filter(t2 => workspace?.phases.find(p => p.id === t2.phaseId)?.type === ph)
-  const getArtsForPhase  = (ph: PhaseType) => artifacts.filter(a => workspace?.phases.find(p => p.id === a.phaseId)?.type === ph)
+  const getArtsForPhase  = (ph: PhaseType) => artifacts.filter(a => a.agentType === ph)
 
   const selectedPhaseTasks = getTasksForPhase(selectedPhase)
   const phaseDone = selectedPhaseTasks.filter(t2 => t2.status === 'completed').length

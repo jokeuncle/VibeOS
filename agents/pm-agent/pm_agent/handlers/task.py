@@ -164,6 +164,26 @@ async def handle_execute_task(
     await ws_client.update_task(workspace_id, target_task["id"], {"status": "in_progress"})
 
     task_title = target_task.get("title", "")
+
+    import uuid as _uuid
+    exec_id = _uuid.uuid4().hex
+    requirement_id = target_task.get("requirementId")
+    try:
+        await ws_client.create_execution(
+            workspace_id,
+            execution_id=exec_id,
+            requirement_id=requirement_id,
+            task_ids=[target_task["id"]],
+            intent_type=f"execute_{phase_type}",
+            intent_summary=task_title,
+            triggered_by="nlp",
+            user_message=user_message,
+            agent_type=at.value,
+            result_type=phase_type,
+        )
+    except Exception:
+        pass
+
     repos = await ws_client.get_repos_for_phase(workspace_id, phase_type)
     primary = next((r for r in repos if r.get("isPrimary")), repos[0] if repos else None)
     gitlab_ctx: dict[str, Any] = {}
@@ -191,6 +211,10 @@ async def handle_execute_task(
     result = await dispatcher.dispatch(at, agent_task)
 
     if isinstance(result, dict) and result.get("error"):
+        try:
+            await ws_client.update_execution(workspace_id, exec_id, status="failed", error_message=str(result["error"]))
+        except Exception:
+            pass
         return {
             "handled_by": "pm",
             "action": "task_failed",
@@ -200,6 +224,10 @@ async def handle_execute_task(
 
     try:
         await ws_client.complete_task(workspace_id, target_task["id"])
+    except Exception:
+        pass
+    try:
+        await ws_client.update_execution(workspace_id, exec_id, status="success")
     except Exception:
         pass
 

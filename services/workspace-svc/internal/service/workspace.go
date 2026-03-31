@@ -360,17 +360,15 @@ func (s *Service) CreateArtifact(ctx context.Context, wsID string, req models.Cr
 		metadata = "{}"
 	}
 	artifact := &models.Artifact{
-		ID:            uuid.New().String(),
-		WorkspaceID:   wsID,
-		PhaseID:       req.PhaseID,
-		TaskID:        req.TaskID,
-		RequirementID: req.RequirementID,
-		AgentType:     models.AgentType(req.AgentType),
-		Type:          req.Type,
-		Title:         req.Title,
-		Content:       req.Content,
-		Metadata:      metadata,
-		Version:       1,
+		ID:          uuid.New().String(),
+		WorkspaceID: wsID,
+		ExecutionID: req.ExecutionID,
+		AgentType:   models.AgentType(req.AgentType),
+		Type:        req.Type,
+		Title:       req.Title,
+		Content:     req.Content,
+		Metadata:    metadata,
+		Version:     1,
 	}
 
 	if err := s.store.CreateArtifact(ctx, artifact); err != nil {
@@ -389,8 +387,8 @@ func (s *Service) ListArtifactsByWorkspace(ctx context.Context, wsID string) ([]
 	return s.store.ListArtifactsByWorkspace(ctx, wsID)
 }
 
-func (s *Service) ListArtifactsByPhase(ctx context.Context, wsID, phaseID string) ([]models.Artifact, error) {
-	return s.store.ListArtifactsByPhase(ctx, wsID, phaseID)
+func (s *Service) ListArtifactsByExecution(ctx context.Context, wsID, execID string) ([]models.Artifact, error) {
+	return s.store.ListArtifactsByExecution(ctx, wsID, execID)
 }
 
 func (s *Service) GetArtifact(ctx context.Context, wsID, id string) (*models.Artifact, error) {
@@ -608,17 +606,15 @@ func (s *Service) UpsertArtifact(ctx context.Context, wsID string, req models.Cr
 		metadata = "{}"
 	}
 	artifact := &models.Artifact{
-		ID:            uuid.New().String(),
-		WorkspaceID:   wsID,
-		PhaseID:       req.PhaseID,
-		TaskID:        req.TaskID,
-		RequirementID: req.RequirementID,
-		AgentType:     models.AgentType(req.AgentType),
-		Type:          req.Type,
-		Title:         req.Title,
-		Content:       req.Content,
-		Metadata:      metadata,
-		Version:       1,
+		ID:          uuid.New().String(),
+		WorkspaceID: wsID,
+		ExecutionID: req.ExecutionID,
+		AgentType:   models.AgentType(req.AgentType),
+		Type:        req.Type,
+		Title:       req.Title,
+		Content:     req.Content,
+		Metadata:    metadata,
+		Version:     1,
 	}
 
 	if err := s.store.UpsertArtifact(ctx, artifact); err != nil {
@@ -816,26 +812,25 @@ func (s *Service) GetBudget(ctx context.Context, wsID string) (*models.BudgetRes
 		return nil, err
 	}
 
-	// Fetch today's logs only, then the last 7 days for week series.
-	todayLogs, _, err := s.store.ListExecutionLogsSince(ctx, wsID, todayUTC(), 500)
-	if err != nil {
-		return nil, err
-	}
-	weekLogs, _, err := s.store.ListExecutionLogsSince(ctx, wsID, weekStartUTC(), 5000)
+	execs, _, err := s.store.ListAgentExecutions(ctx, wsID, nil, "", 5000)
 	if err != nil {
 		return nil, err
 	}
 
-	// Per-agent today aggregation
+	today := todayUTC()
+	weekStart := weekStartUTC()
+
 	agentMap := map[string]*models.AgentUsageStat{}
-	for _, l := range todayLogs {
-		stat, ok := agentMap[l.AgentType]
+	for _, e := range execs {
+		if e.StartedAt.Before(today) {
+			continue
+		}
+		stat, ok := agentMap[e.AgentType]
 		if !ok {
-			stat = &models.AgentUsageStat{AgentType: l.AgentType}
-			agentMap[l.AgentType] = stat
+			stat = &models.AgentUsageStat{AgentType: e.AgentType}
+			agentMap[e.AgentType] = stat
 		}
 		stat.RequestCount++
-		// Rough stand-in: each log entry ≈ 500 tokens, $0.005 / entry
 		stat.TokensTotal += 500
 		stat.CostUSD += 0.005
 	}
@@ -847,7 +842,6 @@ func (s *Service) GetBudget(ctx context.Context, wsID string) (*models.BudgetRes
 		totalCost += stat.CostUSD
 		totalTokens += stat.TokensTotal
 	}
-	// Sort by cost descending for stable, meaningful UI ordering.
 	sort.Slice(agentUsage, func(i, j int) bool {
 		if agentUsage[i].CostUSD != agentUsage[j].CostUSD {
 			return agentUsage[i].CostUSD > agentUsage[j].CostUSD
@@ -855,10 +849,12 @@ func (s *Service) GetBudget(ctx context.Context, wsID string) (*models.BudgetRes
 		return agentUsage[i].AgentType < agentUsage[j].AgentType
 	})
 
-	// Week spend series (Mon–Sun), indexed 0–6 where Monday = 0
 	weekSpend := make([]float64, 7)
-	for _, l := range weekLogs {
-		day := int(l.CreatedAt.Weekday()+6) % 7 // Sunday(0)→6, Monday(1)→0
+	for _, e := range execs {
+		if e.StartedAt.Before(weekStart) {
+			continue
+		}
+		day := int(e.StartedAt.Weekday()+6) % 7
 		if day >= 0 && day < 7 {
 			weekSpend[day] += 0.005
 		}
@@ -904,23 +900,62 @@ func (s *Service) UpdatePipelineConfigs(ctx context.Context, wsID string, req mo
 }
 
 // ---------------------------------------------------------------------------
-// Execution logs
+// Agent executions (execution-centric SDLC)
 // ---------------------------------------------------------------------------
 
-func (s *Service) ListExecutionLogs(ctx context.Context, wsID, cursor string, limit int) ([]models.ExecutionLog, string, error) {
-	return s.store.ListExecutionLogs(ctx, wsID, cursor, limit)
+func (s *Service) CreateAgentExecution(ctx context.Context, wsID string, req models.CreateAgentExecutionReq) (*models.AgentExecution, error) {
+	exec := &models.AgentExecution{
+		ID:                req.ID,
+		WorkspaceID:       wsID,
+		RequirementID:     req.RequirementID,
+		TaskIDs:           req.TaskIDs,
+		IntentType:        req.IntentType,
+		IntentSummary:     req.IntentSummary,
+		TriggeredBy:       req.TriggeredBy,
+		UserMessage:       req.UserMessage,
+		ChatMessageID:     req.ChatMessageID,
+		Status:            models.ExecRunning,
+		AgentType:         req.AgentType,
+		ResultType:        req.ResultType,
+		ParentExecutionID: req.ParentExecutionID,
+	}
+	if exec.ResultType == "" {
+		exec.ResultType = "general"
+	}
+	if exec.TriggeredBy == "" {
+		exec.TriggeredBy = "nlp"
+	}
+	if err := s.store.CreateAgentExecution(ctx, exec); err != nil {
+		return nil, fmt.Errorf("create agent execution: %w", err)
+	}
+	s.publishEvent(ctx, wsID, models.WSEventExecutionStart, exec)
+	return exec, nil
 }
 
-func (s *Service) CreateExecutionLog(ctx context.Context, wsID string, req models.CreateExecutionLogReq) (*models.ExecutionLog, error) {
-	entry := &models.ExecutionLog{
-		WorkspaceID: wsID,
-		AgentType:   req.AgentType,
-		Level:       req.Level,
-		Message:     req.Message,
-		TaskID:      req.TaskID,
+func (s *Service) GetAgentExecution(ctx context.Context, id string) (*models.AgentExecution, error) {
+	return s.store.GetAgentExecution(ctx, id)
+}
+
+func (s *Service) UpdateAgentExecution(ctx context.Context, wsID, id string, req models.UpdateAgentExecutionReq) (*models.AgentExecution, error) {
+	exec, err := s.store.UpdateAgentExecution(ctx, id, req)
+	if err != nil {
+		return nil, fmt.Errorf("update agent execution: %w", err)
 	}
-	if err := s.store.CreateExecutionLog(ctx, entry); err != nil {
-		return nil, err
+
+	if req.TaskIDs != nil && len(req.TaskIDs) > 0 {
+		if linkErr := s.store.LinkExecutionToTasks(ctx, id, req.TaskIDs); linkErr != nil {
+			s.log.Error("failed to link execution to tasks", "error", linkErr, "executionId", id)
+		}
 	}
-	return entry, nil
+
+	evtType := models.WSEventExecutionUpdate
+	if exec.Status == models.ExecSuccess || exec.Status == models.ExecFailed || exec.Status == models.ExecCancelled {
+		evtType = models.WSEventExecutionComplete
+	}
+	s.publishEvent(ctx, wsID, evtType, exec)
+	return exec, nil
+}
+
+func (s *Service) ListAgentExecutions(ctx context.Context, wsID string, requirementID *string, cursor string, limit int) ([]models.AgentExecution, string, error) {
+	return s.store.ListAgentExecutions(ctx, wsID, requirementID, cursor, limit)
 }

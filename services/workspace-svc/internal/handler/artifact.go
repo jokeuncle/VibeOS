@@ -64,13 +64,13 @@ func (h *ArtifactHandler) ListByWorkspace(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, models.APIResponse[[]models.Artifact]{Data: artifacts})
 }
 
-func (h *ArtifactHandler) ListByPhase(w http.ResponseWriter, r *http.Request) {
+func (h *ArtifactHandler) ListByExecution(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
-	phaseID := chi.URLParam(r, "phaseId")
+	execID := chi.URLParam(r, "execId")
 
-	artifacts, err := h.svc.ListArtifactsByPhase(r.Context(), wsID, phaseID)
+	artifacts, err := h.svc.ListArtifactsByExecution(r.Context(), wsID, execID)
 	if err != nil {
-		h.log.Error("list artifacts by phase failed", "error", err)
+		h.log.Error("list artifacts by execution failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

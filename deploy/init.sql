@@ -75,6 +75,8 @@ CREATE TABLE tasks (
     labels TEXT[] DEFAULT '{}',
     due_date DATE,
     assigned_agent VARCHAR(32),
+    last_execution_id UUID,
+    execution_count INT NOT NULL DEFAULT 0,
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -84,10 +86,39 @@ CREATE INDEX idx_tasks_phase ON tasks(phase_id);
 CREATE INDEX idx_tasks_workspace ON tasks(workspace_id);
 CREATE INDEX idx_tasks_requirement ON tasks(requirement_id);
 
+-- Agent executions: persistent, first-class execution records
+CREATE TABLE agent_executions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
+    task_ids UUID[] NOT NULL DEFAULT '{}',
+    intent_type VARCHAR(128) NOT NULL,
+    intent_summary TEXT NOT NULL DEFAULT '',
+    triggered_by VARCHAR(32) NOT NULL DEFAULT 'nlp',
+    user_message TEXT NOT NULL DEFAULT '',
+    status VARCHAR(32) NOT NULL DEFAULT 'queued',
+    agent_type VARCHAR(32) NOT NULL,
+    steps JSONB NOT NULL DEFAULT '[]',
+    result_type VARCHAR(64) NOT NULL DEFAULT 'general',
+    result_payload JSONB,
+    chat_message_id UUID REFERENCES chat_messages(id) ON DELETE SET NULL,
+    error_message TEXT NOT NULL DEFAULT '',
+    parent_execution_id UUID REFERENCES agent_executions(id) ON DELETE SET NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_agent_executions_workspace ON agent_executions(workspace_id);
+CREATE INDEX idx_agent_executions_requirement ON agent_executions(requirement_id) WHERE requirement_id IS NOT NULL;
+CREATE INDEX idx_agent_executions_parent ON agent_executions(parent_execution_id) WHERE parent_execution_id IS NOT NULL;
+CREATE INDEX idx_agent_executions_status ON agent_executions(workspace_id, status);
+CREATE INDEX idx_agent_executions_chat_msg ON agent_executions(chat_message_id) WHERE chat_message_id IS NOT NULL;
+
 -- Activities (Event Sourcing)
 CREATE TABLE activities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
     type VARCHAR(64) NOT NULL,
     description TEXT NOT NULL,
     agent_type VARCHAR(32),
@@ -97,6 +128,7 @@ CREATE TABLE activities (
 
 CREATE INDEX idx_activities_workspace ON activities(workspace_id);
 CREATE INDEX idx_activities_created ON activities(created_at DESC);
+CREATE INDEX idx_activities_requirement ON activities(requirement_id) WHERE requirement_id IS NOT NULL;
 
 -- Agents (per-workspace agent instances)
 CREATE TABLE agents (
@@ -105,7 +137,6 @@ CREATE TABLE agents (
     type VARCHAR(32) NOT NULL,
     name VARCHAR(255) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'idle',
-    current_task VARCHAR(512),
     preferred_model TEXT,
     avatar VARCHAR(16) NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -155,9 +186,7 @@ CREATE INDEX idx_notifications_user ON notifications(user_id, created_at DESC);
 CREATE TABLE artifacts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    phase_id UUID REFERENCES phases(id) ON DELETE SET NULL,
-    task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
+    execution_id UUID REFERENCES agent_executions(id) ON DELETE SET NULL,
     agent_type VARCHAR(32) NOT NULL,
     type VARCHAR(64) NOT NULL,
     title VARCHAR(512) NOT NULL,
@@ -169,10 +198,7 @@ CREATE TABLE artifacts (
 );
 
 CREATE INDEX idx_artifacts_workspace ON artifacts(workspace_id);
-CREATE INDEX idx_artifacts_phase ON artifacts(phase_id);
-CREATE INDEX idx_artifacts_task ON artifacts(task_id);
-CREATE INDEX idx_artifacts_requirement ON artifacts(requirement_id);
-CREATE UNIQUE INDEX idx_artifacts_upsert ON artifacts(workspace_id, task_id, type) WHERE task_id IS NOT NULL;
+CREATE INDEX idx_artifacts_execution ON artifacts(execution_id) WHERE execution_id IS NOT NULL;
 
 -- ===================================================================
 -- GitLab Integration

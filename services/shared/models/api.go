@@ -31,10 +31,8 @@ type UpdateTaskReq struct {
 }
 
 type CreateArtifactReq struct {
-	PhaseID       *string `json:"phaseId,omitempty"`
-	TaskID        *string `json:"taskId,omitempty"`
-	RequirementID *string `json:"requirementId,omitempty"`
-	AgentType     string  `json:"agentType"`
+	ExecutionID *string `json:"executionId,omitempty"`
+	AgentType   string  `json:"agentType"`
 	Type          string  `json:"type"`
 	Title         string  `json:"title"`
 	Content       string  `json:"content"`
@@ -157,9 +155,8 @@ type ArchiveWorkspaceReq struct {
 
 // Agent status update
 type UpdateAgentReq struct {
-	Status         *string `json:"status,omitempty"`         // idle | running | waiting | error
-	CurrentTask    *string `json:"currentTask,omitempty"`
-	PreferredModel *string `json:"preferredModel,omitempty"` // e.g. claude-opus-4-5
+	Status         *string `json:"status,omitempty"`
+	PreferredModel *string `json:"preferredModel,omitempty"`
 }
 
 // Budget settings update
@@ -181,12 +178,28 @@ type UpdatePipelineReq struct {
 	Phases []PipelinePhaseConfigReq `json:"phases"`
 }
 
-// Execution log entry creation
-type CreateExecutionLogReq struct {
-	AgentType string  `json:"agent"`
-	Level     string  `json:"level"` // info | warn | error | success
-	Message   string  `json:"message"`
-	TaskID    *string `json:"taskId,omitempty"`
+// Agent execution DTOs
+type CreateAgentExecutionReq struct {
+	ID                string   `json:"id,omitempty"`
+	RequirementID     *string  `json:"requirementId,omitempty"`
+	TaskIDs           []string `json:"taskIds,omitempty"`
+	IntentType        string   `json:"intentType"`
+	IntentSummary     string   `json:"intentSummary"`
+	TriggeredBy       string   `json:"triggeredBy"`
+	UserMessage       string   `json:"userMessage,omitempty"`
+	ChatMessageID     *string  `json:"chatMessageId,omitempty"`
+	AgentType         string   `json:"agentType"`
+	ResultType        string   `json:"resultType,omitempty"`
+	ParentExecutionID *string  `json:"parentExecutionId,omitempty"`
+}
+
+type UpdateAgentExecutionReq struct {
+	Status        *string  `json:"status,omitempty"`
+	Steps         *string  `json:"steps,omitempty"`
+	ResultPayload *string  `json:"resultPayload,omitempty"`
+	ErrorMessage  *string  `json:"errorMessage,omitempty"`
+	TaskIDs       []string `json:"taskIds,omitempty"`
+	ChatMessageID *string  `json:"chatMessageId,omitempty"`
 }
 
 // Feedback signal (stored for preference learning)
@@ -252,4 +265,8 @@ const (
 	WSEventNotification = "notification"
 
 	WSEventRequirementUpdate = "requirement_update"
+
+	WSEventExecutionStart    = "execution:start"
+	WSEventExecutionUpdate   = "execution:update"
+	WSEventExecutionComplete = "execution:complete"
 )

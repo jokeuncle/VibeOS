@@ -44,6 +44,8 @@ export interface Task {
   dueDate?: string
   assignedAgent?: AgentType
   requirementId?: string
+  lastExecutionId?: string
+  executionCount?: number
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -77,7 +79,6 @@ export interface Agent {
   type: AgentType
   name: string
   status: AgentStatus
-  currentTask?: string
   preferredModel?: string
   avatar: string
   createdAt: string
@@ -132,20 +133,6 @@ export interface PipelinePhaseConfig {
   requireApproval: boolean
   qualityGate?: string | null
   updatedAt: string
-}
-
-// ---------------------------------------------------------------------------
-// Execution log types
-// ---------------------------------------------------------------------------
-
-export interface ExecutionLogEntry {
-  id: string
-  workspaceId: string
-  agent: string
-  level: 'info' | 'warn' | 'error' | 'success'
-  message: string
-  taskId?: string
-  timestamp: string
 }
 
 // ---------------------------------------------------------------------------
@@ -229,9 +216,7 @@ export interface Workspace {
 export interface Artifact {
   id: string
   workspaceId: string
-  phaseId?: string
-  taskId?: string
-  requirementId?: string
+  executionId?: string
   agentType: AgentType
   type: string
   title: string
@@ -245,9 +230,7 @@ export interface Artifact {
 export interface ArtifactMeta {
   id: string
   workspaceId: string
-  phaseId?: string
-  taskId?: string
-  requirementId?: string
+  executionId?: string
   agentType: AgentType
   type: string
   title: string
@@ -413,16 +396,19 @@ export interface AgentExecution {
   id: string
   workspaceId: string
   requirementId?: string
+  taskIds: string[]
   intentType: string
   intentSummary: string
   triggeredBy: 'nlp' | 'workflow' | 'manual'
   userMessage?: string
+  chatMessageId?: string
   status: ExecutionStatus
   agentType: AgentType
   steps: ExecutionStep[]
   resultType: ExecutionResultType
   resultPayload?: Record<string, unknown>
   errorMessage?: string
+  parentExecutionId?: string
   startedAt: string
   completedAt?: string
   estimatedDuration?: string

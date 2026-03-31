@@ -104,11 +104,6 @@ class WorkspaceCreateArtifact(BaseTool):
         artifact_type = kwargs.get("artifact_type", "document")
         title = kwargs.get("title", "Untitled")
         content = kwargs.get("content", "")
-        phase_type = kwargs.get("phase_type")
-
-        phase_id = None
-        if phase_type:
-            phase_id = await self._ws.find_phase_by_type(workspace_id, phase_type)
 
         result = await self._ws.create_artifact(
             workspace_id,
@@ -116,7 +111,6 @@ class WorkspaceCreateArtifact(BaseTool):
             artifact_type=artifact_type,
             title=title,
             content=content,
-            phase_id=phase_id,
         )
         return self._json_result({"status": "saved", "artifact": result.get("data", result)})
 

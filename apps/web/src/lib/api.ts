@@ -1,10 +1,9 @@
 import type {
-  Workspace, Message, RichBlock, AgentType, ActivityItem,
+  Workspace, Message, RichBlock, AgentType, ActivityItem, AgentExecution,
   GitLabCredential, GitLabProjectResult, WorkspaceRepo, User, WorkspaceMember,
   Requirement, RequirementRelation, Task, Phase, Agent,
   Artifact, ArtifactMeta, FeedbackSignal, ConversationSummary, ActivitySummary,
   LabelColor, BudgetResponse, WorkspaceBudgetSettings, PipelinePhaseConfig,
-  ExecutionLogEntry,
 } from '../types'
 
 function getAuthHeader(): Record<string, string> {
@@ -131,9 +130,6 @@ export const workspaceApi = {
   listArtifacts: (wsId: string) =>
     request<{ data: Artifact[] }>(`/api/workspaces/${wsId}/artifacts`).then(unwrap),
 
-  listArtifactsByPhase: (wsId: string, phaseId: string) =>
-    request<{ data: Artifact[] }>(`/api/workspaces/${wsId}/phases/${phaseId}/artifacts`).then(unwrap),
-
   listArtifactsMeta: (wsId: string) =>
     request<{ data: ArtifactMeta[] }>(`/api/workspaces/${wsId}/artifacts/meta`).then(unwrap),
 
@@ -190,7 +186,7 @@ export const workspaceApi = {
   listAgents: (wsId: string) =>
     request<{ data: Agent[] }>(`/api/workspaces/${wsId}/agents`).then(unwrap),
 
-  updateAgent: (wsId: string, agentId: string, updates: { status?: string; currentTask?: string; preferredModel?: string }) =>
+  updateAgent: (wsId: string, agentId: string, updates: { status?: string; preferredModel?: string }) =>
     request<{ data: Agent }>(`/api/workspaces/${wsId}/agents/${agentId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
@@ -216,17 +212,37 @@ export const workspaceApi = {
       body: JSON.stringify({ phases }),
     }).then(unwrap),
 
-  // Execution logs
-  listExecutionLogs: (wsId: string, cursor?: string, limit = 100) =>
-    request<{ data: ExecutionLogEntry[]; cursor?: string; hasMore: boolean }>(
-      `/api/workspaces/${wsId}/execution-logs?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
-    ),
+  // Agent executions (persistent)
+  listExecutions: (wsId: string, requirementId?: string, cursor?: string, limit = 50) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (requirementId) params.set('requirementId', requirementId)
+    if (cursor) params.set('cursor', cursor)
+    return request<{ data: AgentExecution[]; cursor?: string; hasMore: boolean }>(
+      `/api/workspaces/${wsId}/executions?${params}`,
+    )
+  },
 
-  createExecutionLog: (wsId: string, entry: { agent: string; level: string; message: string; taskId?: string }) =>
-    request<{ data: ExecutionLogEntry }>(`/api/workspaces/${wsId}/execution-logs`, {
+  createExecution: (wsId: string, body: {
+    id?: string; requirementId?: string; taskIds?: string[]; intentType: string;
+    intentSummary: string; triggeredBy: string; userMessage?: string;
+    agentType: string; resultType?: string; parentExecutionId?: string;
+  }) =>
+    request<{ data: AgentExecution }>(`/api/workspaces/${wsId}/executions`, {
       method: 'POST',
-      body: JSON.stringify(entry),
+      body: JSON.stringify(body),
     }).then(unwrap),
+
+  updateExecution: (wsId: string, execId: string, body: {
+    status?: string; steps?: string; resultPayload?: string;
+    errorMessage?: string; taskIds?: string[]; chatMessageId?: string;
+  }) =>
+    request<{ data: AgentExecution }>(`/api/workspaces/${wsId}/executions/${execId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  getExecution: (wsId: string, execId: string) =>
+    request<{ data: AgentExecution }>(`/api/workspaces/${wsId}/executions/${execId}`).then(unwrap),
 
   // Feedback signals
   createFeedbackSignal: (wsId: string, body: {

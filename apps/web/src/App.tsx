@@ -127,7 +127,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="shrink-0 bg-gradient-to-t from-surface-0 via-surface-0/95 to-transparent px-4 pb-3 pt-4 sm:px-6">
+                <div className="shrink-0 bg-gradient-to-t from-surface-0 via-surface-0/95 to-transparent px-6 pb-3 pt-4 sm:px-10">
                   <CommandBar />
                 </div>
               </div>
@@ -147,7 +147,7 @@ export default function App() {
         </AnimatePresence>
 
         {!activeWorkspaceId && (
-          <div className="shrink-0">
+          <div className="shrink-0 px-6 pb-3 sm:px-10 sm:pb-4">
             <CommandBar />
           </div>
         )}

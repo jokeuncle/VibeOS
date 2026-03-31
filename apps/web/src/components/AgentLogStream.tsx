@@ -1,23 +1,24 @@
 import { useRef, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, Filter, Trash2 } from 'lucide-react'
+import { Terminal, Filter } from 'lucide-react'
 import { useT } from '../i18n'
-import { useWorkspaceStore, type LogEntry } from '../stores/workspace'
-import type { Agent, AgentType } from '../types'
-import type { TranslationKey } from '../i18n/en'
+import { useWorkspaceStore } from '../stores/workspace'
+import type { Agent, AgentExecution } from '../types'
 
-const LEVEL_COLOR: Record<string, string> = {
-  info: 'text-blue-400',
-  warn: 'text-yellow-400',
-  error: 'text-red-400',
+const STATUS_COLOR: Record<string, string> = {
+  running: 'text-blue-400',
+  queued: 'text-yellow-400',
+  failed: 'text-red-400',
   success: 'text-emerald-400',
+  cancelled: 'text-text-tertiary',
 }
 
-const LEVEL_ICON: Record<string, string> = {
-  info: 'i',
-  warn: '!',
-  error: '✕',
+const STATUS_ICON: Record<string, string> = {
+  running: '▶',
+  queued: '…',
+  failed: '✕',
   success: '✓',
+  cancelled: '—',
 }
 
 const AGENT_COLOR: Record<string, string> = {
@@ -26,12 +27,8 @@ const AGENT_COLOR: Record<string, string> = {
   design: 'text-pink-400',
   architecture: 'text-orange-400',
   development: 'text-blue-400',
-  frontend: 'text-blue-400',
-  backend: 'text-indigo-400',
   testing: 'text-emerald-400',
-  qa: 'text-emerald-400',
   cicd: 'text-yellow-400',
-  devops: 'text-yellow-400',
   monitoring: 'text-teal-400',
 }
 
@@ -48,20 +45,18 @@ export default function AgentLogStream({ agents, taskId }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
-  const executionLogs = useWorkspaceStore((s) => s.executionLogs)
-  const fetchExecutionLogs = useWorkspaceStore((s) => s.fetchExecutionLogs)
+  const executions = useWorkspaceStore((s) => s.executions)
+  const fetchExecutions = useWorkspaceStore((s) => s.fetchExecutions)
 
   useEffect(() => {
     if (activeWorkspaceId && !activeWorkspaceId.startsWith('ws-temp-')) {
-      void fetchExecutionLogs(activeWorkspaceId)
+      void fetchExecutions()
     }
-  }, [activeWorkspaceId, fetchExecutionLogs])
+  }, [activeWorkspaceId, fetchExecutions])
 
-  const allLogs = activeWorkspaceId ? executionLogs[activeWorkspaceId] || [] : []
-
-  const filtered = allLogs.filter((l) => {
-    if (taskId && l.taskId !== taskId) return false
-    if (filter !== 'all' && l.agent !== filter) return false
+  const filtered = executions.filter((e) => {
+    if (taskId && !e.taskIds?.includes(taskId)) return false
+    if (filter !== 'all' && e.agentType !== filter) return false
     return true
   })
 
@@ -126,24 +121,24 @@ export default function AgentLogStream({ agents, taskId }: Props) {
           </div>
         ) : (
           <AnimatePresence>
-            {filtered.map((log) => (
+            {filtered.map((exec) => (
               <motion.div
-                key={log.id}
+                key={exec.id}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.15 }}
                 className="flex gap-2 py-0.5 hover:bg-white/[0.02] rounded px-1 -mx-1"
               >
-                <span className="text-text-tertiary/40 shrink-0">{formatTs(log.timestamp)}</span>
-                <span className={`shrink-0 w-10 text-right ${AGENT_COLOR[log.agent] || 'text-text-tertiary'}`}>
-                  {log.agent === 'cicd' || log.agent === 'devops'
+                <span className="text-text-tertiary/40 shrink-0">{formatTs(exec.startedAt)}</span>
+                <span className={`shrink-0 w-10 text-right ${AGENT_COLOR[exec.agentType] || 'text-text-tertiary'}`}>
+                  {exec.agentType === 'cicd'
                     ? 'OPS'
-                    : (log.agent || '').slice(0, 4).toUpperCase()}
+                    : (exec.agentType || '').slice(0, 4).toUpperCase()}
                 </span>
-                <span className={`shrink-0 ${LEVEL_COLOR[log.level] || 'text-text-tertiary'}`}>
-                  {LEVEL_ICON[log.level] || 'i'}
+                <span className={`shrink-0 ${STATUS_COLOR[exec.status] || 'text-text-tertiary'}`}>
+                  {STATUS_ICON[exec.status] || '·'}
                 </span>
-                <span className="text-text-primary/80">{log.message}</span>
+                <span className="text-text-primary/80 truncate">{exec.intentSummary}</span>
               </motion.div>
             ))}
           </AnimatePresence>

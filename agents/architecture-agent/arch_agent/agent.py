@@ -175,10 +175,6 @@ class ArchitectureAgent(BaseAgent):
 
             structured = _extract_json(raw_reply)
 
-            arch_phase_id_for_artifact = await self.workspace_svc.find_phase_by_type(
-                task.workspace_id, "architecture"
-            )
-
             rich_blocks: list[RichBlock] = []
             for artifact in structured.get("artifacts", []):
                 art_title = artifact.get("title", "untitled")
@@ -196,7 +192,6 @@ class ArchitectureAgent(BaseAgent):
                         artifact_type=art_type,
                         title=art_title,
                         content=art_content,
-                        phase_id=arch_phase_id_for_artifact,
                     )
                     await _log(task.workspace_id, agent_name, f"Artifact saved: {art_title}", level="success", task_id=task.task_id)
                 except Exception as exc:

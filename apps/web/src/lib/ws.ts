@@ -125,17 +125,6 @@ function handleWSEvent(event: Record<string, any>) {
     }
   }
 
-  if (event.type === 'agent:log') {
-    store.appendExecutionLog(event.workspaceId, {
-      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      timestamp: event.payload?.timestamp || new Date().toISOString(),
-      agent: event.payload?.agent || 'pm',
-      level: event.payload?.level || 'info',
-      message: event.payload?.message || '',
-      taskId: event.payload?.taskId,
-    })
-  }
-
   // Directly patch agent status in store – no API round-trip, immediate UI update
   if (event.type === 'agent:status' && event.workspaceId) {
     store.updateAgentStatus(
@@ -152,6 +141,7 @@ function handleWSEvent(event: Record<string, any>) {
       id: event.payload.id || `exec-${Date.now()}`,
       workspaceId: event.workspaceId,
       requirementId: event.payload.requirementId,
+      taskIds: event.payload.taskIds || [],
       intentType: event.payload.intentType || 'general_chat',
       intentSummary: event.payload.intentSummary || '',
       triggeredBy: event.payload.triggeredBy || 'nlp',
@@ -160,6 +150,7 @@ function handleWSEvent(event: Record<string, any>) {
       agentType: event.payload.agentType || 'pm',
       steps: event.payload.steps || [],
       resultType: event.payload.resultType || 'general',
+      parentExecutionId: event.payload.parentExecutionId,
       startedAt: event.payload.startedAt || new Date().toISOString(),
       estimatedDuration: event.payload.estimatedDuration,
     })

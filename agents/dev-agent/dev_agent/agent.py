@@ -272,13 +272,11 @@ class DevelopmentAgent(BaseAgent):
 
             # Save code output as artifact
             try:
-                dev_phase_id = await self.workspace_svc.find_phase_by_type(task.workspace_id, "development")
                 await self._save_artifact(
                     task.workspace_id,
                     artifact_type="code",
                     title=f"Code: {task.description[:80]}",
                     content=raw_reply,
-                    phase_id=dev_phase_id,
                 )
                 await _log(task.workspace_id, agent_name, "Code output saved as artifact", level="success", task_id=task.task_id)
             except Exception as exc:

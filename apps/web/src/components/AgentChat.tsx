@@ -56,9 +56,6 @@ export default function AgentChat() {
             </div>
             <div>
               <span className="text-sm font-medium text-text-primary">{t(nameKey)}</span>
-              {agent.currentTask && (
-                <p className="text-[11px] text-text-tertiary mt-0.5">{agent.currentTask}</p>
-              )}
             </div>
           </div>
 

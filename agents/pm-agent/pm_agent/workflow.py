@@ -325,6 +325,23 @@ class WorkflowEngine:
         tasks_failed = 0
         phase_artifacts: list[dict[str, Any]] = []
 
+        import uuid as _uuid
+        parent_exec_id = _uuid.uuid4().hex
+        try:
+            await self.ws_client.create_execution(
+                workspace_id,
+                execution_id=parent_exec_id,
+                requirement_id=requirement_id,
+                task_ids=[t["id"] for t in pending],
+                intent_type=f"execute_requirement_{phase_type}",
+                intent_summary=f"{req_title} — {phase_type}",
+                triggered_by="workflow",
+                agent_type="pm",
+                result_type=phase_type,
+            )
+        except Exception:
+            pass
+
         for i, task in enumerate(pending):
             task_title = task.get("title", "Untitled")
             task_start_evt = {
@@ -349,6 +366,24 @@ class WorkflowEngine:
             if claimed is None:
                 continue
 
+            import uuid as _uuid
+            child_exec_id = _uuid.uuid4().hex
+            try:
+                await self.ws_client.create_execution(
+                    workspace_id,
+                    execution_id=child_exec_id,
+                    requirement_id=requirement_id,
+                    task_ids=[task["id"]],
+                    intent_type=f"execute_{phase_type}",
+                    intent_summary=task_title,
+                    triggered_by="workflow",
+                    agent_type=agent_type.value,
+                    result_type=phase_type,
+                    parent_execution_id=parent_exec_id if parent_exec_id else None,
+                )
+            except Exception:
+                pass
+
             agent_task = AgentTask(
                 task_id=task["id"],
                 workspace_id=workspace_id,
@@ -371,6 +406,13 @@ class WorkflowEngine:
 
                 if isinstance(result, dict) and result.get("error"):
                     tasks_failed += 1
+                    try:
+                        await self.ws_client.update_execution(
+                            workspace_id, child_exec_id, status="failed",
+                            error_message=str(result["error"]),
+                        )
+                    except Exception:
+                        pass
                     err_evt = {
                         "type": "workflow:task_error",
                         "phase": phase_type,
@@ -384,6 +426,12 @@ class WorkflowEngine:
                 else:
                     tasks_succeeded += 1
                     await self.ws_client.complete_task(workspace_id, task["id"])
+                    try:
+                        await self.ws_client.update_execution(
+                            workspace_id, child_exec_id, status="success",
+                        )
+                    except Exception:
+                        pass
 
                     try:
                         arts = await self.ws_client.list_artifacts(workspace_id, phase_id=phase_id)
@@ -416,6 +464,13 @@ class WorkflowEngine:
 
             except Exception as exc:
                 tasks_failed += 1
+                try:
+                    await self.ws_client.update_execution(
+                        workspace_id, child_exec_id, status="failed",
+                        error_message=str(exc),
+                    )
+                except Exception:
+                    pass
                 err_evt = {
                     "type": "workflow:task_error",
                     "phase": phase_type,
@@ -430,6 +485,16 @@ class WorkflowEngine:
         total = len(pending)
         progress = tasks_succeeded / total if total > 0 else 0
         req_status = "completed" if tasks_failed == 0 else "in_progress"
+
+        parent_status = "success" if tasks_failed == 0 else "failed"
+        try:
+            await self.ws_client.update_execution(
+                workspace_id, parent_exec_id, status=parent_status,
+                error_message=f"{tasks_failed} task(s) failed" if tasks_failed else None,
+            )
+        except Exception:
+            pass
+
         try:
             await self.ws_client.update_requirement(
                 workspace_id, requirement_id,
@@ -501,6 +566,25 @@ class WorkflowEngine:
         except Exception:
             pass
 
+        # Create persistent execution record linked to this task
+        import uuid as _uuid
+        exec_id = _uuid.uuid4().hex
+        requirement_id = target_task.get("requirementId")
+        try:
+            await self.ws_client.create_execution(
+                workspace_id,
+                execution_id=exec_id,
+                requirement_id=requirement_id,
+                task_ids=[task_id],
+                intent_type=f"execute_{phase_type}",
+                intent_summary=task_title,
+                triggered_by="workflow",
+                agent_type=agent_type.value,
+                result_type=phase_type,
+            )
+        except Exception:
+            pass
+
         repos = await self.ws_client.get_repos_for_phase(workspace_id, phase_type)
         primary = next((r for r in repos if r.get("isPrimary")), repos[0] if repos else None)
         gitlab_ctx: dict[str, Any] = {}
@@ -539,6 +623,13 @@ class WorkflowEngine:
                     await self.ws_client.update_task(workspace_id, task_id, {"status": "pending"})
                 except Exception:
                     pass
+                try:
+                    await self.ws_client.update_execution(
+                        workspace_id, exec_id, status="failed",
+                        error_message=str(result["error"]),
+                    )
+                except Exception:
+                    pass
                 err_evt = {
                     "type": "workflow:task_error",
                     "phase": phase_type,
@@ -551,6 +642,12 @@ class WorkflowEngine:
             else:
                 try:
                     await self.ws_client.complete_task(workspace_id, task_id)
+                except Exception:
+                    pass
+                try:
+                    await self.ws_client.update_execution(
+                        workspace_id, exec_id, status="success",
+                    )
                 except Exception:
                     pass
                 full_result = str(result)
@@ -570,6 +667,13 @@ class WorkflowEngine:
         except Exception as exc:
             try:
                 await self.ws_client.update_task(workspace_id, task_id, {"status": "pending"})
+            except Exception:
+                pass
+            try:
+                await self.ws_client.update_execution(
+                    workspace_id, exec_id, status="failed",
+                    error_message=str(exc),
+                )
             except Exception:
                 pass
             err_evt = {

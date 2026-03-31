@@ -33,6 +33,7 @@ export function buildCoreSlice(set: SetState, get: GetState) {
         const [ws, actResp] = await Promise.all([
           workspaceApi.get(id),
           workspaceApi.listActivities(id, 1, 50),
+          get().fetchExecutions(),
         ])
         if (get().activeWorkspaceId !== id) return
         const activities = (actResp.data || []).map((a: any) => ({
@@ -47,7 +48,7 @@ export function buildCoreSlice(set: SetState, get: GetState) {
             const liveAgentStatus = new Map(
               prev.agents
                 .filter((a) => a.status !== 'idle')
-                .map((a) => [a.type, { status: a.status, currentTask: a.currentTask }]),
+                .map((a) => [a.type, { status: a.status }]),
             )
             const mergedAgents = (ws.agents || []).map((a: any) => {
               const live = liveAgentStatus.get(a.type)
@@ -72,6 +73,7 @@ export function buildCoreSlice(set: SetState, get: GetState) {
         messagesHasMore: false,
       })
       if (id && !id.startsWith('ws-temp-')) {
+        get().fetchExecutions()
         Promise.all([workspaceApi.get(id), workspaceApi.listActivities(id, 1, 50)])
           .then(([ws, actResp]) => {
             if (wsLoadGeneration !== gen) return

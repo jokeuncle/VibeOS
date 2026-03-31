@@ -68,9 +68,7 @@ export default function AgentPanel({ agents }: { agents: Agent[] }) {
                   <span className="text-xs font-medium text-text-primary truncate">{t(nameKey)}</span>
                   <AgentStatusBadge status={agent.status} />
                 </div>
-                {agent.currentTask && (
-                  <p className="text-[11px] text-text-tertiary mt-0.5 truncate">{agent.currentTask}</p>
-                )}
+                
               </div>
               <MessageCircle className="w-3.5 h-3.5 text-text-tertiary/0 group-hover:text-text-tertiary transition-colors" />
             </button>

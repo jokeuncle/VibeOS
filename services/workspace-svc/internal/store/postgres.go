@@ -52,7 +52,7 @@ type Store interface {
 
 	CreateArtifact(ctx context.Context, artifact *models.Artifact) error
 	ListArtifactsByWorkspace(ctx context.Context, workspaceID string) ([]models.Artifact, error)
-	ListArtifactsByPhase(ctx context.Context, workspaceID, phaseID string) ([]models.Artifact, error)
+	ListArtifactsByExecution(ctx context.Context, workspaceID, executionID string) ([]models.Artifact, error)
 	GetArtifact(ctx context.Context, workspaceID, id string) (*models.Artifact, error)
 
 	// GitLab credential store
@@ -125,10 +125,12 @@ type Store interface {
 	GetPipelineConfigs(ctx context.Context, workspaceID string) ([]models.PipelinePhaseConfig, error)
 	UpsertPipelineConfigs(ctx context.Context, workspaceID string, phases []models.PipelinePhaseConfigReq) ([]models.PipelinePhaseConfig, error)
 
-	// Execution logs
-	CreateExecutionLog(ctx context.Context, entry *models.ExecutionLog) error
-	ListExecutionLogs(ctx context.Context, workspaceID string, cursor string, limit int) ([]models.ExecutionLog, string, error)
-	ListExecutionLogsSince(ctx context.Context, workspaceID string, since time.Time, limit int) ([]models.ExecutionLog, string, error)
+	// Agent executions
+	CreateAgentExecution(ctx context.Context, exec *models.AgentExecution) error
+	GetAgentExecution(ctx context.Context, id string) (*models.AgentExecution, error)
+	UpdateAgentExecution(ctx context.Context, id string, req models.UpdateAgentExecutionReq) (*models.AgentExecution, error)
+	ListAgentExecutions(ctx context.Context, workspaceID string, requirementID *string, cursor string, limit int) ([]models.AgentExecution, string, error)
+	LinkExecutionToTasks(ctx context.Context, executionID string, taskIDs []string) error
 }
 
 type PostgresStore struct {
@@ -180,7 +182,7 @@ func scanPhase(s rowScanner) (*models.Phase, error) {
 	return &p, nil
 }
 
-const taskCols = `id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, sort_order, created_at, updated_at`
+const taskCols = `id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, last_execution_id, execution_count, sort_order, created_at, updated_at`
 
 func scanTask(s rowScanner) (*models.Task, error) {
 	var t models.Task
@@ -188,6 +190,7 @@ func scanTask(s rowScanner) (*models.Task, error) {
 	var priority, assignedAgent *string
 	err := s.Scan(&t.ID, &t.PhaseID, &t.WorkspaceID, &t.RequirementID, &t.Title, &t.Description,
 		&status, &priority, &t.Labels, &t.DueDate, &assignedAgent,
+		&t.LastExecutionID, &t.ExecutionCount,
 		&t.SortOrder, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -211,7 +214,7 @@ func scanAgent(s rowScanner) (*models.Agent, error) {
 	var a models.Agent
 	var agentType, status string
 	err := s.Scan(&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
-		&a.CurrentTask, &a.PreferredModel, &a.Avatar, &a.CreatedAt, &a.UpdatedAt)
+		&a.PreferredModel, &a.Avatar, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +226,7 @@ func scanAgent(s rowScanner) (*models.Agent, error) {
 func scanActivity(s rowScanner) (*models.Activity, error) {
 	var a models.Activity
 	var agentType *string
-	err := s.Scan(&a.ID, &a.WorkspaceID, &a.Type, &a.Description, &agentType, &a.CreatedAt)
+	err := s.Scan(&a.ID, &a.WorkspaceID, &a.RequirementID, &a.Type, &a.Description, &agentType, &a.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -772,7 +775,7 @@ func (s *PostgresStore) ListActivities(ctx context.Context, workspaceID string, 
 
 	offset := (page - 1) * pageSize
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, workspace_id, type, description, agent_type, created_at
+		SELECT id, workspace_id, requirement_id, type, description, agent_type, created_at
 		FROM activities WHERE workspace_id = $1
 		ORDER BY created_at DESC LIMIT $2 OFFSET $3`, workspaceID, pageSize, offset)
 	if err != nil {
@@ -822,7 +825,7 @@ func (s *PostgresStore) queryPhases(ctx context.Context, wsIDs []string) ([]mode
 
 func (s *PostgresStore) queryAgents(ctx context.Context, wsIDs []string) ([]models.Agent, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, workspace_id, type, name, status, current_task, preferred_model, avatar, created_at, updated_at
+		`SELECT id, workspace_id, type, name, status, preferred_model, avatar, created_at, updated_at
 		 FROM agents WHERE workspace_id = ANY($1) ORDER BY type`, wsIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query agents: %w", err)
@@ -845,7 +848,7 @@ func (s *PostgresStore) queryAgents(ctx context.Context, wsIDs []string) ([]mode
 
 func (s *PostgresStore) queryRecentActivities(ctx context.Context, wsIDs []string, limit int) ([]models.Activity, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, workspace_id, type, description, agent_type, created_at FROM (
+		SELECT id, workspace_id, requirement_id, type, description, agent_type, created_at FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id ORDER BY created_at DESC) AS rn
 			FROM activities WHERE workspace_id = ANY($1)
 		) sub WHERE rn <= $2 ORDER BY created_at DESC`, wsIDs, limit)
@@ -872,11 +875,11 @@ func (s *PostgresStore) queryRecentActivities(ctx context.Context, wsIDs []strin
 // Artifact operations
 // ---------------------------------------------------------------------------
 
-const artifactCols = `id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title, content, metadata, version, created_at, updated_at`
+const artifactCols = `id, workspace_id, execution_id, agent_type, type, title, content, metadata, version, created_at, updated_at`
 
 func scanArtifact(s rowScanner) (*models.Artifact, error) {
 	var a models.Artifact
-	err := s.Scan(&a.ID, &a.WorkspaceID, &a.PhaseID, &a.TaskID, &a.RequirementID,
+	err := s.Scan(&a.ID, &a.WorkspaceID, &a.ExecutionID,
 		&a.AgentType, &a.Type, &a.Title, &a.Content, &a.Metadata,
 		&a.Version, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
@@ -887,10 +890,10 @@ func scanArtifact(s rowScanner) (*models.Artifact, error) {
 
 func (s *PostgresStore) CreateArtifact(ctx context.Context, artifact *models.Artifact) error {
 	return s.pool.QueryRow(ctx, `
-		INSERT INTO artifacts (id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title, content, metadata, version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO artifacts (id, workspace_id, execution_id, agent_type, type, title, content, metadata, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING created_at, updated_at`,
-		artifact.ID, artifact.WorkspaceID, artifact.PhaseID, artifact.TaskID, artifact.RequirementID,
+		artifact.ID, artifact.WorkspaceID, artifact.ExecutionID,
 		string(artifact.AgentType), artifact.Type, artifact.Title, artifact.Content,
 		artifact.Metadata, artifact.Version,
 	).Scan(&artifact.CreatedAt, &artifact.UpdatedAt)
@@ -918,12 +921,12 @@ func (s *PostgresStore) ListArtifactsByWorkspace(ctx context.Context, workspaceI
 	return artifacts, nil
 }
 
-func (s *PostgresStore) ListArtifactsByPhase(ctx context.Context, workspaceID, phaseID string) ([]models.Artifact, error) {
+func (s *PostgresStore) ListArtifactsByExecution(ctx context.Context, workspaceID, executionID string) ([]models.Artifact, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT `+artifactCols+` FROM artifacts WHERE workspace_id = $1 AND phase_id = $2 ORDER BY created_at DESC`,
-		workspaceID, phaseID)
+		`SELECT `+artifactCols+` FROM artifacts WHERE workspace_id = $1 AND execution_id = $2 ORDER BY created_at DESC`,
+		workspaceID, executionID)
 	if err != nil {
-		return nil, fmt.Errorf("query artifacts by phase: %w", err)
+		return nil, fmt.Errorf("query artifacts by execution: %w", err)
 	}
 	defer rows.Close()
 
@@ -1285,20 +1288,6 @@ func (s *PostgresStore) GetRequirement(ctx context.Context, id, wsID string) (*m
 		r.Tasks = append(r.Tasks, *t)
 	}
 
-	artRows, err := s.pool.Query(ctx,
-		`SELECT `+artifactCols+` FROM artifacts WHERE requirement_id = $1 ORDER BY created_at DESC`, id)
-	if err != nil {
-		return nil, fmt.Errorf("query requirement artifacts: %w", err)
-	}
-	defer artRows.Close()
-	for artRows.Next() {
-		a, err := scanArtifact(artRows)
-		if err != nil {
-			return nil, fmt.Errorf("scan requirement artifact: %w", err)
-		}
-		r.Artifacts = append(r.Artifacts, *a)
-	}
-
 	relRows, err := s.pool.Query(ctx, `
 		SELECT rr.id, rr.workspace_id, rr.source_id, rr.target_id, rr.relation_type,
 		       rr.description, r2.title AS target_title, rr.created_at
@@ -1558,8 +1547,11 @@ func (s *PostgresStore) GetRelatedRequirementArtifacts(ctx context.Context, reqI
 	result := make(map[string][]models.Artifact)
 	for _, ri := range rels {
 		artRows, err := s.pool.Query(ctx,
-			`SELECT `+artifactCols+` FROM artifacts WHERE requirement_id = $1 ORDER BY created_at DESC`,
-			ri.relatedID)
+			`SELECT `+artifactCols+` FROM artifacts a
+			 WHERE a.workspace_id = $2 AND a.execution_id IN (
+			   SELECT ae.id FROM agent_executions ae WHERE ae.requirement_id = $1
+			 ) ORDER BY a.created_at DESC`,
+			ri.relatedID, wsID)
 		if err != nil {
 			return nil, fmt.Errorf("query related artifacts: %w", err)
 		}
@@ -1597,14 +1589,13 @@ func (s *PostgresStore) ResetRequirementPhaseTasks(ctx context.Context, reqID, p
 
 func (s *PostgresStore) UpsertArtifact(ctx context.Context, art *models.Artifact) error {
 	return s.pool.QueryRow(ctx, `
-		INSERT INTO artifacts (id, workspace_id, phase_id, task_id, requirement_id, agent_type, type, title, content, metadata, version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		ON CONFLICT (workspace_id, task_id, type) WHERE task_id IS NOT NULL
-		DO UPDATE SET content = EXCLUDED.content, title = EXCLUDED.title,
-		             metadata = EXCLUDED.metadata, requirement_id = EXCLUDED.requirement_id,
+		INSERT INTO artifacts (id, workspace_id, execution_id, agent_type, type, title, content, metadata, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, title = EXCLUDED.title,
+		             metadata = EXCLUDED.metadata,
 		             version = artifacts.version + 1, updated_at = NOW()
 		RETURNING id, version, created_at, updated_at`,
-		art.ID, art.WorkspaceID, art.PhaseID, art.TaskID, art.RequirementID,
+		art.ID, art.WorkspaceID, art.ExecutionID,
 		string(art.AgentType), art.Type, art.Title, art.Content, art.Metadata, art.Version,
 	).Scan(&art.ID, &art.Version, &art.CreatedAt, &art.UpdatedAt)
 }

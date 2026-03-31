@@ -101,7 +101,7 @@ export default function WorkspaceConversation() {
             ref={scrollRef}
             className="max-h-[min(50vh,22rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth rounded-b-2xl"
           >
-            <div className="mx-auto w-full max-w-xl space-y-2.5">
+            <div className="mx-auto w-full max-w-2xl space-y-2.5">
               {threadMessages.map((msg) => (
                 <div key={msg.id}>
                   {msg.role === 'system' ? (
