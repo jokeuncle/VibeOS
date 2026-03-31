@@ -1,12 +1,13 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { Bot, User, Loader2, ThumbsUp, ThumbsDown, Activity } from 'lucide-react'
+import { Bot, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import { feedbackApi, workspaceApi } from '../lib/api'
-import { MarkdownContent } from './MessageMarkdown'
 import { RichBlockRenderer } from './RichBlockRenderer'
+import { HomeReasoningPanel } from './HomeReasoningPanel'
+import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
 import type { Message } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -20,7 +21,20 @@ export function TypingIndicator() {
   )
 }
 
-function FeedbackButtons({ msg }: { msg: Message }) {
+export function StreamingDots({ label }: { label?: string }) {
+  return (
+    <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/60 w-fit max-w-[min(100%,20rem)]">
+      <span className="flex gap-1">
+        <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+        <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+        <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+      </span>
+      {label && <span className="text-[11px] text-text-tertiary">{label}</span>}
+    </div>
+  )
+}
+
+export function FeedbackButtons({ msg }: { msg: Message }) {
   const t = useT()
   const { addToast } = useUIStore()
   const { activeWorkspaceId } = useWorkspaceStore()
@@ -98,69 +112,96 @@ export function SystemMessage({ msg }: { msg: Message }) {
   )
 }
 
-export function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
+export function UserBubble({ msg }: { msg: Message }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.2 }}
+      className="flex justify-end"
+    >
+      <div className="px-3.5 py-2 rounded-2xl rounded-tr-sm bg-accent/10 border border-accent/15 text-xs text-text-primary max-w-[min(85%,20rem)]">
+        {msg.content}
+      </div>
+    </motion.div>
+  )
+}
+
+export function AgentMessageRow({
+  msg,
+  isLastAgent,
+  isStreaming,
+  richLayout,
+  showFeedback = false,
+}: {
+  msg: Message
+  isLastAgent: boolean
+  isStreaming: boolean
+  richLayout?: string
+  showFeedback?: boolean
+}) {
   const t = useT()
-  const { workspaces, activeWorkspaceId } = useWorkspaceStore()
-  if (msg.role === 'system') return <SystemMessage msg={msg} />
 
-  const isAgent = msg.role !== 'user'
-  const agentLabel = msg.agentType
-    ? t(`agent.name.${msg.agentType}` as TranslationKey)
-    : t('conversation.agent')
-  const showTyping = isStreaming && isAgent && !msg.content
-
-  // Check if this agent is currently running
-  const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
-  const agentStatus = useMemo(() => {
-    if (!isAgent || !msg.agentType || !workspace) return null
-    const agent = workspace.agents.find((a) => a.type === msg.agentType)
-    return agent?.status || 'idle'
-  }, [isAgent, msg.agentType, workspace])
-
-  const isAgentRunning = agentStatus === 'running'
+  const { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks } =
+    partitionNlpConversationRichBlocks(msg.richBlocks)
+  const showReasoning = !!(reasoningTimeline || reasoningIntent)
+  const showTextBubble = shouldShowAgentTextBubble(msg.content, msg.richBlocks)
+  const hasVisible =
+    showTextBubble ||
+    inlineBlocks.length > 0 ||
+    cardBlocks.length > 0 ||
+    showReasoning
+  const agentRowStreaming = isStreaming && isLastAgent
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-2.5 group"
+      transition={{ duration: 0.2 }}
+      className="flex items-start gap-2 group"
     >
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 transition-all duration-300 ${
-        msg.role === 'user' ? 'bg-surface-3 text-text-tertiary' : 
-        isAgentRunning ? 'bg-accent/20 text-accent animate-pulse' : 'bg-accent/10 text-accent'
-      }`}>
-        {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+      <div className="w-6 h-6 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+        <Bot className="w-3 h-3 text-accent" />
       </div>
-      <div className="flex-1 min-w-0 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className={`text-[11px] font-semibold ${isAgentRunning ? 'text-accent' : 'text-text-secondary'}`}>
-            {msg.role === 'user' ? t('conversation.you') : agentLabel}
-          </span>
-          {isAgentRunning && (
-            <span className="flex items-center gap-1 text-[10px] text-accent">
-              <Activity className="w-3 h-3 animate-pulse" />
-              {t('agent.status.running')}
-            </span>
-          )}
-          <span className="text-[10px] text-text-tertiary/50 font-mono">
-            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        </div>
-        {showTyping && <TypingIndicator />}
-        {msg.content && (
-          isAgent
-            ? <MarkdownContent text={msg.content} />
-            : <p className="text-xs text-text-primary/90 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-        )}
-        {msg.richBlocks && msg.richBlocks.length > 0 && (
-          <div className="space-y-2 mt-1">
-            {msg.richBlocks.map((block, i) => <RichBlockRenderer key={i} block={block} />)}
-          </div>
-        )}
-        {isAgent && msg.content && !isStreaming && (
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <FeedbackButtons msg={msg} />
-          </div>
+      <div className="flex-1 space-y-2 min-w-0">
+        {agentRowStreaming && !hasVisible ? (
+          <StreamingDots label={t('nlp.generatingReply' as TranslationKey)} />
+        ) : (
+          <>
+            {showReasoning && (
+              <HomeReasoningPanel
+                timelineBlock={reasoningTimeline}
+                intentBlock={reasoningIntent}
+                isStreaming={agentRowStreaming}
+              />
+            )}
+            {showTextBubble && (
+              <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
+                <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
+                  {msg.content}
+                </p>
+              </div>
+            )}
+            {inlineBlocks.map((block, i) => (
+              <div key={`i-${i}`}>
+                <RichBlockRenderer block={block} />
+              </div>
+            ))}
+            {cardBlocks.length > 0 && (
+              <div className="mt-1 w-full max-w-full space-y-2">
+                {cardBlocks.map((block, i) => (
+                  <div key={`c-${i}`} className="w-full min-w-0">
+                    <RichBlockRenderer block={block} richLayout={richLayout === 'home' ? 'home' : undefined} />
+                  </div>
+                ))}
+              </div>
+            )}
+            {showFeedback && showTextBubble && !agentRowStreaming && (
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                <FeedbackButtons msg={msg} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </motion.div>

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ConversationContext } from '../types'
 
 export interface Toast {
   id: string
@@ -124,11 +125,12 @@ interface UIState {
     agentType?: string | null
   } | null) => void
 
-  homeConversationVisible: boolean
-  setHomeConversationVisible: (visible: boolean) => void
+  conversationVisible: Record<string, boolean>
+  setConversationVisible: (ctx: ConversationContext, visible: boolean) => void
 
-  workspaceConversationVisible: boolean
-  setWorkspaceConversationVisible: (visible: boolean) => void
+  conversationCollapsed: Record<string, boolean>
+  setConversationCollapsed: (ctx: ConversationContext, collapsed: boolean) => void
+  toggleConversation: (ctx: ConversationContext) => void
 
   // WebSocket connection status
   wsConnected: boolean
@@ -248,11 +250,15 @@ export const useUIStore = create<UIState>((set, get) => ({
     } : null,
   }),
 
-  homeConversationVisible: false,
-  setHomeConversationVisible: (visible) => set({ homeConversationVisible: visible }),
+  conversationVisible: {},
+  setConversationVisible: (ctx, visible) =>
+    set((s) => ({ conversationVisible: { ...s.conversationVisible, [ctx]: visible } })),
 
-  workspaceConversationVisible: false,
-  setWorkspaceConversationVisible: (visible) => set({ workspaceConversationVisible: visible }),
+  conversationCollapsed: {},
+  setConversationCollapsed: (ctx, collapsed) =>
+    set((s) => ({ conversationCollapsed: { ...s.conversationCollapsed, [ctx]: collapsed } })),
+  toggleConversation: (ctx) =>
+    set((s) => ({ conversationCollapsed: { ...s.conversationCollapsed, [ctx]: !s.conversationCollapsed[ctx] } })),
 
   // WebSocket connection status
   wsConnected: false,

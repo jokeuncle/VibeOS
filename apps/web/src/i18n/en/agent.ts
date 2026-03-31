@@ -69,7 +69,8 @@ const agent = {
   'nlp.homeInitialRequirements': 'Initial requirements',
   'nlp.homeRequirementTitlePh': 'Title',
   'nlp.homeRequirementDescPh': 'Description (optional)',
-  'nlp.dismissAssistant': 'Dismiss',
+  'nlp.dismissAssistant': 'Minimize',
+  'nlp.expandAssistant': 'Expand conversation',
   'nlp.quickStartHint': 'Try these:',
   'nlp.homeGuide.tagline': 'Create your workspace — let AI help you ship your first requirement.',
   'nlp.homeGuide.template.prompt':

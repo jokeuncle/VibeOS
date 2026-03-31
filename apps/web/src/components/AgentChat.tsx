@@ -4,6 +4,8 @@ import SlideOver from './ui/SlideOver'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
+import { StreamingDots } from './MessageBubble'
+import { RichBlockRenderer } from './RichBlockRenderer'
 import type { TranslationKey } from '../i18n/en'
 
 export default function AgentChat() {
@@ -47,7 +49,6 @@ export default function AgentChat() {
     >
       {agent && (
         <div className="flex flex-col h-full -m-5">
-          {/* Agent info */}
           <div className="flex items-center gap-3 px-5 py-4 border-b border-border-subtle">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold ${
               agent.status === 'running' ? 'bg-accent/15 text-accent' : 'bg-surface-3 text-text-tertiary'
@@ -59,7 +60,6 @@ export default function AgentChat() {
             </div>
           </div>
 
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-[200px]">
             {messages.length === 0 && (
               <div className="text-center py-12 text-xs text-text-tertiary">
@@ -78,28 +78,13 @@ export default function AgentChat() {
                     {msg.role === 'user' ? t('conversation.you') : t(nameKey)}
                   </span>
                   <p className="text-xs text-text-primary/90 leading-relaxed mt-0.5 whitespace-pre-wrap">{msg.content}</p>
-                  {msg.richBlocks?.map((rb, i) => (
-                    <div key={i} className="mt-2">
-                      {rb.type === 'code' && rb.code && (
-                        <div className="rounded-lg border border-border-subtle overflow-hidden">
-                          {rb.title && (
-                            <div className="px-3 py-1.5 bg-surface-2 border-b border-border-subtle text-[10px] font-medium text-text-secondary">
-                              {rb.title}
-                            </div>
-                          )}
-                          <pre className="p-3 text-[11px] overflow-x-auto bg-surface-0 text-text-primary/80">
-                            <code>{rb.code}</code>
-                          </pre>
-                        </div>
-                      )}
-                      {rb.type === 'task_card' && rb.taskTitle && (
-                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border-subtle">
-                          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                          <span className="text-xs text-text-primary">{rb.taskTitle}</span>
-                        </div>
-                      )}
+                  {msg.richBlocks && msg.richBlocks.length > 0 && (
+                    <div className="space-y-2 mt-2">
+                      {msg.richBlocks.map((block, i) => (
+                        <RichBlockRenderer key={i} block={block} />
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             ))}
@@ -108,17 +93,12 @@ export default function AgentChat() {
                 <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 bg-accent/10 text-accent">
                   <Bot className="w-3 h-3" />
                 </div>
-                <div className="flex items-center gap-1 pt-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
+                <StreamingDots />
               </div>
             )}
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <form onSubmit={handleSend} className="px-5 py-3 border-t border-border-subtle flex items-center gap-2">
             <input
               type="text"

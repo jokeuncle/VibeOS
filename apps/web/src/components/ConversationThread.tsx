@@ -1,13 +1,10 @@
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bot, Sparkles, X, Loader2 } from 'lucide-react'
+import { Sparkles, X, Loader2, MessageCircle } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import { RichBlockRenderer } from './RichBlockRenderer'
-import { HomeReasoningPanel } from './HomeReasoningPanel'
-import { SystemMessage } from './MessageBubble'
-import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
+import { SystemMessage, UserBubble, AgentMessageRow } from './MessageBubble'
 import type { Message, ConversationContext } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
@@ -42,7 +39,13 @@ export default function ConversationThread({
     fetchMessages,
     loadOlderMessages,
   } = store
-  const { viewMode, setHomeConversationVisible, setWorkspaceConversationVisible } = useUIStore()
+  const {
+    viewMode,
+    setConversationVisible,
+    conversationCollapsed,
+    setConversationCollapsed,
+    toggleConversation,
+  } = useUIStore()
   const t = useT()
   const scrollRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -52,6 +55,7 @@ export default function ConversationThread({
   const isStreaming = isHome ? homeNlpLoading : nlpLoading
   const hasMore = isHome ? homeMessagesHasMore : messagesHasMore
   const activeReqId = useWorkspaceStore((s) => s.activeRequirementId)
+  const collapsed = !!conversationCollapsed[context]
 
   const threadMessages = useMemo(() => {
     if (isHome) return homeMessages
@@ -69,23 +73,27 @@ export default function ConversationThread({
     return filtered.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
   }, [isHome, homeMessages, wsMessages, workspaceId, requirementId, activeReqId, viewMode])
 
-  const visible = threadMessages.length > 0
+  const hasMessages = threadMessages.length > 0
+  const visible = hasMessages && !collapsed
+
+  const unreadCount = useMemo(() => {
+    if (!hasMessages) return 0
+    const lastUserIndex = [...threadMessages].reverse().findIndex((m) => m.role === 'user')
+    if (lastUserIndex === -1) return threadMessages.filter((m) => m.role === 'agent').length
+    const lastUserMsgIndex = threadMessages.length - 1 - lastUserIndex
+    return threadMessages.slice(lastUserMsgIndex + 1).filter((m) => m.role === 'agent').length
+  }, [threadMessages, hasMessages])
 
   useEffect(() => {
-    if (isHome) {
-      setHomeConversationVisible(visible)
-      return () => setHomeConversationVisible(false)
-    } else {
-      setWorkspaceConversationVisible(visible)
-      return () => setWorkspaceConversationVisible(false)
-    }
-  }, [visible, isHome, setHomeConversationVisible, setWorkspaceConversationVisible])
+    setConversationVisible(context, hasMessages)
+    return () => setConversationVisible(context, false)
+  }, [hasMessages, context, setConversationVisible])
 
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && visible) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [threadMessages])
+  }, [threadMessages, visible])
 
   useEffect(() => {
     if (isHome) {
@@ -125,6 +133,33 @@ export default function ConversationThread({
 
   if (!isHome && !workspaceId) return null
 
+  // Collapsed pill when minimized but has messages
+  if (collapsed && hasMessages) {
+    const pillLabel = isHome
+      ? t('nlp.homeAssistantPanel' as TranslationKey)
+      : t('nlp.workspaceAssistantPanel' as TranslationKey)
+
+    return (
+      <motion.button
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.2 }}
+        onClick={() => toggleConversation(context)}
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full bg-accent/90 hover:bg-accent text-white shadow-lg hover:shadow-xl transition-all cursor-pointer backdrop-blur-sm"
+        title={t('nlp.expandAssistant' as TranslationKey)}
+      >
+        <MessageCircle className="w-4 h-4" />
+        <span className="text-xs font-medium">{pillLabel}</span>
+        {unreadCount > 0 && (
+          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-white text-accent text-[10px] font-bold">
+            {unreadCount}
+          </span>
+        )}
+      </motion.button>
+    )
+  }
+
   const lastAgentMsg = visible ? [...threadMessages].reverse().find((m) => m.role === 'agent') : undefined
   const lastAgentId = lastAgentMsg?.id
   const hasActionBlocks = lastAgentMsg?.richBlocks?.some((b) => b.type === 'nlp_action')
@@ -157,7 +192,7 @@ export default function ConversationThread({
             </span>
             <button
               type="button"
-              onClick={handleDismiss}
+              onClick={() => setConversationCollapsed(context, true)}
               className="p-1.5 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-2/80 transition-colors cursor-pointer"
               title={t('nlp.dismissAssistant' as TranslationKey)}
             >
@@ -166,7 +201,7 @@ export default function ConversationThread({
           </div>
           <div
             ref={scrollRef}
-            className="max-h-[min(50vh,22rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth rounded-b-2xl"
+            className="max-h-[min(60vh,30rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth rounded-b-2xl"
           >
             <div className={`mx-auto w-full ${isHome ? 'max-w-xl' : 'max-w-2xl'} space-y-2.5`}>
               {hasMore && (
@@ -183,22 +218,14 @@ export default function ConversationThread({
                   {msg.role === 'system' ? (
                     <SystemMessage msg={msg} />
                   ) : msg.role === 'user' ? (
-                    <motion.div
-                      initial={{ opacity: 0, x: 12 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="flex justify-end"
-                    >
-                      <div className="px-3.5 py-2 rounded-2xl rounded-tr-sm bg-accent/10 border border-accent/15 text-xs text-text-primary max-w-[min(85%,20rem)]">
-                        {msg.content}
-                      </div>
-                    </motion.div>
+                    <UserBubble msg={msg} />
                   ) : (
                     <AgentMessageRow
                       msg={msg}
                       isLastAgent={msg.id === lastAgentId}
                       isStreaming={isStreaming}
                       richLayout={richLayout}
+                      showFeedback={!isHome}
                     />
                   )}
                 </div>
@@ -232,86 +259,5 @@ export default function ConversationThread({
         </motion.div>
       )}
     </AnimatePresence>
-  )
-}
-
-function AgentMessageRow({
-  msg,
-  isLastAgent,
-  isStreaming,
-  richLayout,
-}: {
-  msg: Message
-  isLastAgent: boolean
-  isStreaming: boolean
-  richLayout?: string
-}) {
-  const t = useT()
-
-  const { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks } =
-    partitionNlpConversationRichBlocks(msg.richBlocks)
-  const showReasoning = !!(reasoningTimeline || reasoningIntent)
-  const showTextBubble = shouldShowAgentTextBubble(msg.content, msg.richBlocks)
-  const hasVisible =
-    showTextBubble ||
-    inlineBlocks.length > 0 ||
-    cardBlocks.length > 0 ||
-    showReasoning
-  const agentRowStreaming = isStreaming && isLastAgent
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="flex items-start gap-2"
-    >
-      <div className="w-6 h-6 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
-        <Bot className="w-3 h-3 text-accent" />
-      </div>
-      <div className="flex-1 space-y-2 min-w-0">
-        {agentRowStreaming && !hasVisible ? (
-          <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/60 w-fit max-w-[min(100%,20rem)]">
-            <span className="flex gap-1">
-              <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 bg-accent/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </span>
-            <span className="text-[11px] text-text-tertiary">{t('nlp.generatingReply' as TranslationKey)}</span>
-          </div>
-        ) : (
-          <>
-            {showReasoning && (
-              <HomeReasoningPanel
-                timelineBlock={reasoningTimeline}
-                intentBlock={reasoningIntent}
-                isStreaming={agentRowStreaming}
-              />
-            )}
-            {showTextBubble && (
-              <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
-                <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
-                  {msg.content}
-                </p>
-              </div>
-            )}
-            {inlineBlocks.map((block, i) => (
-              <div key={`i-${i}`}>
-                <RichBlockRenderer block={block} />
-              </div>
-            ))}
-            {cardBlocks.length > 0 && (
-              <div className="mt-1 w-full max-w-full space-y-2">
-                {cardBlocks.map((block, i) => (
-                  <div key={`c-${i}`} className="w-full min-w-0">
-                    <RichBlockRenderer block={block} richLayout={richLayout === 'home' ? 'home' : undefined} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </motion.div>
   )
 }

@@ -192,14 +192,20 @@ const ERROR_TITLE: Record<string, TranslationKey> = {
 
 export function ErrorCardBlock({ block }: { block: RichBlock }) {
   const t = useT()
-  const { sendNLPMessageStream } = useWorkspaceStore()
+  const { sendNLPMessageStream, sendHomeNLPStream, activeWorkspaceId } = useWorkspaceStore()
   const severity = block.errorSeverity || 'system_error'
   const colors = ERROR_COLOR[severity] || ERROR_COLOR.system_error
   const Icon = ERROR_ICON[severity] || XCircle
 
   function handleAction(action: RichAction) {
     if (action.id === 'retry') {
-      sendNLPMessageStream('retry')
+      if (activeWorkspaceId) {
+        sendNLPMessageStream('retry')
+      } else {
+        const { homeMessages } = useWorkspaceStore.getState()
+        const lastUser = [...homeMessages].reverse().find((m) => m.role === 'user')
+        if (lastUser?.content) sendHomeNLPStream(lastUser.content)
+      }
     }
   }
 
