@@ -34,6 +34,8 @@ export function HomeReasoningPanel({
 
   if (!timelineBlock && !intentBlock) return null
 
+  const timelineHasDetailSummary = steps.some((s) => Boolean(s.detail?.trim()))
+
   const summaryLine = (() => {
     if (!intentBlock) return null
     const parts: string[] = []
@@ -81,7 +83,7 @@ export function HomeReasoningPanel({
               zhOnlyLabels
             />
           )}
-          {summaryLine && (
+          {summaryLine && !timelineHasDetailSummary && (
             <p className="text-[11px] text-text-secondary/90 pr-1">{summaryLine}</p>
           )}
         </div>
