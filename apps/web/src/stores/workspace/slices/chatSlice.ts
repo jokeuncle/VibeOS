@@ -169,20 +169,32 @@ export function buildChatSlice(set: SetState, get: GetState) {
         )
       } catch (err: any) {
         execHadError = true
+        const errMsg = friendlyError(err.message)
         if (!content) {
-          content = friendlyError(err.message)
-          richBlocks.push({ type: 'error_card', errorSeverity: 'system_error', errorMessage: content, errorActions: [{ id: 'retry', label: '重试', variant: 'primary' }] })
+          // Only error_card — avoid duplicating the same text in msg.content + card body
+          richBlocks.push({
+            type: 'error_card',
+            errorSeverity: 'system_error',
+            errorMessage: errMsg,
+            errorActions: [{ id: 'retry', label: '重试', variant: 'primary' }],
+          })
           updateMsg()
         }
         if (execCreated) {
-          get().patchExecutionStatus(sid, 'failed', { errorMessage: content })
-          get().persistExecutionUpdate(sid, { status: 'failed', errorMessage: content })
+          get().patchExecutionStatus(sid, 'failed', { errorMessage: errMsg })
+          get().persistExecutionUpdate(sid, { status: 'failed', errorMessage: errMsg })
         }
       } finally {
         if (isHome) {
           set({ homeNlpLoading: false })
-          if (content) {
-            globalMessageApi.save({ role: 'agent', content, agentType, richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined }).catch(() => {})
+          const hasAgentTurn = content.trim().length > 0 || richBlocks.length > 0
+          if (hasAgentTurn) {
+            globalMessageApi.save({
+              role: 'agent',
+              content: content.trim(),
+              agentType,
+              richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined,
+            }).catch(() => {})
           }
         } else {
           set({ nlpLoading: false })
@@ -190,9 +202,9 @@ export function buildChatSlice(set: SetState, get: GetState) {
             get().patchExecutionStatus(sid, 'success')
             get().persistExecutionUpdate(sid, { status: 'success' })
           }
-          if (persist && content) {
+          if (persist && (content.trim() || richBlocks.length > 0)) {
             workspaceApi.saveMessage(wsId, {
-              role: 'agent', content, agentType,
+              role: 'agent', content: content.trim(), agentType,
               richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined,
               contextType: 'workspace',
               executionId: execCreated ? sid : undefined,

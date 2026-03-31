@@ -39,3 +39,5 @@ Use `depends_on` with `condition: service_healthy` where healthchecks are define
 ## Migrations
 
 SQL migration files live in `deploy/migrations/` with numbered prefixes (e.g., `001_initial.sql`). The init schema is in `deploy/init.sql`.
+
+After adding a migration, append its filename to `deploy/apply-migrations.sh` in numeric order. The script is what updates existing databases; `init.sql` only runs on first container init.

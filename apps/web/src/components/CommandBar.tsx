@@ -77,6 +77,9 @@ const PHASE_CONTEXT_LABEL: Record<string, TranslationKey> = {
   monitoring:   'requirement.phase.monitoring',
 }
 
+/** Home CTA copy vs NLU-oriented prompt (create_workspace slots). */
+const HOME_GUIDE_TEMPLATE_PROMPT_KEY: TranslationKey = 'nlp.homeGuide.template.prompt'
+
 const INTENT_KEYWORDS: { keywords: RegExp; intent: string; label: string; agent: string }[] = [
   { keywords: /创建.{0,4}需求|新需求|新功能|feature|create.*req/i, intent: 'create_requirement', label: '创建需求', agent: 'PM Agent' },
   { keywords: /创建.{0,4}任务|新任务|create.*task/i, intent: 'create_task', label: '创建任务', agent: 'PM Agent' },
@@ -344,6 +347,13 @@ export default function CommandBar() {
     doSubmit()
   }
 
+  function handleHomeGuideChip(prompt: string) {
+    if (nlpLoading || homeNlpLoading) return
+    setInput('')
+    setIntentHint(null)
+    sendHomeNLPStream(prompt)
+  }
+
   const typeIcon = (type: Suggestion['type']) => {
     switch (type) {
       case 'agent': return <Bot className="w-3.5 h-3.5" />
@@ -547,6 +557,19 @@ export default function CommandBar() {
           </kbd>
         )}
       </form>
+
+      {!activeWorkspaceId && (
+        <div className="mt-2 flex justify-center sm:justify-start px-0.5">
+          <button
+            type="button"
+            disabled={nlpLoading || homeNlpLoading}
+            onClick={() => handleHomeGuideChip(t(HOME_GUIDE_TEMPLATE_PROMPT_KEY))}
+            className="max-w-full text-left text-[11px] leading-relaxed text-text-secondary hover:text-accent underline decoration-text-tertiary/40 underline-offset-2 hover:decoration-accent/50 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed disabled:no-underline"
+          >
+            {t('nlp.homeGuide.tagline' as TranslationKey)}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

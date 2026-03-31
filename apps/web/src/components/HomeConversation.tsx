@@ -7,7 +7,7 @@ import { useT } from '../i18n'
 import { RichBlockRenderer } from './RichBlockRenderer'
 import { HomeReasoningPanel } from './HomeReasoningPanel'
 import type { TranslationKey } from '../i18n/en'
-import { partitionNlpConversationRichBlocks } from '../lib/nlpConversationLayout'
+import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
 
 const QUICK_START = [
   { id: 'ecommerce', key: 'nlp.quickStart.ecommerce' as TranslationKey },
@@ -109,8 +109,9 @@ export default function HomeConversation() {
                         const { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks } =
                           partitionNlpConversationRichBlocks(msg.richBlocks)
                         const showReasoning = !!(reasoningTimeline || reasoningIntent)
+                        const showTextBubble = shouldShowAgentTextBubble(msg.content, msg.richBlocks)
                         const hasVisible =
-                          !!(msg.content && msg.content.trim()) ||
+                          showTextBubble ||
                           inlineBlocks.length > 0 ||
                           cardBlocks.length > 0 ||
                           showReasoning
@@ -139,7 +140,7 @@ export default function HomeConversation() {
                                 isStreaming={agentRowStreaming}
                               />
                             )}
-                            {msg.content && (
+                            {showTextBubble && (
                               <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
                                 <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
                                   {msg.content}
