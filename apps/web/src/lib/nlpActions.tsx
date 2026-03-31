@@ -158,7 +158,7 @@ registerNlpAction({
         description: (r.description || '').trim(),
       })
     }
-    if (reqs.length > 0) await useWorkspaceStore.getState().refreshActiveWorkspace()
+    if (reqs.length > 0) await useWorkspaceStore.getState().refreshWorkspaceDocument()
 
     useWorkspaceStore.getState().clearHomeMessages()
     useUIStore.getState().setHomeConversationVisible(false)

@@ -34,6 +34,7 @@ export interface WorkspaceState {
   agentStatusHistory: Record<string, AgentStatusEvent[]>
 
   fetchWorkspaces: () => Promise<void>
+  refreshWorkspaceDocument: () => Promise<void>
   refreshActiveWorkspace: () => Promise<void>
 
   setActiveWorkspace: (id: string | null) => void
@@ -144,3 +145,27 @@ export interface WorkspaceState {
     errorMessage?: string; taskIds?: string[]; chatMessageId?: string;
   }) => Promise<void>
 }
+
+/** Return shape of `buildCoreSlice` — defined here so `Pick` keys are checked against `WorkspaceState` in one file. */
+export type CoreSlice = Pick<
+  WorkspaceState,
+  | 'workspaces'
+  | 'activeWorkspaceId'
+  | 'activePhaseId'
+  | 'loading'
+  | 'fetchWorkspaces'
+  | 'refreshWorkspaceDocument'
+  | 'refreshActiveWorkspace'
+  | 'setActiveWorkspace'
+  | 'setActivePhase'
+  | 'createWorkspace'
+  | 'updateWorkspace'
+  | 'deleteWorkspace'
+  | 'createWorkspaceFromTemplate'
+  | 'archiveWorkspace'
+  | 'unarchiveWorkspace'
+  | 'resetWorkspacePhases'
+  | 'addRepo'
+  | 'removeRepo'
+  | 'updateRepoInStore'
+>

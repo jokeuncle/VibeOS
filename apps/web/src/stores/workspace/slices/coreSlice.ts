@@ -2,8 +2,7 @@ import type { StoreApi } from 'zustand'
 import type { Workspace } from '../../../types'
 import { workspaceApi } from '../../../lib/api'
 import { patchWorkspace } from '../helpers'
-import type { WorkspaceState } from '../types'
-import { bumpWsLoadGeneration, wsLoadGeneration } from '../inflight'
+import type { CoreSlice, WorkspaceState } from '../types'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
@@ -26,6 +25,39 @@ export function buildCoreSlice(set: SetState, get: GetState) {
       }
     },
 
+    /** Single GET /workspaces/:id — updates phases, requirements, agents; keeps existing activity list & executions. */
+    refreshWorkspaceDocument: async () => {
+      const id = get().activeWorkspaceId
+      if (!id || id.startsWith('ws-temp-')) return
+      try {
+        const ws = await workspaceApi.get(id)
+        if (get().activeWorkspaceId !== id) return
+        set((s) => {
+          const prev = s.workspaces.find((w) => w.id === id)
+          const liveAgentStatus = new Map(
+            (prev?.agents ?? [])
+              .filter((a) => a.status !== 'idle')
+              .map((a) => [a.type, { status: a.status }]),
+          )
+          const mergedAgents = (ws.agents || []).map((a: any) => {
+            const live = liveAgentStatus.get(a.type)
+            return live ? { ...a, ...live } : a
+          })
+          const merged = {
+            ...ws,
+            activities: prev?.activities?.length ? prev.activities : ws.activities ?? [],
+            agents: mergedAgents,
+          }
+          if (!prev) {
+            return { workspaces: [...s.workspaces, merged] }
+          }
+          return { workspaces: patchWorkspace(s.workspaces, id, () => merged) }
+        })
+      } catch (err) {
+        console.error('Failed to refresh workspace document:', err)
+      }
+    },
+
     refreshActiveWorkspace: async () => {
       const id = get().activeWorkspaceId
       if (!id) return
@@ -43,27 +75,29 @@ export function buildCoreSlice(set: SetState, get: GetState) {
           timestamp: a.timestamp || a.createdAt,
           agentType: a.agentType,
         }))
-        set((s) => ({
-          workspaces: patchWorkspace(s.workspaces, id, (prev) => {
-            const liveAgentStatus = new Map(
-              prev.agents
-                .filter((a) => a.status !== 'idle')
-                .map((a) => [a.type, { status: a.status }]),
-            )
-            const mergedAgents = (ws.agents || []).map((a: any) => {
-              const live = liveAgentStatus.get(a.type)
-              return live ? { ...a, ...live } : a
-            })
-            return { ...ws, activities, agents: mergedAgents }
-          }),
-        }))
+        set((s) => {
+          const prev = s.workspaces.find((w) => w.id === id)
+          const liveAgentStatus = new Map(
+            (prev?.agents ?? [])
+              .filter((a) => a.status !== 'idle')
+              .map((a) => [a.type, { status: a.status }]),
+          )
+          const mergedAgents = (ws.agents || []).map((a: any) => {
+            const live = liveAgentStatus.get(a.type)
+            return live ? { ...a, ...live } : a
+          })
+          const merged = { ...ws, activities, agents: mergedAgents }
+          if (!prev) {
+            return { workspaces: [...s.workspaces, merged] }
+          }
+          return { workspaces: patchWorkspace(s.workspaces, id, () => merged) }
+        })
       } catch (err) {
         console.error('Failed to refresh workspace:', err)
       }
     },
 
     setActiveWorkspace: (id: string | null) => {
-      const gen = bumpWsLoadGeneration()
       set({
         activeWorkspaceId: id,
         activePhaseId: null,
@@ -72,26 +106,9 @@ export function buildCoreSlice(set: SetState, get: GetState) {
         messagesCursor: null,
         messagesHasMore: false,
       })
+      // Single code path with refreshActiveWorkspace (get + activities + executions).
       if (id && !id.startsWith('ws-temp-')) {
-        get().fetchExecutions()
-        Promise.all([workspaceApi.get(id), workspaceApi.listActivities(id, 1, 50)])
-          .then(([ws, actResp]) => {
-            if (wsLoadGeneration !== gen) return
-            const activities = (actResp.data || []).map((a: any) => ({
-              id: a.id,
-              type: a.type,
-              description: a.description,
-              timestamp: a.timestamp || a.createdAt,
-              agentType: a.agentType,
-            }))
-            const merged = { ...ws, activities }
-            set((s) => ({
-              workspaces: s.workspaces.some((w) => w.id === id)
-                ? patchWorkspace(s.workspaces, id, () => merged)
-                : [...s.workspaces, merged],
-            }))
-          })
-          .catch((err) => console.error('Failed to load workspace:', err))
+        void get().refreshActiveWorkspace()
       }
     },
 
@@ -261,25 +278,5 @@ export function buildCoreSlice(set: SetState, get: GetState) {
           repos: (w.repos ?? []).map((r) => (r.id === repo.id ? repo : r)),
         })),
       })),
-  } satisfies Pick<
-    WorkspaceState,
-    | 'workspaces'
-    | 'activeWorkspaceId'
-    | 'activePhaseId'
-    | 'loading'
-    | 'fetchWorkspaces'
-    | 'refreshActiveWorkspace'
-    | 'setActiveWorkspace'
-    | 'setActivePhase'
-    | 'createWorkspace'
-    | 'updateWorkspace'
-    | 'deleteWorkspace'
-    | 'createWorkspaceFromTemplate'
-    | 'archiveWorkspace'
-    | 'unarchiveWorkspace'
-    | 'resetWorkspacePhases'
-    | 'addRepo'
-    | 'removeRepo'
-    | 'updateRepoInStore'
-  >
+  } satisfies CoreSlice
 }
