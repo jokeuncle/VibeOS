@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { Node, Edge, OnNodesChange, OnEdgesChange, Connection } from '@xyflow/react'
 import { applyNodeChanges, applyEdgeChanges, addEdge } from '@xyflow/react'
+import { workspaceGraphApi } from '../../lib/api'
+import type { WorkspaceGraph } from '../../lib/api'
 
 export interface GraphNodeData {
   label: string
@@ -31,11 +33,17 @@ interface GraphState {
   dirty: boolean
   templateId: string | null
   graphName: string
+  graphDescription: string
   stateSchema: StateField[]
   graphConfig: Record<string, unknown>
   templates: GraphTemplate[]
   running: boolean
   executionLog: { event: string; data: Record<string, unknown> }[]
+
+  workspaceId: string | null
+  graphId: string | null
+  workspaceGraphs: WorkspaceGraph[]
+  loadingGraph: boolean
 
   onNodesChange: OnNodesChange
   onEdgesChange: OnEdgesChange
@@ -49,6 +57,7 @@ interface GraphState {
   updateNodeData: (id: string, data: Partial<GraphNodeData>) => void
   updateEdgeData: (id: string, data: Record<string, unknown>) => void
   setGraphName: (name: string) => void
+  setGraphDescription: (desc: string) => void
   setStateSchema: (schema: StateField[]) => void
   setGraphConfig: (config: Record<string, unknown>) => void
   setTemplateId: (id: string | null) => void
@@ -58,6 +67,13 @@ interface GraphState {
   addExecutionEvent: (event: { event: string; data: Record<string, unknown> }) => void
   clearExecutionLog: () => void
   reset: () => void
+
+  setWorkspaceId: (id: string | null) => void
+  setGraphId: (id: string | null) => void
+  loadWorkspaceGraphs: (wsId: string) => Promise<void>
+  loadWorkspaceGraph: (wsId: string, graphId?: string) => Promise<void>
+  saveToWorkspace: (wsId: string) => Promise<void>
+  cloneTemplate: (wsId: string, templateId: string, name: string) => Promise<void>
 
   toGraphDef: () => Record<string, unknown>
   loadGraphDef: (def: Record<string, unknown>) => void
@@ -71,11 +87,16 @@ const initialState = {
   dirty: false,
   templateId: null as string | null,
   graphName: '',
+  graphDescription: '',
   stateSchema: [] as StateField[],
   graphConfig: { checkpointer: 'memory', recursion_limit: 25 } as Record<string, unknown>,
   templates: [] as GraphTemplate[],
   running: false,
   executionLog: [] as { event: string; data: Record<string, unknown> }[],
+  workspaceId: null as string | null,
+  graphId: null as string | null,
+  workspaceGraphs: [] as WorkspaceGraph[],
+  loadingGraph: false,
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
@@ -127,6 +148,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     })),
 
   setGraphName: (graphName) => set({ graphName, dirty: true }),
+  setGraphDescription: (graphDescription) => set({ graphDescription, dirty: true }),
   setStateSchema: (stateSchema) => set({ stateSchema, dirty: true }),
   setGraphConfig: (graphConfig) => set({ graphConfig, dirty: true }),
   setTemplateId: (templateId) => set({ templateId }),
@@ -137,7 +159,91 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set((s) => ({ executionLog: [...s.executionLog, event] })),
   clearExecutionLog: () => set({ executionLog: [] }),
 
-  reset: () => set(initialState),
+  reset: () => set({ ...initialState, workspaceId: get().workspaceId, templates: get().templates }),
+
+  setWorkspaceId: (workspaceId) => set({ workspaceId }),
+  setGraphId: (graphId) => set({ graphId }),
+
+  loadWorkspaceGraphs: async (wsId) => {
+    try {
+      const graphs = await workspaceGraphApi.list(wsId)
+      set({ workspaceGraphs: graphs })
+    } catch {
+      set({ workspaceGraphs: [] })
+    }
+  },
+
+  loadWorkspaceGraph: async (wsId, graphId) => {
+    set({ loadingGraph: true })
+    try {
+      const graph = graphId
+        ? await workspaceGraphApi.get(wsId, graphId)
+        : await workspaceGraphApi.getActive(wsId)
+
+      if (graph) {
+        set({
+          workspaceId: wsId,
+          graphId: graph.id,
+          graphName: graph.name,
+          graphDescription: graph.description,
+        })
+        get().loadGraphDef(graph.graphDef)
+        set({ dirty: false })
+      } else {
+        set({ workspaceId: wsId, graphId: null })
+      }
+    } catch {
+      set({ workspaceId: wsId, graphId: null })
+    } finally {
+      set({ loadingGraph: false })
+    }
+  },
+
+  saveToWorkspace: async (wsId) => {
+    const { graphId, graphName, graphDescription, toGraphDef } = get()
+    const graphDef = toGraphDef()
+    const stateSchema = (graphDef as Record<string, unknown>).state_schema as Record<string, unknown>
+
+    try {
+      if (graphId) {
+        const updated = await workspaceGraphApi.update(wsId, graphId, {
+          name: graphName || undefined,
+          description: graphDescription || undefined,
+          graphDef: graphDef as Record<string, unknown>,
+          stateSchema: stateSchema as Record<string, unknown>,
+        })
+        set({ graphId: updated.id, dirty: false })
+      } else {
+        const created = await workspaceGraphApi.create(wsId, {
+          name: graphName || `workflow_${Date.now()}`,
+          description: graphDescription,
+          graphDef: graphDef as Record<string, unknown>,
+          stateSchema: stateSchema as Record<string, unknown>,
+          isActive: true,
+        })
+        set({ graphId: created.id, dirty: false })
+      }
+      get().loadWorkspaceGraphs(wsId)
+    } catch (err) {
+      throw err
+    }
+  },
+
+  cloneTemplate: async (wsId, templateId, name) => {
+    try {
+      const created = await workspaceGraphApi.create(wsId, {
+        name,
+        sourceTemplateId: templateId,
+        isActive: true,
+      })
+      set({ graphId: created.id, graphName: created.name })
+      get().loadGraphDef(created.graphDef)
+      set({ dirty: false })
+      get().loadWorkspaceGraphs(wsId)
+    } catch (err) {
+      throw err
+    }
+  },
 
   toGraphDef: () => {
     const { nodes, edges, stateSchema, graphConfig } = get()

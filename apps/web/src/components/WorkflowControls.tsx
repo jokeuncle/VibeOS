@@ -3,31 +3,31 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Play, Zap, CheckCircle2, XCircle, Loader2, SkipForward, CircleDot, MessageSquare } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
-import type { WorkflowEvent, Phase } from '../types'
+import type { UnifiedEvent, Phase } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 const EVENT_ICON: Record<string, typeof CheckCircle2> = {
-  'workflow:phase_start': CircleDot,
-  'workflow:phase_complete': CheckCircle2,
-  'workflow:phase_skip': SkipForward,
-  'workflow:task_start': Loader2,
-  'workflow:task_complete': CheckCircle2,
-  'workflow:task_error': XCircle,
-  'workflow:project_start': Zap,
-  'workflow:project_complete': CheckCircle2,
-  'workflow:project_error': XCircle,
+  'phase:start': CircleDot,
+  'phase:complete': CheckCircle2,
+  'phase:skip': SkipForward,
+  'task:start': Loader2,
+  'task:complete': CheckCircle2,
+  'task:error': XCircle,
+  'project:start': Zap,
+  'project:complete': CheckCircle2,
+  'project:error': XCircle,
 }
 
 const EVENT_COLOR: Record<string, string> = {
-  'workflow:phase_start': 'text-accent',
-  'workflow:phase_complete': 'text-success',
-  'workflow:phase_skip': 'text-text-tertiary',
-  'workflow:task_start': 'text-accent animate-spin',
-  'workflow:task_complete': 'text-success',
-  'workflow:task_error': 'text-danger',
-  'workflow:project_start': 'text-accent',
-  'workflow:project_complete': 'text-success',
-  'workflow:project_error': 'text-danger',
+  'phase:start': 'text-accent',
+  'phase:complete': 'text-success',
+  'phase:skip': 'text-text-tertiary',
+  'task:start': 'text-accent animate-spin',
+  'task:complete': 'text-success',
+  'task:error': 'text-danger',
+  'project:start': 'text-accent',
+  'project:complete': 'text-success',
+  'project:error': 'text-danger',
 }
 
 export default function WorkflowControls({ phases }: { phases: Phase[] }) {
@@ -42,16 +42,18 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
     return t(key) || type
   }
 
-  function eventLabel(event: WorkflowEvent): string {
-    switch (event.type) {
-      case 'workflow:project_start': return t('workflow.projectStart' as TranslationKey)
-      case 'workflow:project_complete': return t('workflow.projectComplete' as TranslationKey)
-      case 'workflow:phase_start': return `${t('workflow.phaseStart' as TranslationKey)}：${phaseName(event.phase)}`
-      case 'workflow:phase_complete': {
-        const ok = event.tasks_executed ?? 0
-        const total = event.tasks_total
-        const failed = event.tasks_failed ?? 0
-        const name = phaseName(event.phase)
+  function eventLabel(event: UnifiedEvent): string {
+    const key = `${event.category}:${event.action}`
+    const d = event.data
+    switch (key) {
+      case 'project:start': return t('workflow.projectStart' as TranslationKey)
+      case 'project:complete': return t('workflow.projectComplete' as TranslationKey)
+      case 'phase:start': return `${t('workflow.phaseStart' as TranslationKey)}：${phaseName(d.phase)}`
+      case 'phase:complete': {
+        const ok = d.tasks_executed ?? 0
+        const total = d.tasks_total
+        const failed = d.tasks_failed ?? 0
+        const name = phaseName(d.phase)
         if (total != null && failed > 0) {
           return `${name} ${t('workflow.phaseComplete' as TranslationKey)}（${ok}/${total}，${failed} ${t('workflow.taskError' as TranslationKey)}）`
         }
@@ -60,11 +62,11 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
         }
         return `${name} ${t('workflow.phaseComplete' as TranslationKey)}（${ok} ${t('progress.tasks' as TranslationKey)}）`
       }
-      case 'workflow:phase_skip': return `${phaseName(event.phase)} ${t('workflow.phaseSkip' as TranslationKey)}：${event.reason ?? ''}`
-      case 'workflow:task_start': return `[${(event.index ?? 0) + 1}/${event.total ?? '?'}] ${event.task_title ?? ''}`
-      case 'workflow:task_complete': return `${t('workflow.taskComplete' as TranslationKey)}：${event.task_title ?? event.task_id ?? ''}`
-      case 'workflow:task_error': return `${t('workflow.taskError' as TranslationKey)}：${event.task_title ?? event.task_id ?? ''} - ${event.error ?? 'unknown'}`
-      default: return event.type
+      case 'phase:skip': return `${phaseName(d.phase)} ${t('workflow.phaseSkip' as TranslationKey)}：${d.reason ?? ''}`
+      case 'task:start': return `[${(d.index ?? 0) + 1}/${d.total ?? '?'}] ${d.task_title ?? ''}`
+      case 'task:complete': return `${t('workflow.taskComplete' as TranslationKey)}：${d.task_title ?? d.task_id ?? ''}`
+      case 'task:error': return `${t('workflow.taskError' as TranslationKey)}：${d.task_title ?? d.task_id ?? ''} - ${d.error ?? 'unknown'}`
+      default: return key
     }
   }
 
@@ -155,8 +157,9 @@ export default function WorkflowControls({ phases }: { phases: Phase[] }) {
           >
             <div className="px-4 py-2 max-h-48 overflow-y-auto space-y-1">
               {workflowEvents.map((event, i) => {
-                const Icon = EVENT_ICON[event.type] || CircleDot
-                const color = EVENT_COLOR[event.type] || 'text-text-tertiary'
+                const key = `${event.category}:${event.action}`
+                const Icon = EVENT_ICON[key] || CircleDot
+                const color = EVENT_COLOR[key] || 'text-text-tertiary'
                 return (
                   <div key={i} className="flex items-center gap-2 py-0.5">
                     <Icon className={`w-3.5 h-3.5 shrink-0 ${color}`} />

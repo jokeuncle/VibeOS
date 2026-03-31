@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, Zap, Box, Cpu, GitFork, Plus } from 'lucide-react'
+import { ChevronRight, Zap, Box, Cpu, GitFork, Plus, Copy, FileStack } from 'lucide-react'
 import { registryApi } from '../../lib/api'
 import type { RegistryIntent, RegistryCapability, RegistryTaskTemplate } from '../../lib/api'
+import { useGraphStore } from './useGraphStore'
+import { useUIStore } from '../../stores/ui'
 import { useT } from '../../i18n'
 
 interface TreeSection {
@@ -20,21 +22,33 @@ const NODE_TYPES = [
 
 export default function ElementTree() {
   const t = useT()
+  const addToast = useUIStore((s) => s.addToast)
   const [intents, setIntents] = useState<RegistryIntent[]>([])
   const [capabilities, setCapabilities] = useState<RegistryCapability[]>([])
   const [templates, setTemplates] = useState<RegistryTaskTemplate[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    workspaceGraphs: true,
     intents: true,
     capabilities: true,
     nodeTypes: true,
-    templates: false,
+    globalTemplates: false,
   })
+
+  const workspaceId = useGraphStore((s) => s.workspaceId)
+  const workspaceGraphs = useGraphStore((s) => s.workspaceGraphs)
+  const graphId = useGraphStore((s) => s.graphId)
+  const loadWorkspaceGraph = useGraphStore((s) => s.loadWorkspaceGraph)
+  const cloneTemplate = useGraphStore((s) => s.cloneTemplate)
 
   useEffect(() => {
     registryApi.listIntents(false).then(setIntents).catch(() => {})
     registryApi.listCapabilities().then(setCapabilities).catch(() => {})
     registryApi.listTemplates(false).then(setTemplates).catch(() => {})
   }, [])
+
+  const graphTemplates = templates.filter(
+    (t) => t.handlerType === 'graph' || (t.graphDef && Object.keys(t.graphDef).length > 0),
+  )
 
   const sections: TreeSection[] = [
     {
@@ -70,17 +84,6 @@ export default function ElementTree() {
         dragType: n.dragType,
       })),
     },
-    {
-      key: 'templates',
-      label: t('registry.tab.templates'),
-      icon: Box,
-      items: templates.map((t) => ({
-        id: t.id,
-        name: t.intentPattern,
-        meta: t.handlerType,
-        dragType: 'template',
-      })),
-    },
   ]
 
   function toggle(key: string) {
@@ -96,6 +99,21 @@ export default function ElementTree() {
     e.dataTransfer.effectAllowed = 'move'
   }
 
+  async function handleCloneTemplate(tpl: RegistryTaskTemplate) {
+    if (!workspaceId) return
+    try {
+      await cloneTemplate(workspaceId, tpl.id, tpl.intentPattern)
+      addToast({ type: 'success', message: `Cloned "${tpl.intentPattern}"` })
+    } catch {
+      addToast({ type: 'error', message: 'Clone failed' })
+    }
+  }
+
+  function handleLoadGraph(gId: string) {
+    if (!workspaceId) return
+    loadWorkspaceGraph(workspaceId, gId)
+  }
+
   return (
     <div className="py-2">
       <div className="px-3 py-2">
@@ -104,6 +122,43 @@ export default function ElementTree() {
         </span>
       </div>
 
+      {/* Workspace Graphs */}
+      {workspaceId && (
+        <div>
+          <button
+            onClick={() => toggle('workspaceGraphs')}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-text-secondary hover:bg-surface-2 transition-colors cursor-pointer"
+          >
+            <ChevronRight className={`w-3 h-3 transition-transform ${expanded.workspaceGraphs ? 'rotate-90' : ''}`} />
+            <FileStack className="w-3.5 h-3.5 text-accent" />
+            <span className="flex-1 text-left">{t('controlCenter.workspaceGraphs')}</span>
+            <span className="text-[10px] text-text-tertiary tabular-nums">{workspaceGraphs.length}</span>
+          </button>
+          {expanded.workspaceGraphs && (
+            <div className="ml-5 mr-2">
+              {workspaceGraphs.length === 0 ? (
+                <p className="text-[10px] text-text-tertiary px-2 py-1">{t('controlCenter.noGraphs')}</p>
+              ) : (
+                workspaceGraphs.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => handleLoadGraph(g.id)}
+                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-left transition-colors cursor-pointer
+                      ${g.id === graphId ? 'bg-accent/10 text-accent font-medium' : 'text-text-secondary hover:bg-surface-3'}`}
+                  >
+                    <span className="truncate flex-1">{g.name}</span>
+                    {g.isActive && (
+                      <span className="text-[9px] text-accent bg-accent/10 px-1 rounded">active</span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Draggable elements */}
       {sections.map((section) => (
         <div key={section.key}>
           <button
@@ -142,6 +197,45 @@ export default function ElementTree() {
           )}
         </div>
       ))}
+
+      {/* Global Templates (clonable) */}
+      <div>
+        <button
+          onClick={() => toggle('globalTemplates')}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-text-secondary hover:bg-surface-2 transition-colors cursor-pointer"
+        >
+          <ChevronRight className={`w-3 h-3 transition-transform ${expanded.globalTemplates ? 'rotate-90' : ''}`} />
+          <Box className="w-3.5 h-3.5 text-text-tertiary" />
+          <span className="flex-1 text-left">{t('controlCenter.globalTemplates')}</span>
+          <span className="text-[10px] text-text-tertiary tabular-nums">{graphTemplates.length}</span>
+        </button>
+
+        {expanded.globalTemplates && (
+          <div className="ml-5 mr-2">
+            {graphTemplates.length === 0 ? (
+              <p className="text-[10px] text-text-tertiary px-2 py-1">{t('registry.empty')}</p>
+            ) : (
+              graphTemplates.map((tpl) => (
+                <div
+                  key={tpl.id}
+                  className="flex items-center gap-2 px-2 py-1 rounded text-[11px] text-text-secondary hover:bg-surface-3 transition-colors"
+                >
+                  <span className="truncate flex-1">{tpl.intentPattern}</span>
+                  {workspaceId && (
+                    <button
+                      onClick={() => handleCloneTemplate(tpl)}
+                      className="p-0.5 rounded hover:bg-accent/10 text-text-tertiary hover:text-accent cursor-pointer"
+                      title="Clone to workspace"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

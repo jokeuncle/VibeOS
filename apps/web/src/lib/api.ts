@@ -829,6 +829,64 @@ export interface RegistryCapability {
   updatedAt: string
 }
 
+export interface WorkspaceGraph {
+  id: string
+  workspaceId: string
+  name: string
+  description: string
+  sourceTemplateId: string | null
+  graphDef: Record<string, unknown>
+  stateSchema: Record<string, unknown>
+  config: Record<string, unknown>
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export const workspaceGraphApi = {
+  list: (workspaceId: string) =>
+    request<{ data: WorkspaceGraph[] }>(`/api/workspaces/${workspaceId}/graphs`).then(unwrap),
+
+  get: (workspaceId: string, graphId: string) =>
+    request<{ data: WorkspaceGraph }>(`/api/workspaces/${workspaceId}/graphs/${graphId}`).then(unwrap),
+
+  getActive: (workspaceId: string) =>
+    request<{ data: WorkspaceGraph | null }>(`/api/workspaces/${workspaceId}/graphs/active`).then(unwrap),
+
+  create: (workspaceId: string, req: {
+    name: string
+    description?: string
+    sourceTemplateId?: string
+    graphDef?: Record<string, unknown>
+    stateSchema?: Record<string, unknown>
+    config?: Record<string, unknown>
+    isActive?: boolean
+  }) =>
+    request<{ data: WorkspaceGraph }>(`/api/workspaces/${workspaceId}/graphs`, {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }).then(unwrap),
+
+  update: (workspaceId: string, graphId: string, req: {
+    name?: string
+    description?: string
+    graphDef?: Record<string, unknown>
+    stateSchema?: Record<string, unknown>
+    config?: Record<string, unknown>
+    isActive?: boolean
+  }) =>
+    request<{ data: WorkspaceGraph }>(`/api/workspaces/${workspaceId}/graphs/${graphId}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    }).then(unwrap),
+
+  delete: (workspaceId: string, graphId: string) =>
+    request<{ data: string }>(`/api/workspaces/${workspaceId}/graphs/${graphId}`, { method: 'DELETE' }),
+
+  activate: (workspaceId: string, graphId: string) =>
+    request<{ data: string }>(`/api/workspaces/${workspaceId}/graphs/${graphId}/activate`, { method: 'POST' }),
+}
+
 export const registryApi = {
   listIntents: (enabledOnly = true) =>
     request<{ data: RegistryIntent[] }>(
@@ -892,8 +950,18 @@ export const registryApi = {
       { method: 'POST', body: JSON.stringify(manifest) },
     ).then(unwrap),
 
-  executeGraph: (templateId: string, inputState: Record<string, unknown> = {}) =>
-    streamSSE('/api/graph/execute', { template_id: templateId, input_state: inputState }),
+  executeGraph: (
+    templateId: string,
+    graphDef?: Record<string, unknown>,
+    inputState: Record<string, unknown> = {},
+    workspaceId?: string,
+  ) =>
+    streamSSE('/api/graph/execute', {
+      template_id: templateId,
+      ...(graphDef ? { graph_def: graphDef } : {}),
+      input_state: inputState,
+      ...(workspaceId ? { workspace_id: workspaceId } : {}),
+    }),
 
   validateGraph: (graphDef: Record<string, unknown>) =>
     request<{ data: { valid: boolean; errors: string[] } }>(

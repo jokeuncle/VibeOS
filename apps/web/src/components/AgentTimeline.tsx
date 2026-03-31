@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useT } from '../i18n'
 import { useWorkspaceStore, type AgentStatusEvent } from '../stores/workspace'
-import type { Agent, AgentType, AgentStatus, WorkflowEvent } from '../types'
+import type { Agent, AgentType, AgentStatus, UnifiedEvent } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 const STATUS_FILL: Record<AgentStatus, string> = {
@@ -57,12 +57,12 @@ const ALL_AGENTS: AgentType[] = ['pm', 'requirement', 'design', 'architecture', 
 
 const WORKFLOW_PHASES = ['requirement', 'architecture', 'design', 'development', 'testing', 'deployment', 'monitoring'] as const
 
-function WorkflowProgress({ events }: { events: WorkflowEvent[] }) {
+function WorkflowProgress({ events }: { events: UnifiedEvent[] }) {
   const t = useT()
   const completedPhases = new Set(
-    events.filter((e) => e.type === 'workflow:phase_complete').map((e) => e.phase)
+    events.filter((e) => e.category === 'phase' && e.action === 'complete').map((e) => e.data.phase)
   )
-  const currentPhase = events.filter((e) => e.type === 'workflow:phase_start').map((e) => e.phase).pop()
+  const currentPhase = events.filter((e) => e.category === 'phase' && e.action === 'start').map((e) => e.data.phase).pop()
 
   if (events.length === 0) return null
 

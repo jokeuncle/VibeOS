@@ -1,13 +1,16 @@
 /**
- * SSE Event Parser Registry — unified parsing for SSE events into RichBlocks.
+ * SSE Event Parser Registry — unified parsing for SSE content:block events into RichBlocks.
  *
- * ## Adding a new SSE event type
+ * With the unified protocol, structured blocks arrive as:
+ *   event: content:block
+ *   data: {"sid": "...", "blockType": "nlp_action", ...}
  *
- * 1. Call `registerSseBlockParser('my_event', (data) => ({ type: '...', ... }))`.
- * 2. Both workspace and home streams will automatically pick it up via `parseSseToBlock`.
+ * ## Adding a new block type
  *
- * For special handling (timeline upsert, intent feedback, etc.) use the
- * dedicated helpers: `parseTimelineStep`, `parseIntentBlock`.
+ * Call `registerBlockParser('my_block_type', (data) => ({ type: '...', ... }))`.
+ *
+ * For special handling (timeline, intent) use the dedicated helpers:
+ * `parseTimelineStep`, `parseIntentBlock`.
  */
 
 import type { AgentType, RichBlock, ExecutionStep } from '../types'
@@ -16,21 +19,25 @@ import type { AgentType, RichBlock, ExecutionStep } from '../types'
 // Types
 // ---------------------------------------------------------------------------
 
-export type SseBlockParser = (data: any) => RichBlock | null
+export type BlockParser = (data: any) => RichBlock | null
 
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
-const BLOCK_PARSERS = new Map<string, SseBlockParser>()
+const BLOCK_PARSERS = new Map<string, BlockParser>()
 
-export function registerSseBlockParser(eventName: string, parser: SseBlockParser) {
-  BLOCK_PARSERS.set(eventName, parser)
+export function registerBlockParser(blockType: string, parser: BlockParser) {
+  BLOCK_PARSERS.set(blockType, parser)
 }
 
-export function parseSseToBlock(eventName: string | undefined, data: any): RichBlock | null {
-  if (!eventName) return null
-  const parser = BLOCK_PARSERS.get(eventName)
+/**
+ * Parse a content:block event. The `blockType` field determines which parser to use.
+ */
+export function parseContentBlock(data: any): RichBlock | null {
+  const blockType = data?.blockType
+  if (!blockType) return null
+  const parser = BLOCK_PARSERS.get(blockType)
   return parser ? parser(data) : null
 }
 
@@ -64,22 +71,24 @@ export function parseIntentBlock(data: any): { block: RichBlock; agentType: Agen
   }
 }
 
+export function parseAmbiguousBlock(data: any): RichBlock {
+  return {
+    type: 'clarification',
+    clarifyPrompt: data.prompt,
+    clarifyOptions: data.options?.map((o: any) => ({
+      id: o.id,
+      label: o.label,
+      intent: o.intent,
+      agentType: o.agent_type,
+    })),
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Built-in parsers
+// Built-in block parsers (keyed by blockType)
 // ---------------------------------------------------------------------------
 
-registerSseBlockParser('clarification', (data) => ({
-  type: 'clarification',
-  clarifyPrompt: data.prompt,
-  clarifyOptions: data.options?.map((o: any) => ({
-    id: o.id,
-    label: o.label,
-    intent: o.intent,
-    agentType: o.agent_type,
-  })),
-}))
-
-registerSseBlockParser('error_card', (data) => ({
+registerBlockParser('error_card', (data) => ({
   type: 'error_card',
   errorSeverity: data.error_type,
   errorMessage: data.message,
@@ -91,7 +100,7 @@ registerSseBlockParser('error_card', (data) => ({
   })),
 }))
 
-registerSseBlockParser('cta', (data) => ({
+registerBlockParser('cta', (data) => ({
   type: 'cta_actions',
   ctaActions: data.actions?.map((a: any) => ({
     id: a.id,
@@ -100,7 +109,7 @@ registerSseBlockParser('cta', (data) => ({
   })),
 }))
 
-registerSseBlockParser('nlp_action', (data) => ({
+registerBlockParser('nlp_action', (data) => ({
   type: 'nlp_action',
   actionType: data.action_type,
   actionPayload: data.action_payload,
@@ -110,9 +119,15 @@ registerSseBlockParser('nlp_action', (data) => ({
   description: data.description,
 }))
 
-registerSseBlockParser('requirement_preview', (data) => ({
+registerBlockParser('requirement_preview', (data) => ({
   type: 'requirement_preview',
   reqTitle: data.title,
   reqDescription: data.description,
   reqPriority: data.priority,
+}))
+
+registerBlockParser('warning', (data) => ({
+  type: 'error_card',
+  errorSeverity: 'warning',
+  errorMessage: data.message,
 }))

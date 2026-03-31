@@ -106,6 +106,11 @@ const settings = {
   'controlCenter.invalid': 'Graph has errors',
   'controlCenter.running': 'Executing...',
   'controlCenter.completed': 'Execution complete',
+  'controlCenter.workspaceGraphs': 'Workspace Graphs',
+  'controlCenter.globalTemplates': 'Global Templates',
+  'controlCenter.noGraphs': 'No custom graphs yet',
+  'controlCenter.publishTemplate': 'Publish as Template',
+  'controlCenter.published': 'Published as global template',
 } as const
 
 export default settings

@@ -11,10 +11,19 @@ let intentionalClose = false
 let currentWorkspaceId: string | null = null
 let refreshDebounce: ReturnType<typeof setTimeout> | null = null
 
-/** Workspace we're trying to keep a socket for (retry budget resets when this id changes). */
 let activeConnectionTargetId: string | null = null
 let consecutiveReconnectFailures = 0
 let gaveUpLogged = false
+
+/**
+ * Active SSE session IDs — events with a sid present in this set are
+ * already being consumed by an ExecutionSession and should not be
+ * double-applied from the WS mirror.
+ */
+const activeSids = new Set<string>()
+
+export function registerActiveSid(sid: string) { activeSids.add(sid) }
+export function unregisterActiveSid(sid: string) { activeSids.delete(sid) }
 
 export function connectWebSocket(workspaceId: string | null) {
   if (workspaceId === currentWorkspaceId && socket?.readyState === WebSocket.OPEN) return
@@ -109,8 +118,15 @@ export function disconnectWebSocket() {
 function handleWSEvent(event: Record<string, any>) {
   const store = useWorkspaceStore.getState()
   const activeWsId = store.activeWorkspaceId
+  const eventType: string = event.type || ''
+  const sid: string | undefined = event.sid
 
-  if (event.type === 'chat_message' && event.workspaceId === activeWsId && event.payload) {
+  // Dedup: if the event carries a sid that is currently being consumed
+  // via an SSE ExecutionSession, skip it to avoid double-applying.
+  if (sid && activeSids.has(sid)) return
+
+  // Chat messages
+  if (eventType === 'chat_message' && event.workspaceId === activeWsId && event.payload) {
     const p = event.payload
     const existing = store.messages.find((m) => m.id === p.id)
     if (!existing) {
@@ -126,109 +142,55 @@ function handleWSEvent(event: Record<string, any>) {
     }
   }
 
-  // Directly patch agent status in store – no API round-trip, immediate UI update
-  if (event.type === 'agent:status' && event.workspaceId) {
-    store.updateAgentStatus(
-      event.workspaceId,
-      event.agentType,
-      event.status,
-      event.detail,
-    )
+  // Agent status
+  if (eventType === 'agent:status' && event.workspaceId) {
+    store.updateAgentStatus(event.workspaceId, event.agentType, event.status, event.detail)
   }
 
-  // Execution tracking — upsert / patch from ws-gateway events
-  if (event.type === 'execution:start' && event.workspaceId === activeWsId && event.payload) {
-    store.upsertExecution({
-      id: event.payload.id || crypto.randomUUID(),
-      workspaceId: event.workspaceId,
-      requirementId: event.payload.requirementId,
-      taskIds: event.payload.taskIds || [],
-      intentType: event.payload.intentType || 'general_chat',
-      intentSummary: event.payload.intentSummary || '',
-      triggeredBy: event.payload.triggeredBy || 'nlp',
-      userMessage: event.payload.userMessage,
-      status: 'running',
-      agentType: event.payload.agentType || 'pm',
-      steps: event.payload.steps || [],
-      resultType: event.payload.resultType || 'general',
-      parentExecutionId: event.payload.parentExecutionId,
-      startedAt: event.payload.startedAt || new Date().toISOString(),
-      estimatedDuration: event.payload.estimatedDuration,
-    })
-  }
-  if (event.type === 'execution:update' && event.workspaceId === activeWsId && event.payload) {
-    const p = event.payload
-    if (p.step) store.patchExecutionStep(p.executionId, p.step)
-    if (p.status) store.patchExecutionStatus(p.executionId, p.status, {
-      errorMessage: p.errorMessage,
-      resultPayload: p.resultPayload,
-    })
-  }
-  if (event.type === 'execution:complete' && event.workspaceId === activeWsId && event.payload) {
-    store.patchExecutionStatus(event.payload.executionId, event.payload.status || 'success', {
-      resultPayload: event.payload.resultPayload,
-      errorMessage: event.payload.errorMessage,
-    })
-  }
-
-  // Directly patch task status from workflow events broadcast via WS gateway
+  // Unified task/phase/project status patching
   if (event.workspaceId === activeWsId) {
-    if (event.type === 'workflow:task_start' && event.task_id) {
+    if (eventType === 'task:start' && event.task_id) {
       store.patchTaskStatus(event.workspaceId, event.task_id, 'in_progress')
-    } else if (event.type === 'workflow:task_complete' && event.task_id) {
+    } else if (eventType === 'task:complete' && event.task_id) {
       store.patchTaskStatus(event.workspaceId, event.task_id, 'completed')
-    } else if (event.type === 'workflow:task_error' && event.task_id) {
+    } else if (eventType === 'task:error' && event.task_id) {
       store.patchTaskStatus(event.workspaceId, event.task_id, 'pending')
     }
   }
 
-  // Only mirror workflow events from WS when the SSE stream is NOT active,
-  // otherwise the SSE handler in runPhase/runProject already appends them.
-  if (event.type?.startsWith('workflow:') && event.workspaceId === activeWsId) {
-    if (!store.workflowRunning) {
-      const prev = useWorkspaceStore.getState().workflowEvents
-      const isDupe = prev.length > 0 && prev[prev.length - 1].type === event.type
-        && prev[prev.length - 1].task_id === event.task_id
-        && prev[prev.length - 1].phase === event.phase
-      if (!isDupe) {
-        useWorkspaceStore.setState({ workflowEvents: [...prev, event as any] })
-      }
-    }
-  }
-
-  // Generate real notifications from meaningful events
+  // Notifications
   const addNotification = useUIStore.getState().addNotification
   const wsId = event.workspaceId || undefined
 
-  if (event.type === 'workflow:phase_complete' && event.phase) {
+  if (eventType === 'phase:complete' && event.phase) {
     addNotification({
       title: `${event.phase} phase completed`,
       description: event.tasks_executed ? `${event.tasks_executed} tasks executed` : '',
       time: new Date().toISOString(),
       workspaceId: wsId,
     })
-  } else if (event.type === 'workflow:project_complete') {
+  } else if (eventType === 'project:complete') {
     addNotification({
       title: 'Project workflow completed',
       description: event.success ? 'All phases finished successfully' : 'Completed with issues',
       time: new Date().toISOString(),
       workspaceId: wsId,
     })
-  } else if (event.type === 'workflow:project_start') {
+  } else if (eventType === 'project:start') {
     addNotification({
       title: 'Project workflow started',
       description: event.phases?.join(' → ') || '',
       time: new Date().toISOString(),
       workspaceId: wsId,
     })
-  } else if (event.type === 'workflow:task_error' && event.task_title) {
+  } else if (eventType === 'task:error' && event.task_title) {
     addNotification({
       title: `Task failed: ${event.task_title}`,
       description: event.error || '',
       time: new Date().toISOString(),
       workspaceId: wsId,
     })
-  } else if (event.type === 'agent:status' && event.status === 'error' && event.detail) {
+  } else if (eventType === 'agent:status' && event.status === 'error' && event.detail) {
     addNotification({
       title: `Agent error: ${event.agentType || 'unknown'}`,
       description: event.detail,
@@ -237,14 +199,8 @@ function handleWSEvent(event: Record<string, any>) {
     })
   }
 
-  // Debounced full refresh for structural events (tasks created, phases changed).
-  // Skip agent:status events — they're patched directly above and a full refresh
-  // would overwrite the transient running/error state with the server's stale idle.
-  if (
-    event.workspaceId &&
-    event.workspaceId === activeWsId &&
-    event.type !== 'agent:status'
-  ) {
+  // Debounced full refresh for structural events
+  if (event.workspaceId && event.workspaceId === activeWsId && eventType !== 'agent:status') {
     if (refreshDebounce) clearTimeout(refreshDebounce)
     refreshDebounce = setTimeout(() => {
       useWorkspaceStore.getState().refreshActiveWorkspace()

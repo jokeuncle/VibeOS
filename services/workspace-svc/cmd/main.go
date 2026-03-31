@@ -82,6 +82,7 @@ func main() {
 	pipelineConfigHandler := handler.NewPipelineConfigHandler(svc, logger)
 	execHandler := handler.NewExecutionHandler(svc, logger)
 	registryHandler := handler.NewRegistryHandler(st, logger)
+	wsGraphHandler := handler.NewWorkspaceGraphHandler(st, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -189,6 +190,19 @@ func main() {
 					r.Post("/relations", reqHandler.AddRelation)
 					r.Delete("/relations/{relationId}", reqHandler.RemoveRelation)
 					r.Get("/related-artifacts", reqHandler.GetRelatedArtifacts)
+				})
+			})
+
+			// Workspace graphs (custom workflow definitions)
+			r.Route("/graphs", func(r chi.Router) {
+				r.Get("/", wsGraphHandler.List)
+				r.Post("/", wsGraphHandler.Create)
+				r.Get("/active", wsGraphHandler.GetActive)
+				r.Route("/{graphId}", func(r chi.Router) {
+					r.Get("/", wsGraphHandler.Get)
+					r.Put("/", wsGraphHandler.Update)
+					r.Delete("/", wsGraphHandler.Delete)
+					r.Post("/activate", wsGraphHandler.Activate)
 				})
 			})
 		})

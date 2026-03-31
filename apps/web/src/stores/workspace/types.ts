@@ -14,8 +14,8 @@ import type {
   LabelColor,
   WorkspaceRepo,
   Requirement,
+  UnifiedEvent,
 } from '../../types'
-import type { WorkflowEvent } from '../../types'
 
 export interface AgentStatusEvent {
   agentType: string
@@ -90,7 +90,7 @@ export interface WorkspaceState {
   patchTaskStatus: (workspaceId: string, taskId: string, status: PhaseStatus) => void
 
   workflowRunning: boolean
-  workflowEvents: WorkflowEvent[]
+  workflowEvents: UnifiedEvent[]
   runTask: (taskId: string) => void
   runPhase: (phaseType: string, userMessage?: string) => void
   runProject: (userMessage?: string) => void

@@ -29,6 +29,10 @@ export default defineConfig({
         target: 'http://localhost:8040',
         changeOrigin: true,
       },
+      '/api/graph': {
+        target: 'http://localhost:8040',
+        changeOrigin: true,
+      },
       // Platform services (workspace-scoped UIs; avoid clashing with workspace-svc `/api/*`)
       '/svc/memory': {
         target: 'http://localhost:8050',

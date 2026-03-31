@@ -306,38 +306,26 @@ export interface ActivitySummary {
   createdAt: string
 }
 
-export type WorkflowEventType =
-  | 'workflow:project_start'
-  | 'workflow:phase_start'
-  | 'workflow:phase_skip'
-  | 'workflow:phase_complete'
-  | 'workflow:task_start'
-  | 'workflow:task_complete'
-  | 'workflow:task_error'
-  | 'workflow:project_complete'
-  | 'workflow:project_error'
+/**
+ * Unified event categories for the SSE protocol.
+ * All events follow the format: `<category>:<action>`
+ */
+export type UnifiedEventCategory =
+  | 'session'
+  | 'intent'
+  | 'timeline'
+  | 'content'
+  | 'task'
+  | 'phase'
+  | 'project'
+  | 'graph'
+  | 'agent'
 
-export interface WorkflowEvent {
-  type: WorkflowEventType
-  workspace_id?: string
-  phase?: string
-  task_id?: string
-  task_title?: string
-  index?: number
-  total?: number
-  reason?: string
-  error?: string
-  result_summary?: string
-  /** Successfully completed tasks in this phase (phase_complete). */
-  tasks_executed?: number
-  /** Total tasks attempted in this phase; optional for older payloads. */
-  tasks_total?: number
-  /** Failed tasks in this phase when phase ended with errors. */
-  tasks_failed?: number
-  phases?: string[]
-  success?: boolean
-  requirement_id?: string
-  requirement_title?: string
+export interface UnifiedEvent {
+  category: UnifiedEventCategory
+  action: string
+  sid: string
+  data: Record<string, any>
 }
 
 export interface TaskComment {

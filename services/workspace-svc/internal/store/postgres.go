@@ -151,6 +151,15 @@ type Store interface {
 	UpsertCapability(ctx context.Context, req models.CreateCapabilityReq) (*models.CapabilityEntry, error)
 	UpdateCapabilityHealth(ctx context.Context, name, provider, health string) error
 	DeleteCapability(ctx context.Context, name, provider string) error
+
+	// Workspace graphs
+	ListWorkspaceGraphs(ctx context.Context, workspaceID string) ([]models.WorkspaceGraph, error)
+	GetWorkspaceGraph(ctx context.Context, id string) (*models.WorkspaceGraph, error)
+	GetActiveWorkspaceGraph(ctx context.Context, workspaceID string) (*models.WorkspaceGraph, error)
+	CreateWorkspaceGraph(ctx context.Context, workspaceID string, req models.CreateWorkspaceGraphReq) (*models.WorkspaceGraph, error)
+	UpdateWorkspaceGraph(ctx context.Context, id string, req models.UpdateWorkspaceGraphReq) (*models.WorkspaceGraph, error)
+	DeleteWorkspaceGraph(ctx context.Context, id string) error
+	ActivateWorkspaceGraph(ctx context.Context, workspaceID, graphID string) error
 }
 
 type PostgresStore struct {

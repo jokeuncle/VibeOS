@@ -13,6 +13,8 @@ MIGRATIONS=(
   "004_requirements.sql"
   "005_budget_pipeline_logs.sql"
   "006_agent_executions.sql"
+  "009_registry.sql"
+  "010_workspace_graphs.sql"
 )
 
 run_psql() {

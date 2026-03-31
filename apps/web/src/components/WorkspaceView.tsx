@@ -65,7 +65,6 @@ function ViewContent() {
   if (currentMode === 'pipeline') return <WorkspacePipeline />
   if (currentMode === 'agentTeam') return <WorkspaceAgentTeam />
   if (currentMode === 'integrations') return <WorkspaceIntegrations />
-  if (currentMode === 'controlCenter') return <ControlCenter />
   if (currentMode === 'context') return <WorkspaceContext />
   if (currentMode === 'traces') return <WorkspaceTraces />
   if (currentMode === 'budget') return <WorkspaceBudget />
@@ -114,6 +113,19 @@ export default function WorkspaceView() {
     currentViewMode === 'traces' ||
     currentViewMode === 'budget'
   const maxW = isControlCenter ? 'max-w-none' : wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
+
+  if (isControlCenter) {
+    return (
+      <motion.main
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+        className="flex-1 min-h-0 flex flex-col overflow-hidden"
+      >
+        <ControlCenter />
+      </motion.main>
+    )
+  }
 
   return (
     <motion.main

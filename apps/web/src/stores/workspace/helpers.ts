@@ -1,4 +1,4 @@
-import type { Message, Workspace, WorkflowEvent } from '../../types'
+import type { Message, Workspace } from '../../types'
 import en from '../../i18n/en'
 import zh from '../../i18n/zh'
 import { useI18nStore } from '../../i18n'
@@ -36,30 +36,26 @@ export function friendlyError(raw: string): string {
   return raw
 }
 
-export function workflowEventToMessage(event: WorkflowEvent): Message | null {
+/**
+ * Convert a unified workflow event (category:action format) into a chat Message.
+ * @param eventType  e.g. "task:start", "phase:complete", "project:error"
+ * @param data       event payload (phase, task_id, task_title, etc.)
+ */
+export function workflowEventToMessage(eventType: string, data: any): string | null {
   const t = tRaw
   type TK = TranslationKey
   const contentMap: Record<string, string | undefined> = {
-    'workflow:phase_start': `${t('workflow.phaseStart' as TK)}: ${event.phase ?? ''}`,
-    'workflow:phase_complete': `${t('workflow.phaseComplete' as TK)}: ${event.phase ?? ''} (${event.tasks_executed ?? 0})`,
-    'workflow:phase_skip': `${t('workflow.phaseSkip' as TK)}: ${event.phase ?? ''} — ${event.reason ?? ''}`,
-    'workflow:task_start': `${t('workflow.taskStart' as TK)}: ${event.task_title ?? ''}`,
-    'workflow:task_complete': `${t('workflow.taskComplete' as TK)}: ${event.task_title ?? ''}`,
-    'workflow:task_error': `${t('workflow.taskError' as TK)}: ${event.task_title ?? ''} — ${event.error ?? ''}`,
-    'workflow:project_start': t('workflow.projectStart' as TK),
-    'workflow:project_complete': t('workflow.projectComplete' as TK),
-    'workflow:project_error': `${t('error.requestFailed' as TK)}: ${event.error ?? ''}`,
+    'phase:start': `${t('workflow.phaseStart' as TK)}: ${data.phase ?? ''}`,
+    'phase:complete': `${t('workflow.phaseComplete' as TK)}: ${data.phase ?? ''} (${data.tasks_executed ?? 0})`,
+    'phase:skip': `${t('workflow.phaseSkip' as TK)}: ${data.phase ?? ''} — ${data.reason ?? ''}`,
+    'task:start': `${t('workflow.taskStart' as TK)}: ${data.task_title ?? ''}`,
+    'task:complete': `${t('workflow.taskComplete' as TK)}: ${data.task_title ?? ''}`,
+    'task:error': `${t('workflow.taskError' as TK)}: ${data.task_title ?? ''} — ${data.error ?? ''}`,
+    'project:start': t('workflow.projectStart' as TK),
+    'project:complete': t('workflow.projectComplete' as TK),
+    'project:error': `${t('error.requestFailed' as TK)}: ${data.error ?? ''}`,
   }
-  const content = contentMap[event.type]
-  if (!content) return null
-  return {
-    id: crypto.randomUUID(),
-    role: 'system',
-    content,
-    agentType: 'pm' as import('../../types').AgentType,
-    timestamp: new Date().toISOString(),
-    contextType: 'workspace' as import('../../types').ConversationContext,
-  }
+  return contentMap[eventType] ?? null
 }
 
 export function safeParseRichBlocks(raw: unknown): import('../../types').RichBlock[] | undefined {

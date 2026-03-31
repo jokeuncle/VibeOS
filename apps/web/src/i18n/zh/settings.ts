@@ -106,6 +106,11 @@ const settings = {
   'controlCenter.invalid': '图存在错误',
   'controlCenter.running': '执行中...',
   'controlCenter.completed': '执行完成',
+  'controlCenter.workspaceGraphs': '工作空间图',
+  'controlCenter.globalTemplates': '全局模板',
+  'controlCenter.noGraphs': '暂无自定义图',
+  'controlCenter.publishTemplate': '发布为模板',
+  'controlCenter.published': '已发布为全局模板',
 }
 
 export default settings

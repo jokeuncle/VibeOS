@@ -1,4 +1,4 @@
-import { Save, Play, CheckCircle, LayoutGrid, FilePlus, Loader2 } from 'lucide-react'
+import { Save, Play, CheckCircle, LayoutGrid, FilePlus, Loader2, Upload } from 'lucide-react'
 import { useGraphStore } from './useGraphStore'
 import { registryApi } from '../../lib/api'
 import { useUIStore } from '../../stores/ui'
@@ -8,13 +8,23 @@ export default function GraphToolbar() {
   const t = useT()
   const addToast = useUIStore((s) => s.addToast)
   const {
-    dirty, templateId, graphName, running,
+    dirty, templateId, graphName, running, workspaceId,
     toGraphDef, setDirty, setTemplateId,
     setRunning, addExecutionEvent, clearExecutionLog,
-    reset, nodes,
+    reset, nodes, saveToWorkspace,
   } = useGraphStore()
 
   async function handleSave() {
+    if (workspaceId) {
+      try {
+        await saveToWorkspace(workspaceId)
+        addToast({ type: 'success', message: t('controlCenter.save') + ' ✓' })
+      } catch (err) {
+        addToast({ type: 'error', message: String(err) })
+      }
+      return
+    }
+
     const graphDef = toGraphDef()
     try {
       const result = await registryApi.createTemplate({
@@ -32,6 +42,23 @@ export default function GraphToolbar() {
     }
   }
 
+  async function handlePublishAsTemplate() {
+    const graphDef = toGraphDef()
+    try {
+      const result = await registryApi.createTemplate({
+        intentPattern: graphName || `graph_${Date.now()}`,
+        handlerType: 'graph',
+        taskType: 'graph',
+        graphDef: graphDef as Record<string, unknown>,
+        stateSchema: (graphDef as Record<string, unknown>).state_schema as Record<string, unknown>,
+      })
+      setTemplateId(result.id)
+      addToast({ type: 'success', message: t('controlCenter.published') })
+    } catch (err) {
+      addToast({ type: 'error', message: String(err) })
+    }
+  }
+
   async function handleRun() {
     const graphDef = toGraphDef()
     if (nodes.length === 0) return
@@ -42,7 +69,7 @@ export default function GraphToolbar() {
     try {
       const gen = templateId
         ? registryApi.executeGraph(templateId)
-        : registryApi.executeGraph('', graphDef as Record<string, unknown>)
+        : registryApi.executeGraph('', graphDef as Record<string, unknown>, {}, workspaceId || undefined)
 
       for await (const evt of gen) {
         try {
@@ -105,6 +132,13 @@ export default function GraphToolbar() {
         onClick={handleSave}
         accent={dirty}
       />
+      {workspaceId && (
+        <ToolbarButton
+          icon={Upload}
+          label={t('controlCenter.publishTemplate')}
+          onClick={handlePublishAsTemplate}
+        />
+      )}
       <ToolbarButton
         icon={running ? Loader2 : Play}
         label={running ? t('controlCenter.running') : t('controlCenter.run')}

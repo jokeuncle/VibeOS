@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { useT } from '../../i18n'
 import { registryApi } from '../../lib/api'
+import { useWorkspaceStore } from '../../stores/workspace'
 import { useGraphStore } from './useGraphStore'
 import ElementTree from './ElementTree'
 import GraphCanvas from './GraphCanvas'
@@ -12,7 +13,12 @@ import '@xyflow/react/dist/style.css'
 
 export default function ControlCenter() {
   const t = useT()
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const setTemplates = useGraphStore((s) => s.setTemplates)
+  const setWorkspaceId = useGraphStore((s) => s.setWorkspaceId)
+  const loadWorkspaceGraph = useGraphStore((s) => s.loadWorkspaceGraph)
+  const loadWorkspaceGraphs = useGraphStore((s) => s.loadWorkspaceGraphs)
+  const currentWsId = useGraphStore((s) => s.workspaceId)
 
   useEffect(() => {
     registryApi.listTemplates(false).then((list) => {
@@ -23,9 +29,16 @@ export default function ControlCenter() {
     }).catch(() => {})
   }, [setTemplates])
 
+  useEffect(() => {
+    if (!activeWorkspaceId || activeWorkspaceId === currentWsId) return
+    setWorkspaceId(activeWorkspaceId)
+    loadWorkspaceGraphs(activeWorkspaceId)
+    loadWorkspaceGraph(activeWorkspaceId)
+  }, [activeWorkspaceId, currentWsId, setWorkspaceId, loadWorkspaceGraph, loadWorkspaceGraphs])
+
   return (
     <ReactFlowProvider>
-      <div className="flex flex-col h-full -mx-8 -mt-6 -mb-8">
+      <div className="flex flex-col flex-1 min-h-0">
         {/* Header */}
         <div className="shrink-0 px-5 py-3 border-b border-border-subtle flex items-center justify-between">
           <div>

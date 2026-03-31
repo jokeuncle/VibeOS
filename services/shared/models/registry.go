@@ -153,6 +153,43 @@ type UpdateCapabilityReq struct {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace Graph (per-workspace custom workflow graphs)
+// ---------------------------------------------------------------------------
+
+type WorkspaceGraph struct {
+	ID               string          `json:"id" db:"id"`
+	WorkspaceID      string          `json:"workspaceId" db:"workspace_id"`
+	Name             string          `json:"name" db:"name"`
+	Description      string          `json:"description" db:"description"`
+	SourceTemplateID *string         `json:"sourceTemplateId,omitempty" db:"source_template_id"`
+	GraphDef         json.RawMessage `json:"graphDef" db:"graph_def"`
+	StateSchema      json.RawMessage `json:"stateSchema" db:"state_schema"`
+	Config           json.RawMessage `json:"config" db:"config"`
+	IsActive         bool            `json:"isActive" db:"is_active"`
+	CreatedAt        time.Time       `json:"createdAt" db:"created_at"`
+	UpdatedAt        time.Time       `json:"updatedAt" db:"updated_at"`
+}
+
+type CreateWorkspaceGraphReq struct {
+	Name             string          `json:"name"`
+	Description      string          `json:"description,omitempty"`
+	SourceTemplateID string          `json:"sourceTemplateId,omitempty"`
+	GraphDef         json.RawMessage `json:"graphDef,omitempty"`
+	StateSchema      json.RawMessage `json:"stateSchema,omitempty"`
+	Config           json.RawMessage `json:"config,omitempty"`
+	IsActive         *bool           `json:"isActive,omitempty"`
+}
+
+type UpdateWorkspaceGraphReq struct {
+	Name        *string          `json:"name,omitempty"`
+	Description *string          `json:"description,omitempty"`
+	GraphDef    *json.RawMessage `json:"graphDef,omitempty"`
+	StateSchema *json.RawMessage `json:"stateSchema,omitempty"`
+	Config      *json.RawMessage `json:"config,omitempty"`
+	IsActive    *bool            `json:"isActive,omitempty"`
+}
+
+// ---------------------------------------------------------------------------
 // Bulk registration (Agent Manifest pattern)
 // ---------------------------------------------------------------------------
 

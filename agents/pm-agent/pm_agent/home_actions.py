@@ -1,4 +1,4 @@
-"""Home-page SSE action registry.
+"""Home-page SSE action registry (unified protocol).
 
 Each handler is an async generator that yields SSE event strings for a given
 intent on the home page (``workspace_id == "__home__"``).
@@ -24,7 +24,7 @@ from .intent import (
     resolve_home_workspace_description,
     resolve_home_workspace_suggested_name,
 )
-from .stream import build_action_event, build_timeline_event
+from .session import SessionManager
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -50,6 +50,8 @@ async def yield_home_events(
     *,
     random_title: Callable[[], str],
     agent_labels: dict[str, dict[str, str]],
+    sm: SessionManager,
+    sid: str,
 ) -> AsyncGenerator[str, None]:
     """Dispatch to the registered handler for *parsed.intent* (or ``__default__``)."""
     handler = _REGISTRY.get(parsed.intent) or _REGISTRY.get("__default__")
@@ -59,6 +61,8 @@ async def yield_home_events(
         parsed, llm, user_message,
         random_title=random_title,
         agent_labels=agent_labels,
+        sm=sm,
+        sid=sid,
     ):
         yield event
 
@@ -72,9 +76,12 @@ async def _general_chat(
     parsed: ParsedIntent,
     llm: LLMGatewayClient,
     user_message: str,
+    *,
+    sm: SessionManager,
+    sid: str,
     **_: Any,
 ) -> AsyncGenerator[str, None]:
-    yield build_timeline_event("exec", "生成回复 / Generating reply", "running")
+    yield sm.timeline(sid, "exec", "生成回复 / Generating reply", "running")
     messages = [
         {"role": "system", "content": (
             "You are VibeOS, an AI-native software development platform assistant. "
@@ -88,12 +95,14 @@ async def _general_chat(
     async for chunk in llm.chat_stream(messages):
         delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
         if delta:
-            yield f"data: {json.dumps({'delta': delta})}\n\n"
-    yield build_timeline_event("exec", "生成回复 / Generating reply", "completed")
-    yield build_action_event(
-        "navigate", label="开始新项目", variant="primary",
-        payload={"target": "create_workspace"},
-    )
+            yield sm.content_delta(sid, delta)
+    yield sm.timeline(sid, "exec", "生成回复 / Generating reply", "completed")
+    yield sm.content_block(sid, "nlp_action", {
+        "action_type": "navigate",
+        "action_label": "开始新项目",
+        "action_variant": "primary",
+        "action_payload": {"target": "create_workspace"},
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +117,8 @@ async def _workspace_create(
     *,
     random_title: Callable[[], str],
     agent_labels: dict[str, dict[str, str]],
+    sm: SessionManager,
+    sid: str,
     **_: Any,
 ) -> AsyncGenerator[str, None]:
     agent_val = parsed.target_agent.value
@@ -117,7 +128,7 @@ async def _workspace_create(
     suggested_description = resolve_home_workspace_description(parsed)
     initial_requirements = resolve_home_initial_requirements(parsed)
 
-    yield build_timeline_event("exec", "生成回复 / Generating reply", "running")
+    yield sm.timeline(sid, "exec", "生成回复 / Generating reply", "running")
     messages = [
         {"role": "system", "content": (
             "You are VibeOS PM assistant. The user is on the home page. "
@@ -131,12 +142,14 @@ async def _workspace_create(
     async for chunk in llm.chat_stream(messages):
         delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
         if delta:
-            yield f"data: {json.dumps({'delta': delta})}\n\n"
-    yield build_timeline_event("exec", "生成回复 / Generating reply", "completed")
+            yield sm.content_delta(sid, delta)
+    yield sm.timeline(sid, "exec", "生成回复 / Generating reply", "completed")
 
-    yield build_action_event(
-        "workspace_create",
-        payload={
+    yield sm.content_block(sid, "nlp_action", {
+        "action_type": "workspace_create",
+        "action_label": "创建工作空间并开始",
+        "action_variant": "primary",
+        "action_payload": {
             "suggested_name": suggested_name,
             "suggested_description": suggested_description,
             "initial_requirements": initial_requirements,
@@ -148,6 +161,4 @@ async def _workspace_create(
             "original_query": user_message,
             "slots": parsed.slots,
         },
-        label="创建工作空间并开始",
-        variant="primary",
-    )
+    })

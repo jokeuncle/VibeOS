@@ -1,35 +1,149 @@
 import type { StoreApi } from 'zustand'
-import type { WorkflowEvent, RequirementStatus, PhaseType } from '../../../types'
+import type {
+  Message,
+  AgentExecution,
+  PhaseStatus,
+  ConversationContext,
+} from '../../../types'
 import { workflowApi } from '../../../lib/api'
+import { ExecutionSession } from '../../../lib/executionSession'
 import { workflowEventToMessage } from '../helpers'
 import type { WorkspaceState } from '../types'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
 
-// Helper to check if AI execution is allowed for a requirement
-function canExecuteAI(
-  status: RequirementStatus,
-  phase: PhaseType,
-  targetPhase: PhaseType
-): { allowed: boolean; reason?: string } {
-  // Design mode: only requirement phase allowed for draft/designing
-  if (status === 'draft' || status === 'designing') {
-    if (targetPhase !== 'requirement') {
-      return {
-        allowed: false,
-        reason: '需求尚未发布，请先完成设计并发布',
+function makeSystemMsg(content: string, wsId: string): Message {
+  return {
+    id: crypto.randomUUID(),
+    role: 'system',
+    content,
+    timestamp: new Date().toISOString(),
+    contextType: 'workspace' as ConversationContext,
+    workspaceId: wsId,
+  }
+}
+
+type WorkflowEvent = {
+  category: string
+  action: string
+  data: any
+  sid: string
+}
+
+/**
+ * Shared runner: starts an ExecutionSession against a workflow endpoint,
+ * manages workflowRunning state, creates AgentExecution records, updates
+ * task/phase statuses, and emits chat messages.
+ */
+function runWorkflowSession(
+  set: SetState,
+  get: GetState,
+  url: string,
+  body: object,
+  sessionType: string,
+) {
+  const wsId = get().activeWorkspaceId
+  if (!wsId) return
+  if (get().workflowRunning) return
+
+  set({ workflowRunning: true, workflowEvents: [] })
+  let sid = ''
+  let hasError = false
+
+  const pushEvent = (evt: WorkflowEvent) => {
+    set((s) => ({ workflowEvents: [...s.workflowEvents, evt] }))
+  }
+
+  const session = new ExecutionSession()
+    .on('session', (action, data, sessSid) => {
+      sid = sessSid
+      if (action === 'start') {
+        const exec: AgentExecution = {
+          id: sid,
+          workspaceId: wsId,
+          intentType: sessionType,
+          intentSummary: sessionType,
+          triggeredBy: 'workflow',
+          userMessage: '',
+          status: 'running',
+          agentType: 'pm',
+          steps: [],
+          startedAt: new Date().toISOString(),
+        }
+        get().upsertExecution(exec)
+      } else if (action === 'complete') {
+        const status = data.status === 'success' ? 'success' : 'failed'
+        get().patchExecutionStatus(sid, status as any)
+      } else if (action === 'error') {
+        hasError = true
+        get().patchExecutionStatus(sid, 'failed', { errorMessage: data.error })
       }
+    })
+    .on('task', (action, data, sessSid) => {
+      sid = sessSid
+      pushEvent({ category: 'task', action, data, sid })
+      if (action === 'start' && data.task_id) {
+        get().patchTaskStatus(wsId, data.task_id, 'in_progress' as PhaseStatus)
+        const msg = workflowEventToMessage(`task:start`, data)
+        if (msg) set((s) => ({ messages: [...s.messages, makeSystemMsg(msg, wsId)] }))
+      } else if (action === 'complete' && data.task_id) {
+        get().patchTaskStatus(wsId, data.task_id, 'completed' as PhaseStatus)
+        const msg = workflowEventToMessage(`task:complete`, data)
+        if (msg) set((s) => ({ messages: [...s.messages, makeSystemMsg(msg, wsId)] }))
+      } else if (action === 'error' && data.task_id) {
+        get().patchTaskStatus(wsId, data.task_id, 'pending' as PhaseStatus)
+        hasError = true
+        const msg = workflowEventToMessage(`task:error`, data)
+        if (msg) set((s) => ({ messages: [...s.messages, makeSystemMsg(msg, wsId)] }))
+      }
+    })
+    .on('phase', (action, data, sessSid) => {
+      sid = sessSid
+      pushEvent({ category: 'phase', action, data, sid })
+      if (action === 'start' && data.phase) {
+        const phaseId = get().workspaces.find((w) => w.id === wsId)?.phases?.find((p) => p.type === data.phase)?.id
+        if (phaseId) get().updatePhaseStatus(wsId, phaseId, 'in_progress' as PhaseStatus)
+        const msg = workflowEventToMessage(`phase:start`, data)
+        if (msg) set((s) => ({ messages: [...s.messages, makeSystemMsg(msg, wsId)] }))
+      } else if (action === 'complete' && data.phase) {
+        const phaseId = get().workspaces.find((w) => w.id === wsId)?.phases?.find((p) => p.type === data.phase)?.id
+        if (phaseId && (data.tasks_failed === 0 || data.tasks_failed === undefined)) {
+          get().updatePhaseStatus(wsId, phaseId, 'completed' as PhaseStatus)
+        }
+        const msg = workflowEventToMessage(`phase:complete`, data)
+        if (msg) set((s) => ({ messages: [...s.messages, makeSystemMsg(msg, wsId)] }))
+      } else if (action === 'skip') {
+        const msg = workflowEventToMessage(`phase:skip`, data)
+        if (msg) set((s) => ({ messages: [...s.messages, makeSystemMsg(msg, wsId)] }))
+      }
+    })
+    .on('project', (action, data, sessSid) => {
+      sid = sessSid
+      pushEvent({ category: 'project', action, data, sid })
+      const msg = workflowEventToMessage(`project:${action}`, data)
+      if (msg) set((s) => ({ messages: [...s.messages, makeSystemMsg(msg, wsId)] }))
+    })
+    .on('content', (action, data) => {
+      if (action === 'block' && data.blockType === 'warning') {
+        const msg = data.message || 'Warning'
+        set((s) => ({ messages: [...s.messages, makeSystemMsg(`⚠️ ${msg}`, wsId)] }))
+      }
+    })
+
+  ;(async () => {
+    try {
+      await session.run(url, body)
+    } catch (err: any) {
+      hasError = true
+      const errMsg = err.message || 'Workflow error'
+      set((s) => ({ messages: [...s.messages, makeSystemMsg(`❌ ${errMsg}`, wsId)] }))
+      if (sid) get().patchExecutionStatus(sid, 'failed', { errorMessage: errMsg })
+    } finally {
+      set({ workflowRunning: false })
+      get().refreshActiveWorkspace()
     }
-    return { allowed: true }
-  }
-
-  // Execute mode: all phases allowed for ready/in_progress/completed
-  if (status === 'ready' || status === 'in_progress' || status === 'completed') {
-    return { allowed: true }
-  }
-
-  return { allowed: false, reason: '未知需求状态' }
+  })()
 }
 
 export function buildWorkflowSlice(set: SetState, get: GetState) {
@@ -39,172 +153,45 @@ export function buildWorkflowSlice(set: SetState, get: GetState) {
 
     runTask: (taskId: string) => {
       const wsId = get().activeWorkspaceId
-      if (!wsId || get().workflowRunning) return
-
-      set({ workflowRunning: true, workflowEvents: [] })
-
-      ;(async () => {
-        try {
-          for await (const evt of workflowApi.runTask(wsId, taskId)) {
-            try {
-              const data = JSON.parse(evt.data) as WorkflowEvent
-              set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
-              if (data.task_id) {
-                if (data.type === 'workflow:task_start') {
-                  get().patchTaskStatus(wsId, data.task_id, 'in_progress')
-                } else if (data.type === 'workflow:task_complete') {
-                  get().patchTaskStatus(wsId, data.task_id, 'completed')
-                } else if (data.type === 'workflow:task_error') {
-                  get().patchTaskStatus(wsId, data.task_id, 'pending')
-                }
-              }
-              const sysMsg = workflowEventToMessage(data)
-              if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
-            } catch {
-              /* skip parse errors */
-            }
-          }
-        } catch (err) {
-          console.error('Workflow run-task failed:', err)
-        } finally {
-          set({ workflowRunning: false })
-          get().refreshActiveWorkspace()
-        }
-      })()
+      if (!wsId) return
+      runWorkflowSession(set, get, '/api/workflow/run-task', {
+        workspace_id: wsId,
+        task_id: taskId,
+      }, 'workflow_task')
     },
 
     runPhase: (phaseType: string, userMessage?: string) => {
       const wsId = get().activeWorkspaceId
-      if (!wsId || get().workflowRunning) return
-
-      set({ workflowRunning: true, workflowEvents: [] })
-
-      ;(async () => {
-        try {
-          for await (const evt of workflowApi.runPhase(wsId, phaseType, userMessage)) {
-            try {
-              const data = JSON.parse(evt.data) as WorkflowEvent
-              set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
-              if (data.task_id) {
-                if (data.type === 'workflow:task_start') {
-                  get().patchTaskStatus(wsId, data.task_id, 'in_progress')
-                } else if (data.type === 'workflow:task_complete') {
-                  get().patchTaskStatus(wsId, data.task_id, 'completed')
-                } else if (data.type === 'workflow:task_error') {
-                  get().patchTaskStatus(wsId, data.task_id, 'pending')
-                }
-              }
-              const sysMsg = workflowEventToMessage(data)
-              if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
-            } catch {
-              /* skip parse errors */
-            }
-          }
-        } catch (err) {
-          console.error('Workflow run-phase failed:', err)
-        } finally {
-          set({ workflowRunning: false })
-          get().refreshActiveWorkspace()
-        }
-      })()
+      if (!wsId) return
+      runWorkflowSession(set, get, '/api/workflow/run-phase', {
+        workspace_id: wsId,
+        phase_type: phaseType,
+        user_message: userMessage || '',
+      }, `workflow_phase:${phaseType}`)
     },
 
     runProject: (userMessage?: string) => {
       const wsId = get().activeWorkspaceId
-      if (!wsId || get().workflowRunning) return
-
-      set({ workflowRunning: true, workflowEvents: [] })
-
-      ;(async () => {
-        try {
-          for await (const evt of workflowApi.runProject(wsId, userMessage)) {
-            try {
-              const data = JSON.parse(evt.data) as WorkflowEvent
-              set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
-              if (data.task_id) {
-                if (data.type === 'workflow:task_start') {
-                  get().patchTaskStatus(wsId, data.task_id, 'in_progress')
-                } else if (data.type === 'workflow:task_complete') {
-                  get().patchTaskStatus(wsId, data.task_id, 'completed')
-                } else if (data.type === 'workflow:task_error') {
-                  get().patchTaskStatus(wsId, data.task_id, 'pending')
-                }
-              }
-              const sysMsg = workflowEventToMessage(data)
-              if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
-            } catch {
-              /* skip parse errors */
-            }
-          }
-        } catch (err) {
-          console.error('Workflow run-project failed:', err)
-        } finally {
-          set({ workflowRunning: false })
-          get().refreshActiveWorkspace()
-        }
-      })()
+      if (!wsId) return
+      runWorkflowSession(set, get, '/api/workflow/run-project', {
+        workspace_id: wsId,
+        user_message: userMessage || '',
+      }, 'workflow_project')
     },
 
     runRequirement: (reqId: string, phaseType?: string, userMessage?: string) => {
       const wsId = get().activeWorkspaceId
-      const req = get().workspaces.find(w => w.id === wsId)?.requirements?.find(r => r.id === reqId)
-      if (!wsId || get().workflowRunning) return
-
-        // Check requirement status before executing AI
-      if (req) {
-        const targetPhase = phaseType || req.currentPhase || 'requirement'
-        const check = canExecuteAI(req.status, req.currentPhase || 'requirement', targetPhase as PhaseType)
-        if (!check.allowed) {
-          console.warn('AI execution blocked:', check.reason)
-          // Add system message to inform user
-          const sysMsg = {
-            id: `sys-${Date.now()}`,
-            role: 'system' as const,
-            content: `⚠️ ${check.reason}，请先发布需求。`,
-            timestamp: new Date().toISOString(),
-            contextType: 'workspace' as const,
-          }
-          set((s) => ({ messages: [...s.messages, sysMsg] }))
-          return
-        }
-      }
-
-      set({ workflowRunning: true, workflowEvents: [] })
-
-      ;(async () => {
-        try {
-          for await (const evt of workflowApi.runRequirement(wsId, reqId, phaseType, userMessage)) {
-            try {
-              const data = JSON.parse(evt.data) as WorkflowEvent
-              set((s) => ({ workflowEvents: [...s.workflowEvents, data] }))
-              if (data.task_id) {
-                if (data.type === 'workflow:task_start') {
-                  get().patchTaskStatus(wsId, data.task_id, 'in_progress')
-                } else if (data.type === 'workflow:task_complete') {
-                  get().patchTaskStatus(wsId, data.task_id, 'completed')
-                } else if (data.type === 'workflow:task_error') {
-                  get().patchTaskStatus(wsId, data.task_id, 'pending')
-                }
-              }
-              const sysMsg = workflowEventToMessage(data)
-              if (sysMsg) set((s) => ({ messages: [...s.messages, sysMsg] }))
-            } catch {
-              /* skip parse errors */
-            }
-          }
-        } catch (err) {
-          console.error('runRequirement error:', err)
-        } finally {
-          set({ workflowRunning: false })
-          get().refreshActiveWorkspace()
-          if (get().activeRequirementId === reqId) {
-            get().loadRequirementDetail(wsId, reqId)
-          }
-        }
-      })()
+      if (!wsId) return
+      runWorkflowSession(set, get, '/api/workflow/run-requirement', {
+        workspace_id: wsId,
+        requirement_id: reqId,
+        phase_type: phaseType || '',
+        user_message: userMessage || '',
+      }, `workflow_requirement:${reqId}`)
     },
   } satisfies Pick<
     WorkspaceState,
-    'workflowRunning' | 'workflowEvents' | 'runTask' | 'runPhase' | 'runProject' | 'runRequirement'
+    | 'workflowRunning' | 'workflowEvents'
+    | 'runTask' | 'runPhase' | 'runProject' | 'runRequirement'
   >
 }
