@@ -26,17 +26,6 @@ interface IntentHint {
   agent: string
 }
 
-const AGENT_SUGGESTIONS: { name: string; key: TranslationKey }[] = [
-  { name: 'pm', key: 'agent.name.pm' },
-  { name: 'requirement', key: 'agent.name.requirement' },
-  { name: 'design', key: 'agent.name.design' },
-  { name: 'architecture', key: 'agent.name.architecture' },
-  { name: 'development', key: 'agent.name.development' },
-  { name: 'testing', key: 'agent.name.testing' },
-  { name: 'cicd', key: 'agent.name.cicd' },
-  { name: 'monitoring', key: 'agent.name.monitoring' },
-]
-
 const COMMAND_SUGGESTIONS: { cmd: string; key: TranslationKey }[] = [
   { cmd: '/create', key: 'cmd.createTask' },
   { cmd: '/status', key: 'cmd.changeStatus' },
@@ -54,17 +43,6 @@ const PHASE_ICONS: Record<string, React.ReactNode> = {
   testing:      <FlaskConical className="w-3 h-3" />,
   deployment:   <Rocket className="w-3 h-3" />,
   monitoring:   <Activity className="w-3 h-3" />,
-}
-
-const AGENT_LABEL_KEY: Record<string, TranslationKey> = {
-  requirement:  'agent.name.requirement',
-  architecture: 'agent.name.architecture',
-  design:       'agent.name.design',
-  development:  'agent.name.development',
-  testing:      'agent.name.testing',
-  cicd:         'agent.name.cicd',
-  monitoring:   'agent.name.monitoring',
-  pm:           'agent.name.pm',
 }
 
 const PHASE_CONTEXT_LABEL: Record<string, TranslationKey> = {
@@ -87,13 +65,13 @@ const INTENT_KEYWORDS: { keywords: RegExp; intent: string; label: string; agent:
   { keywords: /执行.{0,4}任务|run.*task|运行.*任务/i, intent: 'execute_task', label: '执行任务', agent: 'PM Agent' },
   { keywords: /执行.{0,4}阶段|run.*phase|运行.*阶段/i, intent: 'execute_phase', label: '执行阶段', agent: 'PM Agent' },
   { keywords: /运行.{0,4}项目|全部执行|run.*project|full.*lifecycle/i, intent: 'run_project', label: '运行项目', agent: 'PM Agent' },
-  { keywords: /需求分析|分析.{0,4}需求|analyze|refine.*req/i, intent: 'analyze_requirements', label: '分析需求', agent: '需求 Agent' },
-  { keywords: /架构|architecture|系统设计|tech.*design/i, intent: 'architecture_design', label: '架构设计', agent: '架构 Agent' },
-  { keywords: /ui|ux|界面|设计.*页|wireframe|mockup|页面.*设计/i, intent: 'ui_design', label: 'UI 设计', agent: '设计 Agent' },
-  { keywords: /代码|编码|开发|generate.*code|implement|coding/i, intent: 'generate_code', label: '生成代码', agent: '开发 Agent' },
-  { keywords: /测试|test|qa|质量/i, intent: 'run_tests', label: '运行测试', agent: '测试 Agent' },
-  { keywords: /部署|deploy|ci\/cd|发布|release/i, intent: 'deploy', label: '部署', agent: 'CI/CD Agent' },
-  { keywords: /监控|monitor|alert|告警|dashboard/i, intent: 'setup_monitoring', label: '配置监控', agent: '监控 Agent' },
+  { keywords: /需求分析|分析.{0,4}需求|analyze|refine.*req/i, intent: 'analyze_requirements', label: '分析需求', agent: 'PM Agent' },
+  { keywords: /架构|architecture|系统设计|tech.*design/i, intent: 'architecture_design', label: '架构设计', agent: 'PM Agent' },
+  { keywords: /ui|ux|界面|设计.*页|wireframe|mockup|页面.*设计/i, intent: 'ui_design', label: 'UI 设计', agent: 'PM Agent' },
+  { keywords: /代码|编码|开发|generate.*code|implement|coding/i, intent: 'generate_code', label: '生成代码', agent: 'PM Agent' },
+  { keywords: /测试|test|qa|质量/i, intent: 'run_tests', label: '运行测试', agent: 'PM Agent' },
+  { keywords: /部署|deploy|ci\/cd|发布|release/i, intent: 'deploy', label: '部署', agent: 'PM Agent' },
+  { keywords: /监控|monitor|alert|告警|dashboard/i, intent: 'setup_monitoring', label: '配置监控', agent: 'PM Agent' },
 ]
 
 function predictIntent(text: string): IntentHint | null {
@@ -191,19 +169,6 @@ export default function CommandBar() {
     if (!activeWorkspaceId || !focused || !input) return []
 
     const lastWord = input.split(/\s/).pop() || ''
-
-    if (lastWord.startsWith('@')) {
-      const q = lastWord.slice(1).toLowerCase()
-      return AGENT_SUGGESTIONS
-        .filter((a) => !q || a.name.includes(q) || t(a.key).toLowerCase().includes(q))
-        .map((a) => ({
-          id: `agent-${a.name}`,
-          type: 'agent' as const,
-          label: t(a.key),
-          value: `@${a.name} `,
-          description: a.name,
-        }))
-    }
 
     if (lastWord.startsWith('/')) {
       const q = lastWord.slice(1).toLowerCase()
@@ -366,8 +331,7 @@ export default function CommandBar() {
   const showIntentHint = focused && intentHint && !showSuggestions && input.trim().length >= 3
   const hasRunningAgents = workspaceAgents.some((a) => a.status === 'running')
 
-  const agentKey = nlpContext?.agentType ? (AGENT_LABEL_KEY[nlpContext.agentType] || 'agent.name.pm') : 'agent.name.pm'
-  const agentLabel = t(agentKey)
+  const agentLabel = t('agent.name.pm')
   const phaseIcon = nlpContext?.phaseType ? PHASE_ICONS[nlpContext.phaseType] : null
   const phaseLabel =
     nlpContext?.phaseType && PHASE_CONTEXT_LABEL[nlpContext.phaseType]

@@ -27,7 +27,7 @@ const agent = {
 
   'command.placeholder': '问任何事… "部署到预发环境" "当前进度？"',
   'command.placeholderHome': '可点选下方快捷引导，或直接描述你的项目…',
-  'command.placeholderNLP': '@ Agent · / 命令 · 或提问任何事…',
+  'command.placeholderNLP': '/ 命令 · 或描述你想做什么…',
   'command.placeholderDiscovery': '描述你想构建的功能或产品想法…',
   'command.contextPlaceholder': '向',
   'command.title': '命令面板',

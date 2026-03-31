@@ -23,7 +23,7 @@ const requirement = {
   'requirement.unpublishDesc': '撤回后退回设计阶段，可继续完善',
   'requirement.notReadyAlert': '需求尚未发布，请先完成设计并发布',
   'requirement.designModeHint': '与AI一起完善需求设计...',
-  'requirement.executeModeHint': '@Agent 开始执行开发...',
+  'requirement.executeModeHint': '告诉 PM Agent 需要做什么…',
   'requirement.phase.requirement': '需求分析',
   'requirement.phase.architecture': '架构设计',
   'requirement.phase.design': 'UI设计',

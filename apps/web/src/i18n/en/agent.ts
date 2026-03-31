@@ -27,7 +27,7 @@ const agent = {
 
   'command.placeholder': 'Ask anything… "Deploy to staging" "Current progress?"',
   'command.placeholderHome': 'Pick a shortcut below, or describe your project…',
-  'command.placeholderNLP': '@ Agent · / Command · or ask anything…',
+  'command.placeholderNLP': '/ Command · or describe what you want…',
   'command.placeholderDiscovery': 'Describe your idea or feature to build…',
   'command.contextPlaceholder': 'Ask',
   'command.title': 'Command Palette',

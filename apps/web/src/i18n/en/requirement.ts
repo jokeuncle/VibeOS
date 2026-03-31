@@ -23,7 +23,7 @@ const requirement = {
   'requirement.unpublishDesc': 'Return to design phase to continue refining.',
   'requirement.notReadyAlert': 'Requirement not published. Please complete design and publish first.',
   'requirement.designModeHint': 'Work with AI to refine the requirement design...',
-  'requirement.executeModeHint': '@Agent start development execution...',
+  'requirement.executeModeHint': 'Tell PM Agent what you need…',
   'requirement.phase.requirement': 'Requirements',
   'requirement.phase.architecture': 'Architecture',
   'requirement.phase.design': 'Design',
