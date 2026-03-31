@@ -160,8 +160,6 @@ registerNlpAction({
     }
     if (reqs.length > 0) await useWorkspaceStore.getState().refreshActiveWorkspace()
 
-    const query = (payload.original_query as string) || ''
-    if (query) setTimeout(() => useWorkspaceStore.getState().sendNLPMessageStream(query), 300)
     useWorkspaceStore.getState().clearHomeMessages()
     useUIStore.getState().setHomeConversationVisible(false)
     return { markDone: true }

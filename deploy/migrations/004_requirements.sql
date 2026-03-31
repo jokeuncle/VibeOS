@@ -43,8 +43,18 @@ CREATE INDEX IF NOT EXISTS idx_tasks_requirement ON tasks(requirement_id);
 ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_artifacts_requirement ON artifacts(requirement_id);
 
--- Partial unique index for artifact upsert by (workspace_id, task_id, type)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_upsert
-    ON artifacts(workspace_id, task_id, type) WHERE task_id IS NOT NULL;
+-- Partial unique index for legacy artifact upsert (task-scoped). Skipped once 006 drops task_id.
+DO $migration004_idx_artifacts_upsert$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'artifacts' AND column_name = 'task_id'
+    ) THEN
+        EXECUTE $sql$
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_upsert
+            ON artifacts(workspace_id, task_id, type) WHERE task_id IS NOT NULL
+        $sql$;
+    END IF;
+END $migration004_idx_artifacts_upsert$;
 
 COMMIT;
