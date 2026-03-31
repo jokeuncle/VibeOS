@@ -135,4 +135,5 @@ export interface WorkspaceState {
   homeNlpLoading: boolean
   sendHomeNLPStream: (input: string) => void
   clearHomeMessages: () => void
+  clearWorkspaceConversation: () => void
 }

@@ -125,6 +125,9 @@ interface UIState {
   homeConversationVisible: boolean
   setHomeConversationVisible: (visible: boolean) => void
 
+  workspaceConversationVisible: boolean
+  setWorkspaceConversationVisible: (visible: boolean) => void
+
   // WebSocket connection status
   wsConnected: boolean
   setWsConnected: (connected: boolean) => void
@@ -245,6 +248,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   homeConversationVisible: false,
   setHomeConversationVisible: (visible) => set({ homeConversationVisible: visible }),
+
+  workspaceConversationVisible: false,
+  setWorkspaceConversationVisible: (visible) => set({ workspaceConversationVisible: visible }),
 
   // WebSocket connection status
   wsConnected: false,

@@ -61,6 +61,7 @@ const agent = {
   'nlp.willCreateHint': 'A new workspace will be created, and {agent} will start working on your request.',
   'nlp.homeTaskIntro': 'Got it! I understand you want to "{intent}". {agent} will handle this. Let\'s create a workspace to get started.',
   'nlp.homeAssistantPanel': 'Home assistant',
+  'nlp.workspaceAssistantPanel': 'Workspace assistant',
   'nlp.homeNavigateCreateHint': 'Pick a template to start fast, or define your own name and description.',
   'nlp.homeWorkspaceCreateHint': 'Creates the workspace with the details below and opens it.',
   'nlp.homeWorkspaceNameLine': 'Name',

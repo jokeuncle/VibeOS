@@ -6,7 +6,7 @@ alwaysApply: false
 
 # UI Chrome & Layout Consistency
 
-Apply these alongside `design-system.mdc` and `frontend-react.mdc`. Goal: **one visual language** across Dashboard, requirement lists, conversation (`MessageThread`), and requirement detail.
+Apply these alongside `design-system.mdc` and `frontend-react.mdc`. Goal: **one visual language** across Dashboard, requirement lists, floating NLP panels (`HomeConversation` / `WorkspaceConversation`), and requirement detail.
 
 ## Primary panels (cards / sections)
 

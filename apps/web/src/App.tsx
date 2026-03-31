@@ -9,6 +9,7 @@ import TitleBar from './components/TitleBar'
 import StatusBar from './components/StatusBar'
 import CommandBar from './components/CommandBar'
 import WorkspaceHome from './components/WorkspaceHome'
+import WorkspaceConversation from './components/WorkspaceConversation'
 import WorkspaceView from './components/WorkspaceView'
 import WorkspaceTabs from './components/WorkspaceTabs'
 import Sidebar from './components/Sidebar'
@@ -115,8 +116,16 @@ export default function App() {
             >
               <Sidebar />
 
-              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                <WorkspaceView />
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <WorkspaceView />
+
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-6 pb-3 sm:px-10 sm:pb-4">
+                    <div className="pointer-events-auto w-full max-w-2xl">
+                      <WorkspaceConversation />
+                    </div>
+                  </div>
+                </div>
 
                 <div className="shrink-0 bg-gradient-to-t from-surface-0 via-surface-0/95 to-transparent px-4 pb-3 pt-4 sm:px-6">
                   <CommandBar />

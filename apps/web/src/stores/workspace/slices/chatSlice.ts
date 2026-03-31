@@ -352,6 +352,10 @@ export function buildChatSlice(set: SetState, get: GetState) {
       set({ homeMessages: [], homeNlpLoading: false })
     },
 
+    clearWorkspaceConversation: () => {
+      set({ messages: [], nlpLoading: false })
+    },
+
     sendHomeNLPStream: (input: string) => {
       const ts = new Date().toISOString()
       const msgId = crypto.randomUUID()
@@ -641,6 +645,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
     | 'sendAgentChatMessageStream'
     | 'sendHomeNLPStream'
     | 'clearHomeMessages'
+    | 'clearWorkspaceConversation'
     | 'fetchWorkspaceMessages'
     | 'loadOlderMessages'
   >

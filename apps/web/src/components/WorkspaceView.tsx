@@ -5,7 +5,6 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
-import MessageThread from './MessageThread'
 import Dashboard from './Dashboard'
 import RequirementList from './RequirementList'
 import RequirementDetail from './RequirementDetail'
@@ -80,7 +79,7 @@ function ViewContent() {
 
 export default function WorkspaceView() {
   const { activeWorkspaceId, workspaces, activeRequirementId, requirementDetail, setActiveRequirement } = useWorkspaceStore()
-  const { viewMode, reqSubView, setReqSubView, setReqCreating, openAgentChat, setNlpContext, reqCreating } = useUIStore()
+  const { viewMode, reqSubView, setReqSubView, setReqCreating, setNlpContext, reqCreating } = useUIStore()
   const t = useT()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
@@ -215,13 +214,9 @@ export default function WorkspaceView() {
             </div>
           )}
 
-          <div className="space-y-6">
+          <div className="space-y-6 pb-8">
             <ViewContent />
-            {!showReqToolbar && (
-              <MessageThread workspaceId={workspace.id} requirementId={activeRequirementId ?? undefined} />
-            )}
           </div>
-          <div className="h-28" />
       </div>
     </motion.main>
   )
