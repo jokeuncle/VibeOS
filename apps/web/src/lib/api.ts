@@ -148,6 +148,11 @@ export const workspaceApi = {
       body: JSON.stringify(msg),
     }).then(unwrap),
 
+  deleteMessages: (wsId: string) =>
+    request<{ data: string }>(`/api/workspaces/${wsId}/messages`, {
+      method: 'DELETE',
+    }).then(unwrap),
+
   // Workspace lifecycle
   archiveWorkspace: (wsId: string) =>
     request<{ data: string }>(`/api/workspaces/${wsId}/archive`, {
@@ -355,6 +360,11 @@ export const globalMessageApi = {
     request<{ data: any }>('/api/messages', {
       method: 'POST',
       body: JSON.stringify(msg),
+    }).then(unwrap),
+
+  clear: () =>
+    request<{ data: string }>('/api/messages', {
+      method: 'DELETE',
     }).then(unwrap),
 }
 

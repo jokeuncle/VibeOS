@@ -164,6 +164,16 @@ func buildCursorResult(msgs []models.ChatMessage, limit int) ([]models.ChatMessa
 	return msgs, nextCursor, hasMore, nil
 }
 
+func (s *PostgresStore) DeleteWorkspaceMessages(ctx context.Context, workspaceID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM chat_messages WHERE workspace_id = $1`, workspaceID)
+	return err
+}
+
+func (s *PostgresStore) DeleteGlobalMessages(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM chat_messages WHERE context_type = 'home'`)
+	return err
+}
+
 // =========================================================================
 // Artifact metadata-only listing
 // =========================================================================

@@ -146,6 +146,7 @@ func main() {
 			// Chat message persistence (cursor-paginated)
 			r.Get("/messages", chatHandler.ListMessages)
 			r.Post("/messages", chatHandler.SaveMessage)
+			r.Delete("/messages", chatHandler.DeleteMessages)
 
 			// Workspace lifecycle (archive/unarchive)
 			r.Patch("/archive", chatHandler.ArchiveWorkspace)
@@ -211,6 +212,7 @@ func main() {
 	// Global (home) messages — not workspace-scoped
 	r.Get("/api/messages", chatHandler.ListGlobalMessages)
 	r.Post("/api/messages", chatHandler.SaveGlobalMessage)
+	r.Delete("/api/messages", chatHandler.DeleteGlobalMessages)
 
 	// Trust scores (cross-workspace)
 	r.Get("/api/trust-scores", feedbackHandler.TrustScores)

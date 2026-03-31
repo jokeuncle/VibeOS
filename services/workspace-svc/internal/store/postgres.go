@@ -86,6 +86,8 @@ type Store interface {
 	SaveChatMessage(ctx context.Context, msg *models.ChatMessage) error
 	ListChatMessages(ctx context.Context, workspaceID string, cursor string, limit int) ([]models.ChatMessage, string, bool, error)
 	ListGlobalMessages(ctx context.Context, cursor string, limit int) ([]models.ChatMessage, string, bool, error)
+	DeleteWorkspaceMessages(ctx context.Context, workspaceID string) error
+	DeleteGlobalMessages(ctx context.Context) error
 
 	// Artifact metadata-only listing
 	ListArtifactMetaByWorkspace(ctx context.Context, workspaceID string) ([]models.ArtifactMeta, error)

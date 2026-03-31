@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, X, Loader2, MessageCircle } from 'lucide-react'
+import { Sparkles, X, Loader2, MessageCircle, Trash2 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
@@ -190,6 +190,16 @@ export default function ConversationThread({
             <span className="text-xs font-medium text-text-secondary flex-1">
               {panelTitle}
             </span>
+            {onDismiss && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="p-1.5 rounded-lg text-text-tertiary hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+                title={t('nlp.clearConversation' as TranslationKey)}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setConversationCollapsed(context, true)}
@@ -201,7 +211,7 @@ export default function ConversationThread({
           </div>
           <div
             ref={scrollRef}
-            className="max-h-[min(60vh,30rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth rounded-b-2xl"
+            className="min-h-[18rem] max-h-[min(70vh,38rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth rounded-b-2xl"
           >
             <div className={`mx-auto w-full ${isHome ? 'max-w-xl' : 'max-w-2xl'} space-y-2.5`}>
               {hasMore && (

@@ -69,6 +69,7 @@ const agent = {
   'nlp.homeInitialRequirements': 'Initial requirements',
   'nlp.homeRequirementTitlePh': 'Title',
   'nlp.homeRequirementDescPh': 'Description (optional)',
+  'nlp.clearConversation': 'Clear conversation',
   'nlp.dismissAssistant': 'Minimize',
   'nlp.expandAssistant': 'Expand conversation',
   'nlp.quickStartHint': 'Try these:',

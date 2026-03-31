@@ -163,6 +163,27 @@ func (h *ChatHandler) ListGlobalMessages(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// DELETE /api/workspaces/{wsId}/messages
+func (h *ChatHandler) DeleteMessages(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "wsId")
+	if err := h.store.DeleteWorkspaceMessages(r.Context(), wsID); err != nil {
+		h.log.Error("delete workspace messages", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[string]{Data: "ok"})
+}
+
+// DELETE /api/messages
+func (h *ChatHandler) DeleteGlobalMessages(w http.ResponseWriter, r *http.Request) {
+	if err := h.store.DeleteGlobalMessages(r.Context()); err != nil {
+		h.log.Error("delete global messages", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[string]{Data: "ok"})
+}
+
 // PATCH /api/workspaces/{wsId}/archive
 func (h *ChatHandler) ArchiveWorkspace(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")

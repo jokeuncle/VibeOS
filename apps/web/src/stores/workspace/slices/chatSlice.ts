@@ -323,11 +323,14 @@ export function buildChatSlice(set: SetState, get: GetState) {
     },
 
     clearHomeMessages: () => {
-      set({ homeMessages: [], homeNlpLoading: false })
+      set({ homeMessages: [], homeNlpLoading: false, homeMessagesCursor: undefined, homeMessagesHasMore: false })
+      globalMessageApi.clear().catch(() => {})
     },
 
     clearWorkspaceConversation: () => {
-      set({ messages: [], nlpLoading: false })
+      const wsId = get().activeWorkspaceId
+      set({ messages: [], nlpLoading: false, messagesCursor: undefined, messagesHasMore: false })
+      if (wsId) workspaceApi.deleteMessages(wsId).catch(() => {})
     },
 
     sendHomeNLPStream: (input: string) => {

@@ -69,6 +69,7 @@ const agent = {
   'nlp.homeInitialRequirements': '首批需求草稿',
   'nlp.homeRequirementTitlePh': '需求标题',
   'nlp.homeRequirementDescPh': '补充说明（可选）',
+  'nlp.clearConversation': '清空对话',
   'nlp.dismissAssistant': '最小化',
   'nlp.expandAssistant': '展开对话',
   'nlp.quickStartHint': '试试这些：',
