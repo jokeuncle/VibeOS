@@ -85,26 +85,52 @@ export function mergeMessagesById(remoteOldestFirst: Message[], local: Message[]
   )
 }
 
-/** NLP phase context: active phase tab + optional requirement + GitLab repos for PM. */
+/**
+ * Build the NLP context payload sent to pm-agent.
+ *
+ * Reads the active NlpContextDescriptor from the context registry (new path)
+ * and enriches with workspace-level metadata (repos, zero_requirements).
+ * Falls back to the legacy `nlpContext` + `activePhaseId` for backward compat.
+ */
 export function buildNlpPhaseContext(get: () => WorkspaceState): Record<string, unknown> | undefined {
   const id = get().activeWorkspaceId
   if (!id) return undefined
   const ws = get().workspaces.find((w) => w.id === id)
+  const uiState = useUIStore.getState()
+
+  const activeDesc = uiState.activeNlpContext
+  const descriptorPayload = activeDesc?.contextPayload ?? {}
+
+  // Phase type: prefer descriptor payload, then legacy nlpContext, then active phase tab
+  const legacyCtx = uiState.nlpContext
   const phaseId = get().activePhaseId
   const phase = ws?.phases.find((p) => p.id === phaseId)
-  const nlpCtxState = useUIStore.getState().nlpContext
+  const activePhaseType =
+    (descriptorPayload.phase_type as string | undefined)
+    || legacyCtx?.phaseType
+    || phase?.type
+
   const repos = ws?.repos ?? []
-  const activePhaseType = nlpCtxState?.phaseType || phase?.type
   const phaseRepos = repos.filter((r) =>
     !r.phaseTypes?.length || (activePhaseType && r.phaseTypes.includes(activePhaseType)),
   )
   const primary = phaseRepos.find((r) => r.isPrimary) ?? phaseRepos[0]
-  const ctx: Record<string, unknown> = {}
-  if (activePhaseType) ctx.phase_type = activePhaseType
-  if (nlpCtxState?.agentType) ctx.target_agent = nlpCtxState.agentType
-  if (nlpCtxState?.requirementId) ctx.requirement_id = nlpCtxState.requirementId
+
+  const ctx: Record<string, unknown> = { ...descriptorPayload }
+
+  if (activePhaseType && !ctx.phase_type) ctx.phase_type = activePhaseType
+  if (legacyCtx?.agentType && !ctx.target_agent) ctx.target_agent = legacyCtx.agentType
+  if (legacyCtx?.requirementId && !ctx.requirement_id) ctx.requirement_id = legacyCtx.requirementId
+
+  // Forward context metadata for backend NLU prompt enrichment
+  if (activeDesc) {
+    ctx.ui_context_type = activeDesc.type
+    if (activeDesc.intentHints?.length) ctx.intent_hints = activeDesc.intentHints
+  }
+
   const reqCount = ws?.requirements?.length ?? 0
   if (reqCount === 0) ctx.zero_requirements = true
+
   if (phaseRepos.length) {
     ctx.gitlab_repos = phaseRepos.map((r) => ({
       projectId: r.projectId,

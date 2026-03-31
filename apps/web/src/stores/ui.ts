@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ConversationContext } from '../types'
+import { resolveActiveContext, type NlpContextDescriptor } from '../lib/nlpContext'
 
 export interface Toast {
   id: string
@@ -112,18 +113,26 @@ interface UIState {
   dockVisible: boolean
   toggleDock: () => void
 
+  /** @deprecated Use nlpContextStack + registerNlpContext instead. Kept for backward compat. */
   nlpContext: {
     requirementId: string
     requirementTitle: string
     phaseType: string | null
     agentType: string | null
   } | null
+  /** @deprecated Use registerNlpContext / unregisterNlpContext instead. */
   setNlpContext: (ctx: {
     requirementId: string
     requirementTitle: string
     phaseType?: string | null
     agentType?: string | null
   } | null) => void
+
+  nlpContextStack: Map<string, NlpContextDescriptor>
+  registerNlpContext: (desc: NlpContextDescriptor) => void
+  unregisterNlpContext: (id: string) => void
+  /** Resolved highest-priority descriptor (derived). */
+  activeNlpContext: NlpContextDescriptor | null
 
   conversationVisible: Record<string, boolean>
   setConversationVisible: (ctx: ConversationContext, visible: boolean) => void
@@ -249,6 +258,19 @@ export const useUIStore = create<UIState>((set, get) => ({
       agentType: ctx.agentType ?? null,
     } : null,
   }),
+
+  nlpContextStack: new Map(),
+  registerNlpContext: (desc) => {
+    const next = new Map(get().nlpContextStack)
+    next.set(desc.id, desc)
+    set({ nlpContextStack: next, activeNlpContext: resolveActiveContext(next) })
+  },
+  unregisterNlpContext: (id) => {
+    const next = new Map(get().nlpContextStack)
+    next.delete(id)
+    set({ nlpContextStack: next, activeNlpContext: resolveActiveContext(next) })
+  },
+  activeNlpContext: null,
 
   conversationVisible: {},
   setConversationVisible: (ctx, visible) =>

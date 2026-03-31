@@ -260,7 +260,7 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
 
     try:
         await ws.publish_log(req.workspace_id, "pm", f"Received message: {req.message[:80]}…")
-        parsed = await parse_intent(req.message, llm)
+        parsed = await parse_intent(req.message, llm, extra_context=req.context)
         await ws.publish_log(req.workspace_id, "pm", f"Intent: {parsed.intent} → {parsed.target_agent.value}", level="success")
         await ws.publish_agent_status(req.workspace_id, AgentType.PM, AgentStatus.RUNNING, detail=f"Parsed intent: {parsed.intent}")
 
@@ -305,7 +305,7 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             yield sm.timeline(sid, "parse", "理解意图 / Understanding intent", "running")
             if not is_home:
                 await ws.publish_log(req.workspace_id, "pm", f"Received message: {req.message[:80]}…")
-            parsed = await parse_intent(req.message, llm)
+            parsed = await parse_intent(req.message, llm, extra_context=req.context)
             if not is_home:
                 await ws.publish_log(req.workspace_id, "pm", f"Intent: {parsed.intent} → {parsed.target_agent.value}", level="success")
 

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import { useRegisterNlpContext } from '../hooks/useNlpContext'
+import { HOME_COMMANDS, type NlpContextDescriptor } from '../lib/nlpContext'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
 import ConversationThread from './ConversationThread'
 import type { Workspace } from '../types'
@@ -165,6 +167,18 @@ export default function WorkspaceHome() {
   const { workspaces, setActiveWorkspace, loading } = useWorkspaceStore()
   const { setTemplatePickerOpen, homeSearchQuery, setHomeSearchQuery } = useUIStore()
   const t = useT()
+
+  const homeDesc: NlpContextDescriptor = {
+    id: 'view:home',
+    type: 'home',
+    priority: 5,
+    label: 'VibeOS',
+    contextPayload: { home: true },
+    commands: HOME_COMMANDS,
+    placeholderKey: 'command.placeholderHome',
+    intentHints: ['create_workspace', 'general_chat'],
+  }
+  useRegisterNlpContext(homeDesc)
 
   const filtered = homeSearchQuery.trim()
     ? workspaces.filter((ws) => {

@@ -10,6 +10,8 @@ import { workspaceApi } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import type { PipelinePhaseKey, PipelinePhaseConfig } from '../types'
+import { useRegisterNlpContext } from '../hooks/useNlpContext'
+import { PIPELINE_COMMANDS, type NlpContextDescriptor } from '../lib/nlpContext'
 
 interface PhaseStaticMeta {
   key: PipelinePhaseKey
@@ -256,6 +258,20 @@ export default function WorkspacePipeline() {
   const { activeWorkspaceId } = useWorkspaceStore()
   const [phases, setPhases] = useState<PhaseView[]>(() => mergePhases(PHASE_META, []))
   const [selectedPhase, setSelectedPhase] = useState<PipelinePhaseKey | null>(null)
+
+  const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {
+    id: 'view:pipeline',
+    type: 'pipeline',
+    priority: 20,
+    label: t('sidebar.pipeline'),
+    agentType: 'pm',
+    agentLabel: t('agent.name.pm'),
+    contextPayload: { view: 'pipeline' },
+    commands: PIPELINE_COMMANDS,
+    placeholderKey: 'command.placeholderNLP',
+    intentHints: ['deploy', 'trigger_build', 'view_build_log', 'rollback'],
+  } : null
+  useRegisterNlpContext(nlpDesc)
   const [saving, setSaving] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

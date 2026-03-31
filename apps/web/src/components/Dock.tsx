@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import { preventMouseDownFocus } from '../lib/preventMouseFocus'
+import { useActiveNlpContext } from '../hooks/useNlpContext'
 
 interface DockItem {
   id: string
@@ -25,9 +26,9 @@ export default function Dock() {
     toggleDock,
     viewMode,
     setViewMode,
-    nlpContext,
     conversationVisible,
   } = useUIStore()
+  const activeCtx = useActiveNlpContext()
   const t = useT()
 
   // Global (home) — avoid duplicating TitleBar settings, WorkspaceHome "new", or a no-op home icon
@@ -91,8 +92,8 @@ export default function Dock() {
       label: t('requirement.aiSummary'),
       action: () => {
         const { sendNLPMessageStream } = useWorkspaceStore.getState()
-        if (nlpContext) {
-          sendNLPMessageStream(`请总结「${nlpContext.requirementTitle}」的当前进展，包括各阶段完成情况和下一步建议。`)
+        if (activeCtx) {
+          sendNLPMessageStream(`请总结「${activeCtx.label}」的当前进展，包括各阶段完成情况和下一步建议。`)
         }
       },
       accent: true,
@@ -111,7 +112,7 @@ export default function Dock() {
   const anyConversationVisible = conversationVisible.home || conversationVisible.workspace
   const dockBottom = anyConversationVisible
     ? 'bottom-[280px]'
-    : nlpContext
+    : activeCtx
       ? 'bottom-[148px]'
       : 'bottom-[104px]'
 

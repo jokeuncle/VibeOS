@@ -6,6 +6,8 @@ import type { Phase, Agent, AgentStatus } from '../types'
 import type { TranslationKey } from '../i18n/en'
 import ActivityLog from './ActivityLog'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useRegisterNlpContext } from '../hooks/useNlpContext'
+import type { NlpContextDescriptor } from '../lib/nlpContext'
 
 function ProgressRing({ progress }: { progress: number }) {
   const gradientId = useId()
@@ -94,6 +96,19 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
   const workspace = workspaces.find(w => w.id === activeWorkspaceId)
   const requirements = workspace?.requirements || []
 
+  const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {
+    id: 'view:dashboard',
+    type: 'dashboard',
+    priority: 10,
+    label: workspace?.name || t('sidebar.dashboard'),
+    agentType: 'pm',
+    agentLabel: t('agent.name.pm'),
+    contextPayload: { view: 'dashboard' },
+    placeholderKey: 'command.placeholderNLP',
+    intentHints: ['query_progress'],
+  } : null
+  useRegisterNlpContext(nlpDesc)
+
   const totalTasks = phases.reduce((a, p) => a + p.tasks.length, 0)
   const pending = phases.reduce((a, p) => a + p.tasks.filter((t) => t.status === 'pending').length, 0)
   const inProgress = phases.reduce((a, p) => a + p.tasks.filter((t) => t.status === 'in_progress').length, 0)
@@ -105,7 +120,8 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
     { value: completed, color: 'var(--color-success)' },
   ]
 
-  const agentsByStatus = (s: AgentStatus) => agents.filter((a) => a.status === s).length
+  const agentsByStatus = (s: AgentStatus): number =>
+    agents.filter((agent) => agent.status === s).length
 
   const draftCount = requirements.filter(r => r.status === 'draft').length
   const inProgressReqs = requirements.filter(r => r.status === 'in_progress').length

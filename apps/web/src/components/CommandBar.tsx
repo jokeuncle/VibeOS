@@ -10,6 +10,7 @@ import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
+import { useActiveNlpContext, useSlashCommands } from '../hooks/useNlpContext'
 import type { Agent } from '../types'
 
 interface Suggestion {
@@ -26,15 +27,6 @@ interface IntentHint {
   agent: string
 }
 
-const COMMAND_SUGGESTIONS: { cmd: string; key: TranslationKey }[] = [
-  { cmd: '/create', key: 'cmd.createTask' },
-  { cmd: '/status', key: 'cmd.changeStatus' },
-  { cmd: '/assign', key: 'cmd.assign' },
-  { cmd: '/deploy', key: 'cmd.deploy' },
-  { cmd: '/review', key: 'cmd.review' },
-  { cmd: '/report', key: 'cmd.report' },
-]
-
 const PHASE_ICONS: Record<string, React.ReactNode> = {
   requirement:  <FileText className="w-3 h-3" />,
   architecture: <Blocks className="w-3 h-3" />,
@@ -43,16 +35,6 @@ const PHASE_ICONS: Record<string, React.ReactNode> = {
   testing:      <FlaskConical className="w-3 h-3" />,
   deployment:   <Rocket className="w-3 h-3" />,
   monitoring:   <Activity className="w-3 h-3" />,
-}
-
-const PHASE_CONTEXT_LABEL: Record<string, TranslationKey> = {
-  requirement:  'requirement.phase.requirement',
-  architecture: 'requirement.phase.architecture',
-  design:       'requirement.phase.design',
-  development:  'requirement.phase.development',
-  testing:      'requirement.phase.testing',
-  deployment:   'requirement.phase.deployment',
-  monitoring:   'requirement.phase.monitoring',
 }
 
 /** Home CTA copy vs NLU-oriented prompt (create_workspace slots). */
@@ -128,7 +110,9 @@ export default function CommandBar() {
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const { activeWorkspaceId, activeRequirementId, workspaces, sendNLPMessageStream: sendNLPMessage, nlpLoading, homeNlpLoading, sendHomeNLPStream, clearHomeMessages } = useWorkspaceStore()
-  const { setHomeSearchQuery, nlpContext, setNlpContext } = useUIStore()
+  const { setHomeSearchQuery, unregisterNlpContext } = useUIStore()
+  const activeCtx = useActiveNlpContext()
+  const slashCommands = useSlashCommands()
   const t = useT()
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -172,12 +156,12 @@ export default function CommandBar() {
 
     if (lastWord.startsWith('/')) {
       const q = lastWord.slice(1).toLowerCase()
-      return COMMAND_SUGGESTIONS
-        .filter((c) => !q || c.cmd.slice(1).includes(q) || t(c.key).toLowerCase().includes(q))
+      return slashCommands
+        .filter((c) => !q || c.cmd.slice(1).includes(q) || t(c.labelKey).toLowerCase().includes(q))
         .map((c) => ({
           id: `cmd-${c.cmd}`,
           type: 'command' as const,
-          label: t(c.key),
+          label: t(c.labelKey),
           value: `${c.cmd} `,
           description: c.cmd,
         }))
@@ -209,7 +193,7 @@ export default function CommandBar() {
     }
 
     return []
-  }, [input, focused, activeWorkspaceId, workspaces, t])
+  }, [input, focused, activeWorkspaceId, workspaces, t, slashCommands])
 
   useEffect(() => {
     setSelectedIdx(0)
@@ -290,7 +274,7 @@ export default function CommandBar() {
     }
 
     if (activeRequirement && (activeRequirement.status === 'draft' || activeRequirement.status === 'designing')) {
-      const targetPhase = nlpContext?.phaseType || 'requirement'
+      const targetPhase = (activeCtx?.contextPayload?.phase_type as string) || 'requirement'
       const nonRequirementPhases = ['architecture', 'design', 'development', 'testing', 'deployment', 'monitoring']
       const mentionsNonRequirementPhase = nonRequirementPhases.some(phase =>
         text.toLowerCase().includes(phase) ||
@@ -331,14 +315,11 @@ export default function CommandBar() {
   const showIntentHint = focused && intentHint && !showSuggestions && input.trim().length >= 3
   const hasRunningAgents = workspaceAgents.some((a) => a.status === 'running')
 
-  const agentLabel = t('agent.name.pm')
-  const phaseIcon = nlpContext?.phaseType ? PHASE_ICONS[nlpContext.phaseType] : null
-  const phaseLabel =
-    nlpContext?.phaseType && PHASE_CONTEXT_LABEL[nlpContext.phaseType]
-      ? t(PHASE_CONTEXT_LABEL[nlpContext.phaseType])
-      : nlpContext?.phaseType ?? null
+  const ctxAgentLabel = activeCtx?.agentLabel || t('agent.name.pm')
+  const ctxIcon = activeCtx?.icon ? PHASE_ICONS[activeCtx.icon] : null
 
   const getPlaceholder = () => {
+    if (activeCtx?.placeholderKey) return t(activeCtx.placeholderKey)
     if (!activeWorkspaceId) return t('command.placeholderHome')
     if (isZeroRequirements) return t('command.placeholderDiscovery' as TranslationKey)
     if (activeRequirement && (activeRequirement.status === 'draft' || activeRequirement.status === 'designing')) {
@@ -347,8 +328,8 @@ export default function CommandBar() {
     if (activeRequirement && (activeRequirement.status === 'ready' || activeRequirement.status === 'in_progress' || activeRequirement.status === 'completed')) {
       return t('requirement.executeModeHint' as TranslationKey)
     }
-    if (nlpContext) {
-      return `${t('command.contextPlaceholder' as TranslationKey)} ${agentLabel}…`
+    if (activeCtx) {
+      return `${t('command.contextPlaceholder' as TranslationKey)} ${ctxAgentLabel}…`
     }
     return t('command.placeholderNLP')
   }
@@ -425,9 +406,9 @@ export default function CommandBar() {
         )}
       </AnimatePresence>
 
-      {/* Context pill (above form, when in requirement detail) */}
+      {/* Context pill (above form, when a view-specific context is active) */}
       <AnimatePresence>
-        {nlpContext && activeWorkspaceId && (
+        {activeCtx && activeWorkspaceId && (
           <motion.div
             initial={{ opacity: 0, y: 6, height: 0 }}
             animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -438,24 +419,26 @@ export default function CommandBar() {
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-2/80 border border-border-subtle backdrop-blur-sm">
               <FileText className="w-3 h-3 text-text-tertiary shrink-0" />
               <span className="text-[10px] text-text-tertiary truncate max-w-[140px]">
-                {nlpContext.requirementTitle}
+                {activeCtx.label}
               </span>
-              {nlpContext.phaseType && (
+              {activeCtx.sublabel && (
                 <>
                   <ChevronRight className="w-2.5 h-2.5 text-text-tertiary/50 shrink-0" />
                   <span className="flex items-center gap-1 text-[10px] text-accent font-medium">
-                    {phaseIcon}
-                    {phaseLabel}
+                    {ctxIcon}
+                    {activeCtx.sublabel}
                   </span>
                 </>
               )}
               <div className="flex-1" />
-              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/10 border border-accent/20">
-                <Bot className="w-2.5 h-2.5 text-accent" />
-                <span className="text-[10px] font-medium text-accent">{agentLabel}</span>
-              </div>
+              {activeCtx.agentType && (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/10 border border-accent/20">
+                  <Bot className="w-2.5 h-2.5 text-accent" />
+                  <span className="text-[10px] font-medium text-accent">{ctxAgentLabel}</span>
+                </div>
+              )}
               <button
-                onClick={() => setNlpContext(null)}
+                onClick={() => unregisterNlpContext(activeCtx.id)}
                 className="p-0.5 rounded text-text-tertiary/50 hover:text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer"
                 title={t('nlp.clearContext' as TranslationKey)}
               >

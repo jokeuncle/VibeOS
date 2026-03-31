@@ -500,14 +500,38 @@ def resolve_home_initial_requirements(parsed: ParsedIntent) -> list[dict[str, st
     return out
 
 
+def _build_context_hint(extra_context: dict[str, Any] | None) -> str:
+    """Build a short natural-language hint from the UI context payload."""
+    if not extra_context:
+        return ""
+    parts: list[str] = []
+    ui_type = extra_context.get("ui_context_type")
+    if ui_type:
+        parts.append(f"The user is currently on the '{ui_type}' view.")
+    phase = extra_context.get("phase_type")
+    if phase:
+        parts.append(f"Active phase: {phase}.")
+    req_id = extra_context.get("requirement_id")
+    if req_id:
+        parts.append(f"Active requirement ID: {req_id}.")
+    hints = extra_context.get("intent_hints")
+    if isinstance(hints, list) and hints:
+        parts.append(f"Likely relevant intents for this view: {', '.join(hints)}.")
+    return " ".join(parts)
+
+
 async def parse_intent(
     user_input: str,
     llm: LLMGatewayClient,
     *,
     extra_context: dict[str, Any] | None = None,
 ) -> ParsedIntent:
+    ctx_hint = _build_context_hint(extra_context)
+    system_content = STRUCTURED_NLU_PROMPT
+    if ctx_hint:
+        system_content += f"\n\nCurrent UI context (use as disambiguation signal, not override):\n{ctx_hint}"
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": STRUCTURED_NLU_PROMPT},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_input},
     ]
     result = await llm.chat(messages, temperature=0.0)

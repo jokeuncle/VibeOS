@@ -2,7 +2,7 @@
  * RequirementDetail — requirement execution dashboard.
  */
 
-import { useState, useEffect, useLayoutEffect } from 'react'
+import { useState, useMemo, useEffect, useLayoutEffect } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useUIStore } from '../../stores/ui'
@@ -18,11 +18,13 @@ import { RequirementDetailWorkTab } from './RequirementDetailWorkTab'
 import { RequirementDetailActivityTab } from './RequirementDetailActivityTab'
 import { RequirementDetailRelationsTab } from './RequirementDetailRelationsTab'
 import { RequirementDetailAgentsTab } from './RequirementDetailAgentsTab'
+import { useRegisterNlpContext } from '../../hooks/useNlpContext'
+import { REQUIREMENT_COMMANDS, type NlpContextDescriptor } from '../../lib/nlpContext'
 
 export default function RequirementDetail() {
   const t = useT()
   const { workspaces, activeWorkspaceId, requirementDetail, resetRequirementPhase, workflowRunning, sendNLPMessageStream } = useWorkspaceStore()
-  const { addToast, setNlpContext } = useUIStore()
+  const { addToast } = useUIStore()
 
   const req = requirementDetail
   const workspace = workspaces.find(w => w.id === activeWorkspaceId)
@@ -38,6 +40,29 @@ export default function RequirementDetail() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
 
+  const phaseMeta = PHASE_META[selectedPhase]
+  const nlpDescriptor = useMemo<NlpContextDescriptor | null>(() => {
+    if (!req) return null
+    return {
+      id: `requirement:${req.id}`,
+      type: 'requirement',
+      priority: 30,
+      label: req.title,
+      sublabel: phaseMeta ? t(phaseMeta.labelKey) : undefined,
+      icon: selectedPhase,
+      agentType: phaseMeta?.agentType ?? undefined,
+      agentLabel: phaseMeta ? t(`agent.name.${phaseMeta.agentType}` as TranslationKey) : undefined,
+      contextPayload: {
+        phase_type: selectedPhase,
+        target_agent: phaseMeta?.agentType,
+        requirement_id: req.id,
+      },
+      commands: REQUIREMENT_COMMANDS,
+      intentHints: ['execute_task', 'execute_phase', 'query_progress'],
+    }
+  }, [req?.id, req?.title, selectedPhase, phaseMeta, t])
+  useRegisterNlpContext(nlpDescriptor)
+
   useLayoutEffect(() => {
     if (!req) return
     setSelectedPhase(req.currentPhase)
@@ -51,17 +76,6 @@ export default function RequirementDetail() {
   useEffect(() => {
     if (detailTab !== 'relations') setAddingRelation(false)
   }, [detailTab])
-
-  useEffect(() => {
-    if (!req) return
-    setNlpContext({
-      requirementId: req.id,
-      requirementTitle: req.title,
-      phaseType: selectedPhase,
-      agentType: PHASE_META[selectedPhase]?.agentType ?? null,
-    })
-    return () => setNlpContext(null)
-  }, [req?.id, selectedPhase, setNlpContext])
 
   if (!req) return null
 

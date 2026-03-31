@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Sparkles, FileStack, LayoutGrid, GitBranch, ChevronLeft, ListChecks } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -81,16 +80,9 @@ function ViewContent() {
 
 export default function WorkspaceView() {
   const { activeWorkspaceId, workspaces, activeRequirementId, requirementDetail, setActiveRequirement } = useWorkspaceStore()
-  const { viewMode, reqSubView, setReqSubView, setReqCreating, setNlpContext, reqCreating } = useUIStore()
+  const { viewMode, reqSubView, setReqSubView, setReqCreating, reqCreating } = useUIStore()
   const t = useT()
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
-
-  // Clear NLP context when leaving requirement detail
-  useEffect(() => {
-    if (!activeRequirementId) {
-      setNlpContext(null)
-    }
-  }, [activeRequirementId, setNlpContext])
 
   if (!workspace) return null
 

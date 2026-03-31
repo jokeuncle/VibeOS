@@ -11,6 +11,8 @@ import { workspaceApi } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import type { AgentStatus } from '../types'
+import { useRegisterNlpContext } from '../hooks/useNlpContext'
+import type { NlpContextDescriptor } from '../lib/nlpContext'
 
 interface AgentMeta {
   type: string
@@ -272,6 +274,19 @@ export default function WorkspaceAgentTeam() {
   const liveAgents = workspace?.agents ?? []
 
   const activeCount = liveAgents.filter(a => a.status !== 'idle').length
+
+  const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {
+    id: 'view:agent_team',
+    type: 'agent_team',
+    priority: 15,
+    label: t('sidebar.agentTeam' as TranslationKey),
+    agentType: 'pm',
+    agentLabel: t('agent.name.pm'),
+    contextPayload: { view: 'agent_team' },
+    placeholderKey: 'command.placeholderNLP',
+    intentHints: ['query_progress'],
+  } : null
+  useRegisterNlpContext(nlpDesc)
 
   return (
     <motion.div
