@@ -1,5 +1,6 @@
 const requirement = {
   'requirement.create': '创建需求',
+  'requirement.create.subtitle': '补充标题与可选说明，保存后进入需求详情。',
   'requirement.create.title': '标题',
   'requirement.create.description': '描述',
   'requirement.create.placeholder.title': '输入需求标题...',

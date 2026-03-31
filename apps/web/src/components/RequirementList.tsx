@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileStack, ChevronRight, Trash2, FileText, Blocks, Palette,
-  Code2, FlaskConical, Rocket, Activity, CheckCircle2, Circle,
+  Code2, FlaskConical, Rocket, Activity, CheckCircle2, Circle, FilePlus,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
 import type { Requirement, RequirementStatus } from '../types'
 import type { PhaseType } from '../types'
 
@@ -210,34 +211,69 @@ export default function RequirementList() {
       <AnimatePresence>
         {reqCreating && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="bg-surface-2 border border-accent/25 rounded-xl p-4 space-y-3 shadow-sm">
-              <p className="text-xs font-semibold text-text-secondary">{t('requirement.create')}</p>
-              <input
-                autoFocus
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                placeholder={t('requirement.create.placeholder.title')}
-                className="w-full bg-surface-3 border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/40 transition-colors"
-              />
-              <textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder={t('requirement.create.placeholder.desc')}
-                rows={3}
-                className="w-full bg-surface-3 border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/50 focus:border-accent/40 resize-none transition-colors"
-              />
-              <div className="flex gap-2 justify-end">
-                <button onClick={handleCancel} className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-3 transition-colors cursor-pointer">
+            <div className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border-subtle flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                  <FilePlus className="w-4 h-4 text-accent" />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="text-xs font-medium text-text-secondary">{t('requirement.create')}</p>
+                  <p className="text-[10px] text-text-tertiary mt-0.5 leading-snug">
+                    {t('requirement.create.subtitle' as TranslationKey)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="req-create-title" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+                    {t('requirement.create.title' as TranslationKey)}
+                  </label>
+                  <input
+                    id="req-create-title"
+                    autoFocus
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleCreate()}
+                    placeholder={t('requirement.create.placeholder.title')}
+                    className="w-full rounded-lg bg-surface-2/40 border border-border-subtle px-3 py-2 text-xs text-text-primary placeholder:text-text-tertiary/80 focus:outline-none focus:ring-1 focus:ring-accent/35 focus:border-accent/30 transition-colors"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="req-create-desc" className="block text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+                    {t('requirement.create.description' as TranslationKey)}
+                  </label>
+                  <textarea
+                    id="req-create-desc"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    placeholder={t('requirement.create.placeholder.desc')}
+                    rows={3}
+                    className="w-full rounded-lg bg-surface-2/40 border border-border-subtle px-3 py-2 text-xs text-text-primary placeholder:text-text-tertiary/80 focus:outline-none focus:ring-1 focus:ring-accent/35 focus:border-accent/30 resize-none min-h-[4.5rem] leading-relaxed transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div className="px-4 py-3 border-t border-border-subtle flex flex-wrap items-center justify-end gap-2 bg-surface-2/20">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="px-3 py-1.5 rounded-md border border-border-subtle bg-surface-2/40 text-[11px] font-medium text-text-secondary hover:text-text-primary hover:bg-surface-2/70 transition-colors cursor-pointer"
+                >
                   {t('task.cancel' as any)}
                 </button>
-                <button onClick={handleCreate} disabled={!title.trim()} className="px-4 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-40 cursor-pointer transition-colors font-medium">
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={!title.trim()}
+                  className="px-3 py-1.5 rounded-md bg-accent hover:bg-accent/90 text-white text-[11px] font-medium disabled:opacity-40 disabled:pointer-events-none cursor-pointer transition-colors"
+                >
                   {t('requirement.create')}
                 </button>
               </div>

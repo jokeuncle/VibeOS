@@ -1,5 +1,6 @@
 const requirement = {
   'requirement.create': 'Create Requirement',
+  'requirement.create.subtitle': 'Add a title and optional details—opens detail when saved.',
   'requirement.create.title': 'Title',
   'requirement.create.description': 'Description',
   'requirement.create.placeholder.title': 'Enter requirement title...',
