@@ -186,8 +186,10 @@ HF_ENDPOINT="https://hf-mirror.com"        # HuggingFace mirror (China network)
 JWT_SECRET="your-jwt-secret"               # workspace-svc auth
 GITLAB_ENCRYPT_KEY="your-32-byte-key"       # credential encryption
 PUBLISH_SECRET="vibeos-internal"            # ws-gateway internal auth
-GITLAB_URL="https://gitlab.example.com"     # fallback GitLab instance
-GITLAB_TOKEN="glpat-xxx"                    # fallback GitLab token
+# workspace-svc: if both are set, startup upserts one shared GitLab PAT (listed for every workspace; no per-workspace credential UI step)
+GITLAB_URL="https://gitlab.example.com"
+GITLAB_TOKEN="glpat-xxx"
+# Optional aliases: GITLAB_DEFAULT_URL / GITLAB_DEFAULT_TOKEN (same behavior; checked first)
 ```
 
 ## Quick Start (Local Dev)
@@ -224,7 +226,7 @@ psql -U vibeos -d vibeos -f deploy/migrations/002_auth_and_membership.sql
 ### 3. Build & Start Go Services
 
 ```bash
-# workspace-svc
+# workspace-svc (from repo: put GITLAB_URL / GITLAB_TOKEN in deploy/.env — auto-loaded from cwd)
 cd services/workspace-svc && go build -o workspace-svc ./cmd
 DATABASE_URL="postgres://vibeos:vibeos_dev@localhost:5432/vibeos?sslmode=disable" \
 REDIS_URL="redis://localhost:6379/0" PORT="8010" ./workspace-svc

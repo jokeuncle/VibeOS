@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vibeos/shared/models"
+	"github.com/vibeos/workspace-svc/internal/agentexec"
 	"github.com/vibeos/workspace-svc/internal/service"
 	"github.com/vibeos/workspace-svc/internal/store"
 )
@@ -66,7 +67,11 @@ func (h *ArtifactHandler) ListByWorkspace(w http.ResponseWriter, r *http.Request
 
 func (h *ArtifactHandler) ListByExecution(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
-	execID := chi.URLParam(r, "execId")
+	execID, err := agentexec.Canonicalize(chi.URLParam(r, "execId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid execution id")
+		return
+	}
 
 	artifacts, err := h.svc.ListArtifactsByExecution(r.Context(), wsID, execID)
 	if err != nil {

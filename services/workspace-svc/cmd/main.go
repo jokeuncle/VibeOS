@@ -21,6 +21,8 @@ import (
 )
 
 func main() {
+	loadEnvFromDotenvFiles()
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -59,6 +61,9 @@ func main() {
 	// ---- Layers ----------------------------------------------------------
 	st := store.NewPostgresStore(pool)
 	svc := service.New(st, rdb, logger)
+	if err := svc.EnsureEnvGitLabCredential(ctx); err != nil {
+		logger.Error("sync global GitLab credential from env", "error", err)
+	}
 
 	wsHandler := handler.NewWorkspaceHandler(svc, logger)
 	taskHandler := handler.NewTaskHandler(svc, logger)

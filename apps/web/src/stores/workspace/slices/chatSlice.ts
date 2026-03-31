@@ -199,7 +199,8 @@ export function buildChatSlice(set: SetState, get: GetState) {
         let agentType: AgentType = 'pm'
         const richBlocks: RichBlock[] = []
         const timelineSteps: ExecutionStep[] = []
-        const execId = `exec-${msgId}`
+        // Must be a real UUID: agent_executions.id is Postgres UUID.
+        const execId = msgId
         let execCreated = false
         let execHadError = false
 

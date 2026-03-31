@@ -122,6 +122,60 @@ func (s *Service) DeleteGitLabCredential(ctx context.Context, id string) error {
 	return s.store.DeleteGitLabCredential(ctx, id)
 }
 
+func normalizeGitLabBaseURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimRight(s, "/")
+	if s == "" {
+		return s
+	}
+	lower := strings.ToLower(s)
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		s = "https://" + s
+	}
+	return s
+}
+
+// EnsureEnvGitLabCredential upserts a shared GitLab credential when both URL and token env vars are set.
+// Uses GITLAB_DEFAULT_URL or GITLAB_URL, and GITLAB_DEFAULT_TOKEN or GITLAB_TOKEN (first non-empty wins per pair).
+// One row per GitLab instance (unique gitlab_url); all workspaces reuse it via workspace_repos.credential_id.
+func (s *Service) EnsureEnvGitLabCredential(ctx context.Context) error {
+	urlRaw := strings.TrimSpace(os.Getenv("GITLAB_DEFAULT_URL"))
+	if urlRaw == "" {
+		urlRaw = strings.TrimSpace(os.Getenv("GITLAB_URL"))
+	}
+	token := strings.TrimSpace(os.Getenv("GITLAB_DEFAULT_TOKEN"))
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("GITLAB_TOKEN"))
+	}
+	if urlRaw == "" || token == "" {
+		return nil
+	}
+	gitlabURL := normalizeGitLabBaseURL(urlRaw)
+	if gitlabURL == "" {
+		return nil
+	}
+	enc, err := encryptToken(token)
+	if err != nil {
+		return fmt.Errorf("encrypt default gitlab token: %w", err)
+	}
+	cred := &models.GitLabCredential{
+		ID:        uuid.NewString(),
+		GitLabURL: gitlabURL,
+		TokenEnc:  enc,
+		TokenHint: tokenHint(token),
+		Label:     "Company default (environment)",
+		CreatedBy: "environment",
+	}
+	if err := s.store.UpsertGitLabCredentialByURL(ctx, cred); err != nil {
+		return err
+	}
+	if s.log != nil {
+		s.log.Info("global GitLab credential synced from environment",
+			"gitlab_url", gitlabURL)
+	}
+	return nil
+}
+
 // GetDecryptedToken fetches a credential and decrypts its token – for internal use only.
 func (s *Service) GetDecryptedToken(ctx context.Context, credentialID string) (gitlabURL, token string, err error) {
 	cred, err := s.store.GetGitLabCredential(ctx, credentialID)

@@ -56,6 +56,9 @@ services:
       DATABASE_URL: postgres://vibeos:vibeos_dev@postgres:5432/vibeos?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       PORT: "8010"
+      # Optional: seed one shared GitLab credential for all workspaces (upsert on startup).
+      GITLAB_URL: ${GITLAB_URL:-}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy

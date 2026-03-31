@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Copy to deploy/.env (or source this file after editing). Do not commit real secrets.
 # From repo root:  set -a && source deploy/.env && set +a
+# workspace-svc also auto-loads deploy/.env when started from services/workspace-svc (searches ../..).
 
 export DATABASE_URL="${DATABASE_URL:-postgres://vibeos:vibeos_dev@localhost:5432/vibeos?sslmode=disable}"
 

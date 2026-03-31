@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/vibeos/shared/models"
+	"github.com/vibeos/workspace-svc/internal/agentexec"
 	"github.com/vibeos/workspace-svc/internal/store"
 )
 
@@ -905,7 +906,7 @@ func (s *Service) UpdatePipelineConfigs(ctx context.Context, wsID string, req mo
 
 func (s *Service) CreateAgentExecution(ctx context.Context, wsID string, req models.CreateAgentExecutionReq) (*models.AgentExecution, error) {
 	exec := &models.AgentExecution{
-		ID:                req.ID,
+		ID:                agentexec.ForCreate(req.ID),
 		WorkspaceID:       wsID,
 		RequirementID:     req.RequirementID,
 		TaskIDs:           req.TaskIDs,

@@ -138,7 +138,7 @@ function handleWSEvent(event: Record<string, any>) {
   // Execution tracking — upsert / patch from ws-gateway events
   if (event.type === 'execution:start' && event.workspaceId === activeWsId && event.payload) {
     store.upsertExecution({
-      id: event.payload.id || `exec-${Date.now()}`,
+      id: event.payload.id || crypto.randomUUID(),
       workspaceId: event.workspaceId,
       requirementId: event.payload.requirementId,
       taskIds: event.payload.taskIds || [],

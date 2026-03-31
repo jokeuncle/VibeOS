@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vibeos/shared/models"
+	"github.com/vibeos/workspace-svc/internal/agentexec"
 	"github.com/vibeos/workspace-svc/internal/service"
 	"github.com/vibeos/workspace-svc/internal/store"
 )
@@ -70,7 +71,11 @@ func (h *ExecutionHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/workspaces/:wsId/executions/:execId
 func (h *ExecutionHandler) Get(w http.ResponseWriter, r *http.Request) {
-	execID := chi.URLParam(r, "execId")
+	execID, err := agentexec.Canonicalize(chi.URLParam(r, "execId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid execution id")
+		return
+	}
 	exec, err := h.svc.GetAgentExecution(r.Context(), execID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -87,7 +92,11 @@ func (h *ExecutionHandler) Get(w http.ResponseWriter, r *http.Request) {
 // PATCH /api/workspaces/:wsId/executions/:execId
 func (h *ExecutionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
-	execID := chi.URLParam(r, "execId")
+	execID, err := agentexec.Canonicalize(chi.URLParam(r, "execId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid execution id")
+		return
+	}
 	var req models.UpdateAgentExecutionReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")

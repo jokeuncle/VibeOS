@@ -57,6 +57,7 @@ type Store interface {
 
 	// GitLab credential store
 	CreateGitLabCredential(ctx context.Context, cred *models.GitLabCredential) error
+	UpsertGitLabCredentialByURL(ctx context.Context, cred *models.GitLabCredential) error
 	ListGitLabCredentials(ctx context.Context) ([]models.GitLabCredential, error)
 	GetGitLabCredential(ctx context.Context, id string) (*models.GitLabCredential, error)
 	DeleteGitLabCredential(ctx context.Context, id string) error
@@ -971,6 +972,20 @@ func (s *PostgresStore) CreateGitLabCredential(ctx context.Context, cred *models
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO gitlab_credentials (id, gitlab_url, token_enc, token_hint, label, created_by)
 		 VALUES ($1,$2,$3,$4,$5,$6)`,
+		cred.ID, cred.GitLabURL, cred.TokenEnc, cred.TokenHint, cred.Label, cred.CreatedBy)
+	return err
+}
+
+// UpsertGitLabCredentialByURL inserts or updates token for a given GitLab base URL (unique column gitlab_url).
+func (s *PostgresStore) UpsertGitLabCredentialByURL(ctx context.Context, cred *models.GitLabCredential) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO gitlab_credentials (id, gitlab_url, token_enc, token_hint, label, created_by)
+		 VALUES ($1,$2,$3,$4,$5,$6)
+		 ON CONFLICT (gitlab_url) DO UPDATE SET
+		   token_enc = EXCLUDED.token_enc,
+		   token_hint = EXCLUDED.token_hint,
+		   label = COALESCE(NULLIF(EXCLUDED.label, ''), gitlab_credentials.label),
+		   updated_at = NOW()`,
 		cred.ID, cred.GitLabURL, cred.TokenEnc, cred.TokenHint, cred.Label, cred.CreatedBy)
 	return err
 }

@@ -24,6 +24,7 @@ build:
 - `REDIS_URL`: Include DB index path (`/0`, `/1`, `/2`…) to isolate per-service
 - `PORT`: String, matches the exposed port
 - Secrets use `${VAR:-}` default syntax
+- **workspace-svc** (optional): `GITLAB_URL` + `GITLAB_TOKEN` — on startup, upserts a global `gitlab_credentials` row so all workspaces reuse the same instance PAT
 
 ## Data Stores
 
