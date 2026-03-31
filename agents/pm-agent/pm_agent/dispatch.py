@@ -28,6 +28,7 @@ def _build_agent_endpoints() -> dict[str, str]:
         "testing": ("TESTING_AGENT_URL", "http://localhost:8045"),
         "cicd": ("CICD_AGENT_URL", "http://localhost:8046"),
         "monitoring": ("MONITORING_AGENT_URL", "http://localhost:8047"),
+        "coding": ("CODING_AGENT_URL", "http://localhost:8048"),
     }
     return {k: os.getenv(env, default) for k, (env, default) in defaults.items()}
 
@@ -44,6 +45,7 @@ AGENT_NAME_CN: dict[str, str] = {
     "cicd": "CI/CD",
     "monitoring": "监控",
     "pm": "项目管理",
+    "coding": "编码",
 }
 
 

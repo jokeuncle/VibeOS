@@ -147,6 +147,30 @@ services:
       - rag-pipeline
       - knowledge-service
 
+  coding-agent:
+    build:
+      context: ../
+      dockerfile: deploy/docker/Dockerfile.coding-agent
+    ports:
+      - "8048:8048"
+    environment:
+      PORT: "8048"
+      LLM_GATEWAY_URL: http://llm-gateway:8030
+      WORKSPACE_SVC_URL: http://workspace-svc:8010
+      WS_GATEWAY_URL: http://ws-gateway:8020
+      CODING_LLM_MODEL: ${CODING_LLM_MODEL:-deepseek/deepseek-chat}
+      CODING_LLM_API_KEY: ${DEEPSEEK_API_KEY:-}
+      CODING_LLM_BASE_URL: ${CODING_LLM_BASE_URL:-}
+      CODING_WORKSPACE_ROOT: /var/vibeos-workspaces
+      GITLAB_URL: ${GITLAB_URL:-}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
+    volumes:
+      - coding-workspaces:/var/vibeos-workspaces
+    depends_on:
+      - llm-gateway
+      - workspace-svc
+      - ws-gateway
+
   # --- Phase 2: Platform Services ---
 
   memory-service:
@@ -214,3 +238,4 @@ volumes:
   pgdata:
   redisdata:
   qdrantdata:
+  coding-workspaces:

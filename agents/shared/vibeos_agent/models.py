@@ -38,6 +38,7 @@ class AgentType(StrEnum):
     CICD = "cicd"
     MONITORING = "monitoring"
     PM = "pm"
+    CODING = "coding"
 
 
 class AgentStatus(StrEnum):

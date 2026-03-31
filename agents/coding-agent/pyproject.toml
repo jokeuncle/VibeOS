@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "coding-agent"
+version = "0.1.0"
+description = "VibeOS Coding Agent – agentic coding via OpenHands SDK with full repo access"
+requires-python = ">=3.12"
+dependencies = [
+    "vibeos-agent",
+    "fastapi",
+    "uvicorn[standard]",
+    "openhands-sdk",
+    "openhands-tools",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["coding_agent"]

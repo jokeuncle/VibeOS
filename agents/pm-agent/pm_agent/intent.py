@@ -59,6 +59,7 @@ _BUILTIN_INTENTS: tuple[IntentDef, ...] = (
     IntentDef("analyze_requirements", AgentType.REQUIREMENT,  "分析需求",     "Analyze Requirements", "analyze or refine requirements"),
     IntentDef("setup_monitoring",     AgentType.MONITORING,   "配置监控",     "Setup Monitoring",     "monitoring, alerts"),
     IntentDef("design_observability", AgentType.MONITORING,   "可观测性设计", "Observability Design", "SRE, SLOs, incidents"),
+    IntentDef("remote_coding",         AgentType.CODING,       "远程编码",     "Remote Coding",        "user wants agentic coding on a repo: clone and implement, write code in the project, fix bugs in the codebase, refactor files, run tests and fix — anything requiring full repo access and multi-file edits"),
     IntentDef("general_chat",         AgentType.PM,           "自由对话",     "General Chat",         "greetings, product help, chit-chat, or nothing else fits"),
 )
 
