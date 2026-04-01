@@ -40,6 +40,17 @@ export default function RequirementDetail() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
 
+  const disabledPhases = useMemo(() => {
+    const agents = workspace?.agents ?? []
+    const set = new Set<PhaseType>()
+    for (const ph of PHASE_ORDER) {
+      const agentType = PHASE_META[ph].agentType
+      const agent = agents.find(a => a.type === agentType)
+      if (agent && agent.enabled === false) set.add(ph)
+    }
+    return set
+  }, [workspace?.agents])
+
   const phaseMeta = PHASE_META[selectedPhase]
   const nlpDescriptor = useMemo<NlpContextDescriptor | null>(() => {
     if (!req) return null
@@ -238,6 +249,7 @@ export default function RequirementDetail() {
             selectedPhaseTasks={selectedPhaseTasks}
             phaseDone={phaseDone}
             sendNLPMessageStream={sendNLPMessageStream}
+            disabledPhases={disabledPhases}
             t={t}
           />
         </Tabs.Content>

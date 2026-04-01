@@ -20,6 +20,7 @@ export function RequirementDetailWorkTab({
   selectedPhaseTasks,
   phaseDone,
   sendNLPMessageStream,
+  disabledPhases,
   t,
 }: {
   reqTitle: string
@@ -33,6 +34,7 @@ export function RequirementDetailWorkTab({
   selectedPhaseTasks: Task[]
   phaseDone: number
   sendNLPMessageStream: (msg: string) => void
+  disabledPhases?: Set<PhaseType>
   t: TFn
 }) {
   const meta = PHASE_META[selectedPhase]
@@ -59,6 +61,7 @@ export function RequirementDetailWorkTab({
               currentPhase={reqCurrentPhase}
               iteration={iteration}
               isSelected={selectedPhase === ph}
+              disabled={disabledPhases?.has(ph)}
               onClick={() => {
                 setSelectedPhase(ph)
                 setDrawerTask(null)
