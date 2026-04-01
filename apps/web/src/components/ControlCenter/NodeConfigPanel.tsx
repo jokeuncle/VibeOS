@@ -16,6 +16,7 @@ const NODE_TYPE_OPTIONS = [
   { value: 'human_in_loop', label: 'Human Gate' },
   { value: 'llm_call', label: 'LLM Call' },
   { value: 'subgraph', label: 'Subgraph' },
+  { value: 'agentic', label: 'Agentic' },
 ]
 
 // Shared input class

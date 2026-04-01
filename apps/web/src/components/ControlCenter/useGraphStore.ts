@@ -6,7 +6,7 @@ import type { WorkspaceGraph } from '../../lib/api'
 
 export interface GraphNodeData {
   label: string
-  nodeType: 'capability' | 'llm_call' | 'human_in_loop' | 'condition' | 'subgraph' | 'intent'
+  nodeType: 'capability' | 'llm_call' | 'human_in_loop' | 'condition' | 'subgraph' | 'intent' | 'agentic'
   capabilityRef?: string
   config: Record<string, unknown>
   [key: string]: unknown

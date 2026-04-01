@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
-import { Cpu, Zap, GitFork, UserCheck, MessageSquare, Layers } from 'lucide-react'
+import { Cpu, Zap, GitFork, UserCheck, MessageSquare, Layers, Bot } from 'lucide-react'
 import type { GraphNodeData } from '../useGraphStore'
 import { useGraphStore } from '../useGraphStore'
 
@@ -54,6 +54,13 @@ const TYPE_CONFIG: Record<string, TypeCfg> = {
     ring:  'ring-rose-400/60',
     badge: 'bg-rose-500/10 border-rose-500/20 text-rose-400',
     label: 'Subgraph',
+  },
+  agentic: {
+    icon: Bot,
+    dot:   'bg-orange-400',
+    ring:  'ring-orange-400/60',
+    badge: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
+    label: 'Agentic',
   },
 }
 
