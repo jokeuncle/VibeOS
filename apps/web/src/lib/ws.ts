@@ -221,6 +221,22 @@ function handleWSEvent(event: Record<string, any>) {
     })
   }
 
+  // Trust degraded — agent trust score dropped below threshold
+  if (eventType === 'trust:degraded' && event.payload) {
+    const p = event.payload
+    const score = typeof p.score === 'number' ? p.score.toFixed(1) : '?'
+    addNotification({
+      title: `Trust degraded: ${p.agent_type || 'agent'}`,
+      description: `Score ${score} < threshold ${p.threshold}. ${p.suggestion || ''}`,
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+    })
+    useUIStore.getState().addToast({
+      type: 'error',
+      message: `${p.agent_type} trust score dropped to ${score} (model: ${p.model || 'unknown'})`,
+    })
+  }
+
   // Debounced full refresh for structural events
   if (event.workspaceId && event.workspaceId === activeWsId && eventType !== 'agent:status') {
     if (refreshDebounce) clearTimeout(refreshDebounce)

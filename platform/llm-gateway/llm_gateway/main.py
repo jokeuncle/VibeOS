@@ -207,6 +207,7 @@ async def list_models() -> dict:
                 "code_generation": profile.code_generation,
                 "tool_calling": profile.tool_calling,
                 "multimodal": profile.multimodal,
+                "chinese": profile.chinese,
             })
     return {"models": profiles}
 

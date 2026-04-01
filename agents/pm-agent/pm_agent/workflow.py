@@ -194,6 +194,8 @@ class WorkflowEngine:
         caps = agent_cfg.get("capabilities")
         if caps and isinstance(caps, dict) and caps:
             kw["capability"] = caps
+        if "trustThreshold" in agent_cfg:
+            kw["trust_threshold"] = float(agent_cfg["trustThreshold"])
         return kw
 
     async def _check_governance_gate(
@@ -204,21 +206,25 @@ class WorkflowEngine:
         *,
         sid: str | None = None,
         timeout: float = 300,
+        force_approval: bool = False,
     ) -> bool:
         """Check autonomy level; if supervised, wait for human approval.
 
+        When ``force_approval`` is True (user set require_approval on the
+        agent profile), approval is always required regardless of trust level.
         Returns True if execution may proceed, False if rejected.
         """
-        if not self.llm:
+        if not self.llm and not force_approval:
             return True
         model = task.preferred_model or "default"
+        level = "autonomous"
         try:
-            result = await self.llm.check_autonomy(model, agent_type.value)
+            result = await self.llm.check_autonomy(model, agent_type.value) if self.llm else {}
             level = result.get("autonomy", "autonomous")
         except Exception:
-            return True
+            pass
 
-        if level == "autonomous":
+        if not force_approval and level == "autonomous":
             return True
 
         approval_key = f"{workspace_id}:{task.task_id}"
@@ -578,6 +584,15 @@ class WorkflowEngine:
         # Resolve agent config + governance gate BEFORE choosing execution mode
         agent_type = _agent_for_phase(phase_type)
         agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
+
+        if not agent_cfg.get("enabled", True):
+            payload_skip = {"phase": phase_type, "reason": "phase disabled in agent profile"}
+            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
+            yield self.sm.session_complete(sid, "cancelled")
+            await self.sm.finish(sid, workspace_id, "cancelled")
+            return
+
         desc_kw = self._descriptor_kwargs(agent_cfg)
         preferred_model = desc_kw.get("preferred_model")
 
@@ -586,9 +601,14 @@ class WorkflowEngine:
             intent=f"execute_{phase_type}", description=f"Phase: {phase_type}",
             user_message=user_message,
             context={"phase_type": phase_type},
+            trust_threshold=agent_cfg.get("trustThreshold", 50.0),
             **desc_kw,
         )
-        approved = await self._check_governance_gate(workspace_id, agent_type, gate_task, sid=sid)
+        require_approval = agent_cfg.get("requireApproval", False)
+        approved = await self._check_governance_gate(
+            workspace_id, agent_type, gate_task, sid=sid,
+            force_approval=require_approval,
+        )
         if not approved:
             payload_skip = {"phase": phase_type, "reason": "Governance gate rejected or timed out"}
             yield self.sm.ev(sid, "phase", "skip", payload_skip)
@@ -597,10 +617,14 @@ class WorkflowEngine:
             await self.sm.finish(sid, workspace_id, "cancelled")
             return
 
-        # Graph mode (per-phase graphId → workspace active fallback)
-        if pipeline_configs is None:
-            pipeline_configs = await self._resolve_pipeline_configs(workspace_id)
-        graph_def = await self._resolve_phase_graph(workspace_id, phase_type, pipeline_configs)
+        # Graph mode: agent config graphId → pipeline config graphId → workspace active fallback
+        agent_graph_id = agent_cfg.get("graphId")
+        if agent_graph_id and self.graph_executor and HAS_LANGGRAPH:
+            graph_def = await self._fetch_graph_by_id(workspace_id, agent_graph_id)
+        else:
+            if pipeline_configs is None:
+                pipeline_configs = await self._resolve_pipeline_configs(workspace_id)
+            graph_def = await self._resolve_phase_graph(workspace_id, phase_type, pipeline_configs)
         if graph_def:
             await self.ws_gw.publish_log(workspace_id, "pm", f"Using graph execution for phase: {phase_type}")
             try:
@@ -788,7 +812,26 @@ class WorkflowEngine:
                 self._active_runs.pop(workspace_id, None)
 
     async def _resolve_pipeline_configs(self, workspace_id: str) -> list[dict[str, Any]]:
-        """Fetch pipeline configs from workspace-svc, or return empty list."""
+        """Build pipeline-like configs from the unified agent table.
+
+        Falls back to the legacy workspace_pipeline_configs endpoint if agents
+        don't yet have the new profile fields.
+        """
+        try:
+            agents = await self.ws_client.list_agents(workspace_id)
+            if agents and isinstance(agents, list) and any("enabled" in a for a in agents):
+                return [
+                    {
+                        "phaseKey": a.get("type", ""),
+                        "enabled": a.get("enabled", True),
+                        "requireApproval": a.get("requireApproval", False),
+                        "qualityGate": a.get("qualityGate"),
+                        "graphId": a.get("graphId"),
+                    }
+                    for a in agents
+                ]
+        except Exception:
+            pass
         try:
             configs = await self.ws_client.get_pipeline_configs(workspace_id)
             if isinstance(configs, list):
@@ -798,7 +841,7 @@ class WorkflowEngine:
         return []
 
     def _phase_order_from_configs(self, configs: list[dict[str, Any]]) -> list[str]:
-        """Derive phase execution order from pipeline configs (SDLC-sequential, not alphabetical)."""
+        """Derive phase execution order from pipeline/agent configs (SDLC-sequential)."""
         if configs:
             enabled: set[str] = set()
             for cfg in configs:
@@ -813,17 +856,19 @@ class WorkflowEngine:
     async def _check_quality_gate(
         self, workspace_id: str, phase_type: str, sid: str,
         configs: list[dict[str, Any]] | None = None,
+        agent_cfg: dict[str, Any] | None = None,
     ) -> bool:
         """Run post-phase quality gate. Returns True if gate passes or no gate configured."""
-        if configs is None:
-            configs = await self._resolve_pipeline_configs(workspace_id)
-        gate_expr: str | None = None
-        for cfg in configs:
-            key = cfg.get("phaseKey", "")
-            resolved = PIPELINE_KEY_TO_PHASE.get(key, key)
-            if resolved == phase_type:
-                gate_expr = cfg.get("qualityGate")
-                break
+        gate_expr: str | None = agent_cfg.get("qualityGate") if agent_cfg else None
+        if gate_expr is None:
+            if configs is None:
+                configs = await self._resolve_pipeline_configs(workspace_id)
+            for cfg in configs:
+                key = cfg.get("phaseKey", "")
+                resolved = PIPELINE_KEY_TO_PHASE.get(key, key)
+                if resolved == phase_type:
+                    gate_expr = cfg.get("qualityGate")
+                    break
 
         if not gate_expr:
             return True

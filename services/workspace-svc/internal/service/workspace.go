@@ -18,6 +18,9 @@ import (
 
 var ErrInvalidTransition = errors.New("invalid phase status transition")
 
+// ErrInvalidAgentType is returned when CreateAgent receives an unknown agent type string.
+var ErrInvalidAgentType = errors.New("invalid agent type")
+
 type Service struct {
 	store store.Store
 	redis *redis.Client
@@ -59,6 +62,15 @@ var defaultAgents = []struct {
 	{models.AgentCICD, "DevOps Engineer", "🚀"},
 	{models.AgentMonitoring, "SRE", "📊"},
 	{models.AgentPM, "Project Manager", "📌"},
+}
+
+func defaultAgentNameAvatar(t models.AgentType) (name, avatar string, ok bool) {
+	for _, d := range defaultAgents {
+		if d.Type == t {
+			return d.Name, d.Avatar, true
+		}
+	}
+	return "", "", false
 }
 
 var requirementAnalysisTasks = []struct {
@@ -404,6 +416,39 @@ func (s *Service) ListAgents(ctx context.Context, wsID string) ([]models.Agent, 
 	return s.store.ListAgentsByWorkspace(ctx, wsID)
 }
 
+func (s *Service) ListAgentProfiles(ctx context.Context, wsID string) ([]models.AgentProfile, error) {
+	agents, err := s.store.ListAgentsByWorkspace(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+
+	graphIDs := make([]string, 0)
+	for _, a := range agents {
+		if a.GraphID != nil && *a.GraphID != "" {
+			graphIDs = append(graphIDs, *a.GraphID)
+		}
+	}
+
+	graphNames := make(map[string]string)
+	for _, gid := range graphIDs {
+		g, err := s.store.GetWorkspaceGraph(ctx, gid)
+		if err == nil && g != nil {
+			graphNames[g.ID] = g.Name
+		}
+	}
+
+	profiles := make([]models.AgentProfile, len(agents))
+	for i, a := range agents {
+		profiles[i] = models.AgentProfile{Agent: a}
+		if a.GraphID != nil {
+			if name, ok := graphNames[*a.GraphID]; ok {
+				profiles[i].GraphName = &name
+			}
+		}
+	}
+	return profiles, nil
+}
+
 func (s *Service) UpdateAgent(ctx context.Context, wsID, agentID string, req models.UpdateAgentReq) (*models.Agent, error) {
 	agent, err := s.store.UpdateAgent(ctx, agentID, wsID, req)
 	if err != nil {
@@ -411,6 +456,34 @@ func (s *Service) UpdateAgent(ctx context.Context, wsID, agentID string, req mod
 	}
 	s.publishEvent(ctx, wsID, models.WSEventAgentStatus, agent)
 	return agent, nil
+}
+
+func (s *Service) CreateAgent(ctx context.Context, wsID string, req models.CreateAgentReq) (*models.Agent, error) {
+	if _, err := s.store.GetWorkspace(ctx, wsID); err != nil {
+		return nil, err
+	}
+	at := models.AgentType(req.Type)
+	name, avatar, ok := defaultAgentNameAvatar(at)
+	if !ok {
+		return nil, ErrInvalidAgentType
+	}
+	a := models.Agent{
+		ID:          uuid.New().String(),
+		WorkspaceID: wsID,
+		Type:        at,
+		Name:        name,
+		Avatar:      avatar,
+	}
+	agent, err := s.store.CreateAgent(ctx, a)
+	if err != nil {
+		return nil, err
+	}
+	s.publishEvent(ctx, wsID, models.WSEventAgentStatus, agent)
+	return agent, nil
+}
+
+func (s *Service) DeleteAgent(ctx context.Context, wsID, agentID string) error {
+	return s.store.DeleteAgent(ctx, agentID, wsID)
 }
 
 // UpsertManifest applies code-level agent defaults to all workspaces.

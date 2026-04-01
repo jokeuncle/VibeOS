@@ -161,9 +161,12 @@ func main() {
 			r.Get("/summaries/activities", chatHandler.ListActivitySummaries)
 			r.Post("/summaries/activities", summaryHandler.CreateActivitySummary)
 
-			// Agent status
+			// Agents (per-workspace roster + config)
 			r.Get("/agents", agentHandler.List)
+			r.Get("/agent-profiles", agentHandler.ListProfiles)
+			r.Post("/agents", agentHandler.Create)
 			r.Patch("/agents/{agentId}", agentHandler.Update)
+			r.Delete("/agents/{agentId}", agentHandler.Delete)
 
 			// Budget & usage
 			r.Get("/budget", budgetHandler.Get)

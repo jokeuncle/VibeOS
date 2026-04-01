@@ -149,11 +149,30 @@ class SDLCAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     async def _report_trust_outcome(self, task: AgentTask, *, success: bool) -> None:
-        """Report execution outcome to llm-gateway trust score system."""
+        """Report execution outcome to llm-gateway trust score system.
+
+        If the returned score drops below the agent's trust_threshold, a
+        ``trust:degraded`` WS event is broadcast so the frontend can alert
+        the user.
+        """
         agent_name = _enum_val(self.agent_type)
         model = task.preferred_model or "default"
         try:
-            await self.llm.report_trust_outcome(model, agent_name, success=success)
+            result = await self.llm.report_trust_outcome(model, agent_name, success=success)
+            score = result.get("score", 100) if isinstance(result, dict) else 100
+            threshold = getattr(task, "trust_threshold", None) or 50.0
+            if score < threshold:
+                await self.ws.publish({
+                    "type": "trust:degraded",
+                    "workspaceId": task.workspace_id,
+                    "payload": {
+                        "agent_type": agent_name,
+                        "model": model,
+                        "score": score,
+                        "threshold": threshold,
+                        "suggestion": "Consider switching model or enabling approval",
+                    },
+                })
         except Exception:
             logger.debug("Failed to report trust outcome for %s", agent_name, exc_info=True)
 

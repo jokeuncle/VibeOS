@@ -50,6 +50,7 @@ const settings = {
   'sidebar.expand': 'Expand sidebar',
   'sidebar.registry': 'Registry',
   'sidebar.controlCenter': 'Control Center',
+  'sidebar.orchestrationGraph': 'Orchestration',
 
   'registry.title': 'Intent-Task-Capability Registry',
   'registry.desc': 'Dynamic registration and management of OS-level intents, task templates, and agent capabilities.',

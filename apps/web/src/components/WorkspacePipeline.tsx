@@ -473,6 +473,10 @@ export default function WorkspacePipeline() {
   const { activeWorkspaceId } = useWorkspaceStore()
   const { pipelineSubView, setPipelineSubView } = useUIStore()
 
+  useEffect(() => {
+    setPipelineSubView('visual')
+  }, [setPipelineSubView])
+
   const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {
     id: 'view:pipeline',
     type: 'pipeline',

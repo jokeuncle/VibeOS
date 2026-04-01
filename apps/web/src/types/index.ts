@@ -80,9 +80,24 @@ export interface Agent {
   name: string
   status: AgentStatus
   preferredModel?: string
+  /** Workspace-specific addendum; persisted in Postgres `agents.system_prompt_template`. */
+  systemPromptTemplate?: string
+  /** Tool names enabled for this workspace agent; persisted as JSONB array. */
+  toolManifest?: string[]
+  /** Optional JSON object; persisted as JSONB. */
+  capabilities?: Record<string, unknown>
   avatar: string
+  enabled: boolean
+  requireApproval: boolean
+  qualityGate?: string | null
+  graphId?: string | null
+  trustThreshold: number
   createdAt: string
   updatedAt: string
+}
+
+export interface AgentProfile extends Agent {
+  graphName?: string | null
 }
 
 // ---------------------------------------------------------------------------

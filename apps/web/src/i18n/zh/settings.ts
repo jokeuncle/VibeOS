@@ -50,6 +50,7 @@ const settings = {
   'sidebar.expand': '展开侧边栏',
   'sidebar.registry': '注册中心',
   'sidebar.controlCenter': '控制中心',
+  'sidebar.orchestrationGraph': '编排',
 
   'registry.title': '意图-任务-能力 注册中心',
   'registry.desc': 'OS 全局动态注册与管理：意图识别、任务模板、Agent 能力。',

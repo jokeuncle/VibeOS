@@ -163,6 +163,7 @@ class AgentTask(BaseModel):
     enabled_tools: list[str] | None = None
     agent_type: str | None = None
     capability: dict[str, Any] | None = None
+    trust_threshold: float = 50.0
 
 
 class AgentEvent(BaseModel):

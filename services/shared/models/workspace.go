@@ -172,8 +172,19 @@ type Agent struct {
 	ToolManifest         json.RawMessage `json:"toolManifest" db:"tool_manifest"`
 	Capabilities         json.RawMessage `json:"capabilities" db:"capabilities"`
 	Avatar               string          `json:"avatar" db:"avatar"`
+	Enabled              bool            `json:"enabled" db:"enabled"`
+	RequireApproval      bool            `json:"requireApproval" db:"require_approval"`
+	QualityGate          *string         `json:"qualityGate,omitempty" db:"quality_gate"`
+	GraphID              *string         `json:"graphId,omitempty" db:"graph_id"`
+	TrustThreshold       float64         `json:"trustThreshold" db:"trust_threshold"`
 	CreatedAt            time.Time       `json:"createdAt" db:"created_at"`
 	UpdatedAt            time.Time       `json:"updatedAt" db:"updated_at"`
+}
+
+// AgentProfile extends Agent with display-friendly enrichments for the unified UI.
+type AgentProfile struct {
+	Agent
+	GraphName *string `json:"graphName,omitempty"`
 }
 
 // ---------------------------------------------------------------------------

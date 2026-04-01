@@ -1,7 +1,7 @@
 import type {
   Workspace, Message, RichBlock, AgentType, ActivityItem, AgentExecution,
   GitLabCredential, GitLabProjectResult, WorkspaceRepo, User, WorkspaceMember,
-  Requirement, RequirementRelation, Task, Phase, Agent,
+  Requirement, RequirementRelation, Task, Phase, Agent, AgentProfile,
   Artifact, ArtifactMeta, FeedbackSignal, ConversationSummary, ActivitySummary,
   LabelColor, BudgetResponse, WorkspaceBudgetSettings, PipelinePhaseConfig,
 } from '../types'
@@ -33,6 +33,41 @@ function scaleProgress(val: number): number {
   return val <= 1 ? Math.round(val * 100) : val
 }
 
+function normalizeAgent(a: Agent): Agent {
+  const raw = a as unknown as Record<string, unknown>
+  let toolManifest: string[] = []
+  const tm = raw.toolManifest
+  if (Array.isArray(tm)) {
+    toolManifest = tm.filter((x): x is string => typeof x === 'string')
+  } else if (typeof tm === 'string') {
+    try {
+      const p = JSON.parse(tm) as unknown
+      if (Array.isArray(p)) toolManifest = p.filter((x): x is string => typeof x === 'string')
+    } catch {
+      toolManifest = []
+    }
+  }
+  let capabilities: Record<string, unknown> = {}
+  const cap = raw.capabilities
+  if (cap && typeof cap === 'object' && !Array.isArray(cap)) {
+    capabilities = cap as Record<string, unknown>
+  } else if (typeof cap === 'string') {
+    try {
+      const p = JSON.parse(cap) as unknown
+      if (p && typeof p === 'object' && !Array.isArray(p)) capabilities = p as Record<string, unknown>
+    } catch {
+      capabilities = {}
+    }
+  }
+  const sp = raw.systemPromptTemplate
+  return {
+    ...a,
+    systemPromptTemplate: typeof sp === 'string' ? sp : '',
+    toolManifest,
+    capabilities,
+  }
+}
+
 function normalizeWorkspace(ws: Workspace): Workspace {
   return {
     ...ws,
@@ -43,7 +78,7 @@ function normalizeWorkspace(ws: Workspace): Workspace {
       progress: scaleProgress(p.progress),
       tasks: p.tasks ?? [],
     })),
-    agents: ws.agents ?? [],
+    agents: (ws.agents ?? []).map(normalizeAgent),
     activities: ws.activities ?? [],
     repos: ws.repos ?? [],
     requirements: (ws.requirements ?? []).map((r) => ({
@@ -190,15 +225,50 @@ export const workspaceApi = {
       body: JSON.stringify(body),
     }).then(unwrap),
 
-  // Agent status
+  // Agents (roster + per-workspace config; backed by Postgres `agents`)
   listAgents: (wsId: string) =>
-    request<{ data: Agent[] }>(`/api/workspaces/${wsId}/agents`).then(unwrap),
+    request<{ data: Agent[] }>(`/api/workspaces/${wsId}/agents`)
+      .then(unwrap)
+      .then((list) => list.map(normalizeAgent)),
 
-  updateAgent: (wsId: string, agentId: string, updates: { status?: string; preferredModel?: string }) =>
+  createAgent: (wsId: string, body: { type: string }) =>
+    request<{ data: Agent }>(`/api/workspaces/${wsId}/agents`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+      .then(unwrap)
+      .then(normalizeAgent),
+
+  updateAgent: (
+    wsId: string,
+    agentId: string,
+    updates: {
+      status?: string
+      preferredModel?: string
+      systemPromptTemplate?: string
+      toolManifest?: string[]
+      capabilities?: Record<string, unknown>
+      enabled?: boolean
+      requireApproval?: boolean
+      qualityGate?: string | null
+      graphId?: string | null
+      trustThreshold?: number
+    },
+  ) =>
     request<{ data: Agent }>(`/api/workspaces/${wsId}/agents/${agentId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
-    }).then(unwrap),
+    })
+      .then(unwrap)
+      .then(normalizeAgent),
+
+  listProfiles: (wsId: string) =>
+    request<{ data: AgentProfile[] }>(`/api/workspaces/${wsId}/agent-profiles`)
+      .then(unwrap)
+      .then((list) => list.map((p) => ({ ...p, ...normalizeAgent(p) }))),
+
+  deleteAgent: (wsId: string, agentId: string) =>
+    request<void>(`/api/workspaces/${wsId}/agents/${agentId}`, { method: 'DELETE' }),
 
   // Budget & usage
   getBudget: (wsId: string) =>
@@ -802,6 +872,28 @@ export const trustApi = {
   checkAutonomy: (model: string, agentType: string) =>
     platformRequest<{ model: string; agent_type: string; autonomy: string; auto_approve: boolean }>(
       `${PLATFORM_LLM}/api/trust/autonomy/${model}/${agentType}`,
+    ),
+}
+
+// ---------------------------------------------------------------------------
+// LLM Model listing (proxied to llm-gateway via /svc/llm)
+// ---------------------------------------------------------------------------
+
+export interface LlmModel {
+  name: string
+  provider: string
+  reasoning: string
+  context_window: number
+  code_generation: boolean
+  tool_calling: boolean
+  multimodal: boolean
+  chinese: boolean
+}
+
+export const modelsApi = {
+  list: () =>
+    platformRequest<{ models: LlmModel[] }>(`${PLATFORM_LLM}/api/models`).then(
+      (r) => r.models,
     ),
 }
 

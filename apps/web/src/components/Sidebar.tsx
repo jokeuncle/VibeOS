@@ -45,8 +45,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     groupLabel: 'sidebar.group.orchestration',
     items: [
-      { key: 'pipeline', icon: GitBranch, label: 'sidebar.pipeline' },
       { key: 'agentTeam', icon: Bot, label: 'sidebar.agentTeam' },
+      { key: 'pipeline', icon: GitBranch, label: 'sidebar.orchestrationGraph' },
     ],
   },
   {

@@ -158,6 +158,11 @@ type ArchiveWorkspaceReq struct {
 	Status string `json:"status"` // active | archived
 }
 
+// CreateAgentReq adds a workspace agent row for the given type (upserts if already present).
+type CreateAgentReq struct {
+	Type string `json:"type"`
+}
+
 // Agent config update (control plane fields)
 type UpdateAgentReq struct {
 	Status               *string          `json:"status,omitempty"`
@@ -165,6 +170,11 @@ type UpdateAgentReq struct {
 	SystemPromptTemplate *string          `json:"systemPromptTemplate,omitempty"`
 	ToolManifest         *json.RawMessage `json:"toolManifest,omitempty"`
 	Capabilities         *json.RawMessage `json:"capabilities,omitempty"`
+	Enabled              *bool            `json:"enabled,omitempty"`
+	RequireApproval      *bool            `json:"requireApproval,omitempty"`
+	QualityGate          *string          `json:"qualityGate,omitempty"`
+	GraphID              *string          `json:"graphId,omitempty"`
+	TrustThreshold       *float64         `json:"trustThreshold,omitempty"`
 }
 
 // UpsertManifestReq is sent by agents at boot to register code-level defaults.
@@ -295,4 +305,6 @@ const (
 	WSEventGraphNodeComplete = "graph:node_complete"
 	WSEventGraphComplete     = "graph:complete"
 	WSEventGraphError        = "graph:error"
+
+	WSEventTrustDegraded = "trust:degraded"
 )

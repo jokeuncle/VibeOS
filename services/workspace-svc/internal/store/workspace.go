@@ -32,7 +32,8 @@ func scanAgent(s rowScanner) (*models.Agent, error) {
 	var agentType, status string
 	err := s.Scan(&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
 		&a.PreferredModel, &a.SystemPromptTemplate, &a.ToolManifest, &a.Capabilities,
-		&a.Avatar, &a.CreatedAt, &a.UpdatedAt)
+		&a.Avatar, &a.Enabled, &a.RequireApproval, &a.QualityGate, &a.GraphID,
+		&a.TrustThreshold, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +319,8 @@ func (s *PostgresStore) queryAgents(ctx context.Context, wsIDs []string) ([]mode
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, workspace_id, type, name, status, preferred_model,
 		        system_prompt_template, tool_manifest, capabilities,
-		        avatar, created_at, updated_at
+		        avatar, enabled, require_approval, quality_gate, graph_id,
+		        trust_threshold, created_at, updated_at
 		 FROM agents WHERE workspace_id = ANY($1) ORDER BY type`, wsIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query agents: %w", err)
@@ -337,6 +339,42 @@ func (s *PostgresStore) queryAgents(ctx context.Context, wsIDs []string) ([]mode
 		agents = []models.Agent{}
 	}
 	return agents, nil
+}
+
+func (s *PostgresStore) CreateAgent(ctx context.Context, a models.Agent) (*models.Agent, error) {
+	const q = `
+		INSERT INTO agents (id, workspace_id, type, name, avatar)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (workspace_id, type) DO UPDATE SET updated_at = agents.updated_at
+		RETURNING id, workspace_id, type, name, status, preferred_model,
+		          system_prompt_template, tool_manifest, capabilities,
+		          avatar, enabled, require_approval, quality_gate, graph_id,
+		          trust_threshold, created_at, updated_at`
+	var out models.Agent
+	var agentType, status string
+	err := s.pool.QueryRow(ctx, q, a.ID, a.WorkspaceID, string(a.Type), a.Name, a.Avatar).Scan(
+		&out.ID, &out.WorkspaceID, &agentType, &out.Name, &status,
+		&out.PreferredModel, &out.SystemPromptTemplate, &out.ToolManifest, &out.Capabilities,
+		&out.Avatar, &out.Enabled, &out.RequireApproval, &out.QualityGate, &out.GraphID,
+		&out.TrustThreshold, &out.CreatedAt, &out.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert agent: %w", err)
+	}
+	out.Type = models.AgentType(agentType)
+	out.Status = models.AgentStatus(status)
+	return &out, nil
+}
+
+func (s *PostgresStore) DeleteAgent(ctx context.Context, id string, workspaceID string) error {
+	cmd, err := s.pool.Exec(ctx, `DELETE FROM agents WHERE id = $1 AND workspace_id = $2`, id, workspaceID)
+	if err != nil {
+		return fmt.Errorf("delete agent: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *PostgresStore) queryRecentActivities(ctx context.Context, wsIDs []string, limit int) ([]models.Activity, error) {

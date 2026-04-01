@@ -361,6 +361,31 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 		args = append(args, *req.Capabilities)
 		idx++
 	}
+	if req.Enabled != nil {
+		sets = append(sets, fmt.Sprintf("enabled = $%d", idx))
+		args = append(args, *req.Enabled)
+		idx++
+	}
+	if req.RequireApproval != nil {
+		sets = append(sets, fmt.Sprintf("require_approval = $%d", idx))
+		args = append(args, *req.RequireApproval)
+		idx++
+	}
+	if req.QualityGate != nil {
+		sets = append(sets, fmt.Sprintf("quality_gate = $%d", idx))
+		args = append(args, *req.QualityGate)
+		idx++
+	}
+	if req.GraphID != nil {
+		sets = append(sets, fmt.Sprintf("graph_id = $%d", idx))
+		args = append(args, *req.GraphID)
+		idx++
+	}
+	if req.TrustThreshold != nil {
+		sets = append(sets, fmt.Sprintf("trust_threshold = $%d", idx))
+		args = append(args, *req.TrustThreshold)
+		idx++
+	}
 	if len(sets) == 0 {
 		return nil, fmt.Errorf("no fields to update")
 	}
@@ -368,7 +393,8 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 	sets = append(sets, "updated_at = NOW()")
 	returning := `id, workspace_id, type, name, status, preferred_model,
 	              system_prompt_template, tool_manifest, capabilities,
-	              avatar, created_at, updated_at`
+	              avatar, enabled, require_approval, quality_gate, graph_id,
+	              trust_threshold, created_at, updated_at`
 	query := fmt.Sprintf(
 		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING %s",
 		strings.Join(sets, ", "), idx, idx+1, returning,
@@ -380,7 +406,8 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 	err := s.pool.QueryRow(ctx, query, args...).Scan(
 		&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
 		&a.PreferredModel, &a.SystemPromptTemplate, &a.ToolManifest, &a.Capabilities,
-		&a.Avatar, &a.CreatedAt, &a.UpdatedAt,
+		&a.Avatar, &a.Enabled, &a.RequireApproval, &a.QualityGate, &a.GraphID,
+		&a.TrustThreshold, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

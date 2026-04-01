@@ -32,6 +32,50 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.APIResponse[[]models.Agent]{Data: agents})
 }
 
+func (h *AgentHandler) Create(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "wsId")
+	var req models.CreateAgentReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Type == "" {
+		writeError(w, http.StatusBadRequest, "type is required")
+		return
+	}
+	agent, err := h.svc.CreateAgent(r.Context(), wsID, req)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidAgentType) {
+			writeError(w, http.StatusBadRequest, "invalid agent type")
+			return
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "workspace not found")
+			return
+		}
+		h.log.Error("create agent failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusCreated, models.APIResponse[*models.Agent]{Data: agent})
+}
+
+func (h *AgentHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "wsId")
+	agentID := chi.URLParam(r, "agentId")
+	err := h.svc.DeleteAgent(r.Context(), wsID, agentID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		h.log.Error("delete agent failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *AgentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
 	agentID := chi.URLParam(r, "agentId")
@@ -53,6 +97,18 @@ func (h *AgentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, models.APIResponse[*models.Agent]{Data: agent})
+}
+
+// ListProfiles returns agents enriched with the bound graph name.
+func (h *AgentHandler) ListProfiles(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "wsId")
+	profiles, err := h.svc.ListAgentProfiles(r.Context(), wsID)
+	if err != nil {
+		h.log.Error("list agent profiles failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[[]models.AgentProfile]{Data: profiles})
 }
 
 // UpsertManifest merges code-level agent defaults (system prompt, tools,

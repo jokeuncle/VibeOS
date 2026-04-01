@@ -35,7 +35,9 @@ type Store interface {
 	CountTasksByPhase(ctx context.Context, phaseID string) (total int, completed int, err error)
 
 	ListAgentsByWorkspace(ctx context.Context, workspaceID string) ([]models.Agent, error)
+	CreateAgent(ctx context.Context, a models.Agent) (*models.Agent, error)
 	UpdateAgent(ctx context.Context, id string, workspaceID string, req models.UpdateAgentReq) (*models.Agent, error)
+	DeleteAgent(ctx context.Context, id string, workspaceID string) error
 	UpsertManifest(ctx context.Context, workspaceID string, req models.UpsertManifestReq) error
 
 	// Feedback signals
