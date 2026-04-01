@@ -89,13 +89,13 @@ class ToolOrchestratorMiddleware(Middleware):
 
         record = {
             "tool": name,
-            "ok": result.success,
+            "ok": result.ok,
             "result": result.output[:500] if result.output else "",
             "elapsed_ms": round(elapsed_ms, 1),
         }
         ctx.tool_results.append(record)
 
-        _log_tool_span(name, elapsed_ms, result.success, ctx)
+        _log_tool_span(name, elapsed_ms, result.ok, ctx)
         return record
 
 

@@ -51,7 +51,10 @@ CREATE TABLE IF NOT EXISTS user_contexts (
     preferences         JSONB NOT NULL DEFAULT '{}',
     active_skills       TEXT[] NOT NULL DEFAULT '{}',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, workspace_id)
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- COALESCE-based unique index handles NULL workspace_id correctly
+-- (plain UNIQUE treats NULL != NULL, allowing duplicates)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_contexts_unique
+    ON user_contexts(user_id, COALESCE(workspace_id, '00000000-0000-0000-0000-000000000000'::UUID));
 CREATE INDEX IF NOT EXISTS idx_user_contexts_user ON user_contexts(user_id);

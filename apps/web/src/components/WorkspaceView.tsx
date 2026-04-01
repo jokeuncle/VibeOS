@@ -200,13 +200,13 @@ export default function WorkspaceView() {
               </div>
 
               {/* Zero-requirement onboarding hero — hide while form is open */}
-              <AnimatePresence>
+              <AnimatePresence mode="popLayout">
                 {workspaceDetailReady && reqCount === 0 && reqSubView === 'list' && !reqCreating && (
                   <motion.div
                     key="empty-hero"
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }}
+                    exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.2, ease: 'easeInOut' } }}
                     className="rounded-2xl border border-dashed border-border-default bg-surface-1/30 p-10 text-center mt-6"
                   >
                     <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">

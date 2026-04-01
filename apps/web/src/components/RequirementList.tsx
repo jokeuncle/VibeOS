@@ -218,13 +218,13 @@ export default function RequirementList() {
   return (
     <div className="space-y-5">
       {/* Create form */}
-      <AnimatePresence>
+      <AnimatePresence mode="popLayout">
         {reqCreating && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
             className="overflow-hidden"
           >
             <div className="rounded-xl border border-border-subtle bg-surface-1/30 overflow-hidden">

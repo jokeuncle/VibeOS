@@ -6,31 +6,12 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
+from ..base_agent import AGENT_PHASE_MAP, PHASE_CONTEXT
 from ..clients._utils import _enum_val
 from ..models import AgentEvent
 from .base import InvocationContext, Middleware, NextFn
 
 logger = logging.getLogger(__name__)
-
-PHASE_CONTEXT: dict[str, list[str]] = {
-    "requirement": [],
-    "architecture": ["requirement"],
-    "design": ["requirement", "architecture"],
-    "development": ["requirement", "architecture", "design"],
-    "testing": ["development", "design"],
-    "deployment": ["development", "testing"],
-    "monitoring": ["deployment"],
-}
-
-AGENT_PHASE_MAP: dict[str, str] = {
-    "requirement": "requirement",
-    "architecture": "architecture",
-    "design": "design",
-    "development": "development",
-    "testing": "testing",
-    "cicd": "deployment",
-    "monitoring": "monitoring",
-}
 
 
 class ContextEnricherMiddleware(Middleware):

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/lib/pq"
 	"github.com/vibeos/shared/models"
 )
 
@@ -254,18 +253,21 @@ func (s *PostgresStore) GetUserContext(ctx context.Context, userID string, works
 		err = s.pool.QueryRow(ctx,
 			`SELECT id, user_id, workspace_id, custom_instructions, preferences, active_skills, created_at, updated_at
 			 FROM user_contexts WHERE user_id = $1 AND workspace_id = $2`, userID, *workspaceID,
-		).Scan(&uc.ID, &uc.UserID, &uc.WorkspaceID, &uc.CustomInstructions, &uc.Preferences, pq.Array(&uc.ActiveSkills), &uc.CreatedAt, &uc.UpdatedAt)
+		).Scan(&uc.ID, &uc.UserID, &uc.WorkspaceID, &uc.CustomInstructions, &uc.Preferences, &uc.ActiveSkills, &uc.CreatedAt, &uc.UpdatedAt)
 	} else {
 		err = s.pool.QueryRow(ctx,
 			`SELECT id, user_id, workspace_id, custom_instructions, preferences, active_skills, created_at, updated_at
 			 FROM user_contexts WHERE user_id = $1 AND workspace_id IS NULL`, userID,
-		).Scan(&uc.ID, &uc.UserID, &uc.WorkspaceID, &uc.CustomInstructions, &uc.Preferences, pq.Array(&uc.ActiveSkills), &uc.CreatedAt, &uc.UpdatedAt)
+		).Scan(&uc.ID, &uc.UserID, &uc.WorkspaceID, &uc.CustomInstructions, &uc.Preferences, &uc.ActiveSkills, &uc.CreatedAt, &uc.UpdatedAt)
 	}
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get user_context: %w", err)
+	}
+	if uc.ActiveSkills == nil {
+		uc.ActiveSkills = []string{}
 	}
 	return &uc, nil
 }
@@ -283,19 +285,23 @@ func (s *PostgresStore) UpsertUserContext(ctx context.Context, req models.Upsert
 	if req.ActiveSkills != nil {
 		skills = *req.ActiveSkills
 	}
+	if skills == nil {
+		skills = []string{}
+	}
 
 	var uc models.UserContext
 	err := s.pool.QueryRow(ctx,
 		`INSERT INTO user_contexts (user_id, workspace_id, custom_instructions, preferences, active_skills)
 		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (user_id, workspace_id) DO UPDATE SET
+		 ON CONFLICT (user_id, COALESCE(workspace_id, '00000000-0000-0000-0000-000000000000'::UUID))
+		 DO UPDATE SET
 		   custom_instructions = EXCLUDED.custom_instructions,
 		   preferences = EXCLUDED.preferences,
 		   active_skills = EXCLUDED.active_skills,
 		   updated_at = NOW()
 		 RETURNING id, user_id, workspace_id, custom_instructions, preferences, active_skills, created_at, updated_at`,
-		req.UserID, req.WorkspaceID, ci, prefs, pq.Array(skills),
-	).Scan(&uc.ID, &uc.UserID, &uc.WorkspaceID, &uc.CustomInstructions, &uc.Preferences, pq.Array(&uc.ActiveSkills), &uc.CreatedAt, &uc.UpdatedAt)
+		req.UserID, req.WorkspaceID, ci, prefs, skills,
+	).Scan(&uc.ID, &uc.UserID, &uc.WorkspaceID, &uc.CustomInstructions, &uc.Preferences, &uc.ActiveSkills, &uc.CreatedAt, &uc.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("upsert user_context: %w", err)
 	}
