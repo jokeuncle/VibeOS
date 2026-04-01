@@ -197,93 +197,52 @@ GITLAB_TOKEN="glpat-xxx"
 ### Prerequisites
 
 - Go 1.22+
-- Python 3.12+ (3.14 works with caveats)
+- Python 3.12+ & [uv](https://docs.astral.sh/uv/)
 - Node.js 20+ / pnpm
-- PostgreSQL 16
-- Redis 7
-- Qdrant 1.13+ (binary or Docker)
+- Docker (for Postgres, Redis, Qdrant)
 
-### 1. Start Infrastructure
+### 1. Configure Environment
 
 ```bash
-# Option A: Docker Compose (if Docker Hub is accessible)
-cd deploy && docker compose up -d postgres redis qdrant
-
-# Option B: Local services
-# PostgreSQL and Redis via brew/system, Qdrant binary:
-curl -LO https://github.com/qdrant/qdrant/releases/download/v1.13.2/qdrant-aarch64-apple-darwin.tar.gz
-tar xzf qdrant-aarch64-apple-darwin.tar.gz
-./qdrant  # listens on :6333 and :6334
+cp .env.example .env
+# Edit .env — fill in ARK_API_KEY, GITLAB_URL, GITLAB_TOKEN
 ```
 
-### 2. Initialize Database
+### 2. Install All Dependencies
 
 ```bash
-psql -U vibeos -d vibeos -f deploy/init.sql
-psql -U vibeos -d vibeos -f deploy/migrations/002_auth_and_membership.sql
+make install        # uv sync + pnpm install + go build
 ```
 
-### 3. Build & Start Go Services
+### 3. Start Everything
 
 ```bash
-# workspace-svc (from repo: put GITLAB_URL / GITLAB_TOKEN in deploy/.env — auto-loaded from cwd)
-cd services/workspace-svc && go build -o workspace-svc ./cmd
-DATABASE_URL="postgres://vibeos:vibeos_dev@localhost:5432/vibeos?sslmode=disable" \
-REDIS_URL="redis://localhost:6379/0" PORT="8010" ./workspace-svc
-
-# ws-gateway
-cd services/ws-gateway && go build -o ws-gateway ./cmd
-REDIS_URL="redis://localhost:6379/0" PORT="8020" ./ws-gateway
+make infra          # start Postgres, Redis, Qdrant containers
+make db-init        # initialize database schema (first time only)
+make db-migrate     # apply migrations
+make dev            # start all backend services + frontend
 ```
 
-### 4. Install Python Dependencies
+Or start services individually in separate terminals:
 
 ```bash
-pip install -e agents/shared                    # vibeos-agent SDK
-pip install -e agents/pm-agent                  # orchestrator
-pip install -e agents/dev-agent                 # dev agent
-pip install -e platform/llm-gateway             # LLM proxy
-pip install -e platform/memory-service          # memory
-pip install sentence-transformers               # local embeddings
+make run-workspace-svc       # Go  :8010
+make run-ws-gateway          # Go  :8020
+make run-llm-gateway         # Py  :8030
+make run-memory-service      # Py  :8050
+make run-pm-agent            # Py  :8040
+make run-architecture-agent  # Py  :8041
+make run-dev-agent           # Py  :8044
+make run-web                 # JS  :3000
 ```
 
-### 5. Start Python Services
+### 4. Verify
 
 ```bash
-# llm-gateway
-ARK_API_KEY="your-key" LLM_MODEL="doubao-seed-2-0-code-preview-260215" \
-REDIS_URL="redis://localhost:6379/1" PORT="8030" \
-python -m uvicorn llm_gateway.main:app --host 0.0.0.0 --port 8030 \
-  --app-dir platform/llm-gateway
-
-# memory-service
-HF_ENDPOINT="https://hf-mirror.com" ARK_API_KEY="your-key" \
-VOLCENGINE_LLM_MODEL="volcengine/doubao-seed-2-0-code-preview-260215" \
-EMBEDDING_MODEL="local/all-MiniLM-L6-v2" EMBEDDING_DIM="384" \
-QDRANT_URL="http://localhost:6333" REDIS_URL="redis://localhost:6379/3" \
-PORT="8050" python -m uvicorn memory_service.main:app --host 0.0.0.0 --port 8050 \
-  --app-dir platform/memory-service
-
-# pm-agent
-WORKSPACE_SVC_URL="http://localhost:8010" LLM_GATEWAY_URL="http://localhost:8030" \
-WS_GATEWAY_URL="http://localhost:8020" MEMORY_SVC_URL="http://localhost:8050" \
-PORT="8040" python -m uvicorn pm_agent.main:app --host 0.0.0.0 --port 8040 \
-  --app-dir agents/pm-agent
-
-# dev-agent
-WORKSPACE_SVC_URL="http://localhost:8010" LLM_GATEWAY_URL="http://localhost:8030" \
-WS_GATEWAY_URL="http://localhost:8020" GITLAB_URL="https://gitlab.example.com" \
-GITLAB_TOKEN="glpat-xxx" PORT="8044" \
-python -m uvicorn dev_agent.main:app --host 0.0.0.0 --port 8044 \
-  --app-dir agents/dev-agent
+make health         # check all service endpoints
 ```
 
-### 6. Start Frontend
-
-```bash
-pnpm install
-pnpm dev        # opens http://localhost:3000
-```
+Run `make help` to see all available targets.
 
 ### Startup Order
 
@@ -297,53 +256,6 @@ memory-service          rag-pipeline (optional)
 pm-agent ← domain agents (dev, arch, ...)
     ↓
 Frontend (Vite)
-```
-
-## E2E Verification
-
-### Health Checks
-
-```bash
-curl http://localhost:8010/health   # workspace-svc
-curl http://localhost:8020/health   # ws-gateway
-curl http://localhost:8030/health   # llm-gateway
-curl http://localhost:8040/health   # pm-agent
-curl http://localhost:8044/health   # dev-agent
-curl http://localhost:8050/health   # memory-service
-curl http://localhost:6333/healthz  # qdrant
-```
-
-### Memory System Verification
-
-```bash
-# Add project memory
-curl -X POST http://localhost:8050/api/memory/add \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Project uses React 19 with TypeScript","workspace_id":"test","metadata":{"layer":"project"}}'
-
-# Add org memory (cross-workspace)
-curl -X POST http://localhost:8050/api/memory/org/add \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Company uses chi router for Go services","metadata":{"layer":"org"}}'
-
-# Assemble context (verifies project + org memory retrieval)
-curl -X POST http://localhost:8050/api/context/assemble \
-  -H "Content-Type: application/json" \
-  -d '{"workspace_id":"test","user_message":"how to build a component","org_id":"default"}'
-
-# Test feedback loop (PM agent → memory-service)
-curl -X POST http://localhost:8040/api/feedback \
-  -H "Content-Type: application/json" \
-  -d '{"workspace_id":"test","action_type":"approve","agent_type":"development","original_output":"good code"}'
-```
-
-### Workflow Test
-
-```bash
-# NLP dispatch (requires workspace with tasks)
-curl -X POST http://localhost:8040/api/nlp \
-  -H "Content-Type: application/json" \
-  -d '{"workspace_id":"<ws-id>","message":"create a login page"}'
 ```
 
 ## Memory & Knowledge Architecture
@@ -383,53 +295,40 @@ Agent executes task
 
 ## Project Structure
 
+Monorepo managed by **uv workspaces** (Python), **go.work** (Go), and **pnpm workspaces** (JS).
+
 ```
 any/
+├── pyproject.toml               # uv workspace root (Python)
+├── Makefile                     # Dev workflow: make install / make dev / make health
+├── .env.example                 # Environment template
 ├── apps/
-│   └── web/                      # React SPA
-│       ├── src/
-│       │   ├── components/       # UI components
-│       │   ├── stores/           # Zustand state
-│       │   ├── lib/api.ts        # API client
-│       │   ├── i18n/             # en.ts, zh.ts
-│       │   └── types/index.ts    # TypeScript types
-│       └── vite.config.ts
-├── agents/
-│   ├── shared/vibeos_agent/      # Agent SDK
-│   │   ├── protocol.py           # BaseAgent, clients
-│   │   ├── config.py             # Env-backed config
-│   │   ├── models.py             # Pydantic models
-│   │   ├── session.py            # Redis session manager
-│   │   └── tools/                # BaseTool, GitLab/Feishu tools
-│   ├── pm-agent/                 # Orchestrator (NLP + workflow)
-│   ├── dev-agent/                # Development agent
-│   ├── architecture-agent/       # Architecture agent
-│   ├── design-agent/             # Design agent
-│   ├── requirement-agent/        # Requirement agent
-│   ├── test-agent/               # Testing agent
-│   ├── cicd-agent/               # CI/CD agent
-│   └── monitoring-agent/         # Monitoring agent
-├── services/
-│   ├── workspace-svc/            # Go REST API
-│   │   ├── cmd/main.go
-│   │   └── internal/
-│   │       ├── handler/          # HTTP handlers
-│   │       ├── service/          # Business logic
-│   │       ├── store/            # PostgreSQL queries
-│   │       └── middleware/       # Auth (JWT)
-│   ├── ws-gateway/               # Go WebSocket relay
-│   └── shared/models/            # Shared Go DTOs
-├── platform/
-│   ├── llm-gateway/              # LiteLLM routing
-│   ├── memory-service/           # Mem0 + Qdrant
-│   ├── rag-pipeline/             # LlamaIndex + Qdrant
-│   └── knowledge-service/        # AGE graph + distiller
-├── deploy/
-│   ├── docker-compose.yml
-│   ├── init.sql
-│   ├── migrations/
-│   └── docker/Dockerfile.*
-└── .cursor/rules/                # AI coding conventions
+│   └── web/                     # React SPA (pnpm workspace)
+├── agents/                      # Python domain agents (uv workspace members)
+│   ├── shared/vibeos_agent/     # Shared agent SDK
+│   ├── pm-agent/pm_agent/       # Orchestrator (NLP + workflow)
+│   ├── coding-agent/coding_agent/
+│   ├── architecture-agent/architecture_agent/
+│   ├── requirement-agent/requirement_agent/
+│   ├── design-agent/design_agent/
+│   ├── dev-agent/dev_agent/
+│   ├── test-agent/test_agent/
+│   ├── cicd-agent/cicd_agent/
+│   └── monitoring-agent/monitoring_agent/
+├── services/                    # Go services (go.work workspace)
+│   ├── workspace-svc/           # REST API (Chi router)
+│   ├── ws-gateway/              # WebSocket relay
+│   └── shared/models/           # Shared Go DTOs
+├── platform/                    # Python platform services (uv workspace members)
+│   ├── llm-gateway/             # LiteLLM multi-provider routing
+│   ├── memory-service/          # Mem0 + Qdrant
+│   ├── rag-pipeline/            # LlamaIndex + Qdrant
+│   └── knowledge-service/       # Knowledge graph (AGE) + distillation
+└── deploy/
+    ├── docker-compose.yml
+    ├── init.sql
+    ├── migrations/
+    └── docker/Dockerfile.*
 ```
 
 ## Cursor Rules
