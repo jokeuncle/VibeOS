@@ -10,6 +10,7 @@ import { useT } from '../i18n'
 import type { AgentExecution } from '../types'
 import type { TranslationKey } from '../i18n/en'
 import ArtifactPanel from './ArtifactPanel'
+import NativeSelect from './ui/NativeSelect'
 
 type TraceStatus = 'success' | 'error' | 'running' | 'info'
 
@@ -222,15 +223,13 @@ export default function WorkspaceTraces() {
             </button>
           ))}
         </div>
-        <select
+        <NativeSelect
+          size="sm"
+          fullWidth={false}
           value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as TraceStatus | 'all')}
-          className="px-2.5 py-1.5 rounded-lg bg-surface-2 border border-border-subtle text-[11px] text-text-secondary focus:outline-none cursor-pointer"
-        >
-          {statusFilterOptions.map(opt => (
-            <option key={opt.value} value={opt.value} className="bg-surface-3">{opt.label}</option>
-          ))}
-        </select>
+          options={statusFilterOptions}
+          onChange={v => setStatusFilter(v as TraceStatus | 'all')}
+        />
       </div>
 
       <div className="space-y-2">

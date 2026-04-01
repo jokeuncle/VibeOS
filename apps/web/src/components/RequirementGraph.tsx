@@ -5,8 +5,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { Requirement, RequirementRelation, RequirementStatus, RelationType } from '../types'
-
-const STATUS_ORDER: RequirementStatus[] = ['draft', 'designing', 'ready', 'in_progress', 'completed']
+import { REQUIREMENT_STATUS_ORDER as STATUS_ORDER } from '../lib/requirementStatusOrder'
 const STATUS_FILL: Record<RequirementStatus, string> = {
   draft: 'var(--color-surface-4)',
   designing: 'var(--color-accent)',

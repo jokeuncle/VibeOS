@@ -6,6 +6,7 @@
  * - ArrayFieldTemplate: renders array items (e.g. initial_requirements list)
  */
 
+import React from 'react'
 import type {
   FieldTemplateProps,
   ObjectFieldTemplateProps,
@@ -53,14 +54,18 @@ export function ArrayFieldTemplate({ items, title }: ArrayFieldTemplateProps) {
           {title}
         </div>
       )}
-      {items.map((item) => (
-        <div
-          key={item.key}
-          className="rounded-xl bg-surface-2/30 border border-border-subtle/45 p-2.5 space-y-2"
-        >
-          {item.children}
-        </div>
-      ))}
+      {items.map((item) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const childContent = (item as any).children as React.ReactNode
+        return (
+          <div
+            key={item.key}
+            className="rounded-xl bg-surface-2/30 border border-border-subtle/45 p-2.5 space-y-2"
+          >
+            {childContent}
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GitBranch, ChevronRight, ToggleLeft, ToggleRight,
@@ -17,6 +17,7 @@ import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import { PIPELINE_COMMANDS, type NlpContextDescriptor } from '../lib/nlpContext'
 import ControlCenter from './ControlCenter/ControlCenter'
 import GraphToolbar from './ControlCenter/GraphToolbar'
+import FormSelect from './ui/FormSelect'
 
 interface PhaseStaticMeta {
   key: PipelinePhaseKey
@@ -259,16 +260,17 @@ function PhaseDetail({
           <span className="text-[12px] font-semibold text-text-primary">{t('pipeline.graph.label')}</span>
         </div>
         <p className="text-[11px] text-text-tertiary mb-2">{t('pipeline.graph.desc')}</p>
-        <select
+        <FormSelect
+          size="sm"
+          fullWidth
           value={phase.graphId ?? ''}
-          onChange={e => onUpdate({ graphId: e.target.value || null })}
-          className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-border-default text-[12px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors cursor-pointer"
-        >
-          <option value="">{t('pipeline.graph.default')}</option>
-          {graphs.map(g => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
+          options={useMemo(() => [
+            { value: '', label: t('pipeline.graph.default') },
+            ...graphs.map(g => ({ value: g.id, label: g.name })),
+          ], [graphs, t])}
+          onChange={v => onUpdate({ graphId: v || null })}
+          placeholder={t('pipeline.graph.default')}
+        />
       </div>
 
       <div className="h-px bg-border-subtle" />

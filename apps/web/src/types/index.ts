@@ -355,7 +355,7 @@ export interface ClarificationOption {
   agentType?: AgentType
 }
 
-export type ErrorSeverity = 'intent_unclear' | 'capability_limit' | 'agent_unavailable' | 'system_error'
+export type ErrorSeverity = 'intent_unclear' | 'capability_limit' | 'agent_unavailable' | 'system_error' | 'warning'
 
 export interface ExecutionStep {
   id: string

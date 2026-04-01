@@ -9,9 +9,7 @@ import SummaryPanel from './SummaryPanel'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import type { NlpContextDescriptor } from '../lib/nlpContext'
-
-/** Same order as RequirementGraph / RequirementList grouping — keep dashboard counts aligned. */
-const REQUIREMENT_STATUS_ORDER: RequirementStatus[] = ['draft', 'designing', 'ready', 'in_progress', 'completed']
+import { REQUIREMENT_STATUS_ORDER } from '../lib/requirementStatusOrder'
 
 const REQ_CHIP_VALUE: Record<RequirementStatus, { emphasis: 'muted' | 'accentSoft' | 'warning' | 'accent' | 'success' }> = {
   draft: { emphasis: 'muted' },

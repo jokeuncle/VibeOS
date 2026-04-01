@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Bot, Settings2, ChevronDown, ChevronUp,
@@ -14,6 +14,7 @@ import type { TranslationKey } from '../i18n/en'
 import type { AgentStatus } from '../types'
 import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import type { NlpContextDescriptor } from '../lib/nlpContext'
+import FormSelect from './ui/FormSelect'
 
 interface AgentMeta {
   type: string
@@ -241,15 +242,13 @@ function AgentCard({
               <Cpu className="w-3 h-3" />
               {t('agentTeam.field.model')}
             </label>
-            <select
+            <FormSelect
+              size="sm"
+              fullWidth
               value={model}
-              onChange={e => handleModelChange(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-border-default text-[12px] text-text-primary focus:outline-none focus:border-accent/50 cursor-pointer transition-colors appearance-none"
-            >
-              {MODEL_OPTIONS.map(m => (
-                <option key={m} value={m} className="bg-surface-3">{m}</option>
-              ))}
-            </select>
+              options={useMemo(() => MODEL_OPTIONS.map(m => ({ value: m, label: m })), [])}
+              onChange={handleModelChange}
+            />
           </div>
 
           <div>

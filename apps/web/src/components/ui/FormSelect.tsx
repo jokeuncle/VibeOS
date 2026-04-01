@@ -25,20 +25,59 @@ export interface FormSelectProps {
   'aria-label'?: string
 }
 
-const SIZE = {
-  sm: {
-    trigger: 'px-2.5 py-1.5 text-[11px] gap-1.5 min-h-[32px]',
-    item: 'px-3 py-1.5 text-[11px]',
-    chevron: 'w-3 h-3',
-    check: 'w-3 h-3',
+/** 共享Select样式常量 - 用于保持FormSelect和NativeSelect视觉一致 */
+export const SELECT_STYLES = {
+  /** 尺寸变体 */
+  size: {
+    sm: {
+      trigger: 'px-2.5 py-1.5 text-[11px] gap-1.5 min-h-[32px]',
+      item: 'px-3 py-1.5 text-[11px]',
+      chevron: 'w-3 h-3',
+      check: 'w-3 h-3',
+    },
+    md: {
+      trigger: 'px-3 py-2 text-sm gap-2 min-h-[40px]',
+      item: 'px-3 py-2 text-sm',
+      chevron: 'w-3.5 h-3.5',
+      check: 'w-3.5 h-3.5',
+    },
   },
-  md: {
-    trigger: 'px-3 py-2 text-sm gap-2 min-h-[40px]',
-    item: 'px-3 py-2 text-sm',
-    chevron: 'w-3.5 h-3.5',
-    check: 'w-3.5 h-3.5',
+  /** 触发器基础样式 */
+  trigger: {
+    base: 'flex items-center justify-between rounded-lg border transition-all outline-none',
+    surface: 'bg-surface-2/90 backdrop-blur-sm border-border-subtle',
+    hover: 'hover:border-border-default hover:bg-surface-2',
+    focus: 'focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0',
+    active: 'border-accent/50 ring-1 ring-accent/20',
+    disabled: 'disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:border-border-subtle',
+    cursor: 'cursor-pointer',
+    shadow: 'shadow-sm',
+  },
+  /** 下拉菜单样式 */
+  dropdown: {
+    base: 'py-1.5 max-h-60 overflow-y-auto overflow-x-hidden',
+    surface: 'bg-surface-2/95 backdrop-blur-md border border-border-default rounded-xl',
+    shadow: 'shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]',
+    animation: 'motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-100',
+  },
+  /** 选项样式 */
+  option: {
+    base: 'w-full flex items-center justify-between gap-2 rounded-lg mx-1 max-w-[calc(100%-8px)] text-left transition-colors cursor-pointer outline-none',
+    selected: 'bg-accent/12 text-accent',
+    hover: 'hover:bg-surface-3/90',
+    text: 'text-text-secondary',
+  },
+  /** 文本颜色 */
+  text: {
+    primary: 'text-text-primary',
+    secondary: 'text-text-secondary',
+    tertiary: 'text-text-tertiary',
+    quaternary: 'text-text-quaternary',
   },
 } as const
+
+// 保持向后兼容
+const SIZE = SELECT_STYLES.size
 
 type MenuRect = { top: number; left: number; width: number; showAbove: boolean }
 
@@ -134,12 +173,13 @@ export default function FormSelect({
         />
         <div
           role="listbox"
-          className={`
-            fixed z-[150] py-1.5 max-h-60 overflow-y-auto overflow-x-hidden
-            bg-surface-2/95 backdrop-blur-md border border-border-default rounded-xl
-            shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]
-            motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-100
-          `.trim().replace(/\s+/g, ' ')}
+          className={[
+            'fixed z-[150]',
+            SELECT_STYLES.dropdown.base,
+            SELECT_STYLES.dropdown.surface,
+            SELECT_STYLES.dropdown.shadow,
+            SELECT_STYLES.dropdown.animation,
+          ].join(' ')}
           style={{
             top: pos.top,
             left: pos.left,
@@ -160,12 +200,11 @@ export default function FormSelect({
                   onChange(opt.value)
                   setOpen(false)
                 }}
-                className={`
-                  w-full flex items-center justify-between gap-2 rounded-lg mx-1 max-w-[calc(100%-8px)]
-                  text-left transition-colors cursor-pointer outline-none
-                  ${sz.item}
-                  ${isOn ? 'bg-accent/12 text-accent' : 'text-text-secondary hover:bg-surface-3/90'}
-                `.trim().replace(/\s+/g, ' ')}
+                className={[
+                  SELECT_STYLES.option.base,
+                  sz.item,
+                  isOn ? SELECT_STYLES.option.selected : `${SELECT_STYLES.option.text} ${SELECT_STYLES.option.hover}`,
+                ].join(' ')}
               >
                 <span className="truncate">{opt.label}</span>
                 {isOn && <Check className={`shrink-0 text-accent ${sz.check}`} aria-hidden />}
@@ -194,32 +233,32 @@ export default function FormSelect({
           e.preventDefault()
           setOpen((o) => !o)
         }}
-        className={`
-          flex items-center justify-between rounded-lg border transition-all outline-none
-          bg-surface-2/90 backdrop-blur-sm border-border-subtle
-          hover:border-border-default hover:bg-surface-2
-          focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0
-          shadow-sm
-          disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:border-border-subtle
-          ${disabled ? '' : 'cursor-pointer'}
-          ${fullWidth ? 'w-full' : 'w-max min-w-[7rem] max-w-[min(100vw-2rem,280px)]'}
-          ${sz.trigger}
-          ${open ? 'border-accent/50 ring-1 ring-accent/20' : ''}
-          ${triggerClassName}
-        `.trim().replace(/\s+/g, ' ')}
+        className={[
+          SELECT_STYLES.trigger.base,
+          SELECT_STYLES.trigger.surface,
+          SELECT_STYLES.trigger.hover,
+          SELECT_STYLES.trigger.focus,
+          SELECT_STYLES.trigger.shadow,
+          SELECT_STYLES.trigger.disabled,
+          disabled ? '' : SELECT_STYLES.trigger.cursor,
+          fullWidth ? 'w-full' : 'w-max min-w-[7rem] max-w-[min(100vw-2rem,280px)]',
+          sz.trigger,
+          open ? SELECT_STYLES.trigger.active : '',
+          triggerClassName,
+        ].join(' ')}
       >
         <span className="flex items-center gap-1.5 min-w-0 flex-1 text-left">
           {prefix != null && prefix !== '' && (
-            <span className="text-text-tertiary shrink-0 font-normal">{prefix}:</span>
+            <span className={`${SELECT_STYLES.text.tertiary} shrink-0 font-normal`}>{prefix}:</span>
           )}
           <span
-            className={`truncate ${selected ? 'text-text-primary' : 'text-text-quaternary'} ${prefix ? 'font-medium' : ''}`}
+            className={`truncate ${selected ? SELECT_STYLES.text.primary : SELECT_STYLES.text.quaternary} ${prefix ? 'font-medium' : ''}`}
           >
             {selected?.label ?? placeholder ?? '—'}
           </span>
         </span>
         <ChevronDown
-          className={`shrink-0 text-text-tertiary transition-transform duration-200 ${sz.chevron} ${open ? 'rotate-180' : ''}`}
+          className={`shrink-0 ${SELECT_STYLES.text.tertiary} transition-transform duration-200 ${sz.chevron} ${open ? 'rotate-180' : ''}`}
           aria-hidden
         />
       </button>

@@ -2,13 +2,23 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useGraphStore } from './useGraphStore'
 import type { StateField } from './useGraphStore'
 import { useT } from '../../i18n'
+import NativeSelect from '../ui/NativeSelect'
 
-const TYPE_OPTIONS    = ['string', 'int', 'float', 'bool', 'list', 'dict', 'any']
+const TYPE_OPTIONS = ['string', 'int', 'float', 'bool', 'list', 'dict', 'any']
 const REDUCER_OPTIONS = ['', 'append', 'replace', 'add_messages']
+
+// 节点类型选项
+const NODE_TYPE_OPTIONS = [
+  { value: 'capability', label: 'Capability' },
+  { value: 'intent', label: 'Intent' },
+  { value: 'condition', label: 'Condition' },
+  { value: 'human_in_loop', label: 'Human Gate' },
+  { value: 'llm_call', label: 'LLM Call' },
+  { value: 'subgraph', label: 'Subgraph' },
+]
 
 // Shared input class
 const INPUT_CLS = 'w-full px-2.5 py-1.5 rounded-lg bg-surface-3 border border-border-subtle text-text-primary text-[11px] placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent/40 transition-colors'
-const SELECT_CLS = 'w-full px-2 py-1.5 rounded-lg bg-surface-3 border border-border-subtle text-text-primary text-[11px] focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent/40 transition-colors cursor-pointer'
 const LABEL_CLS = 'block text-[10px] font-semibold uppercase tracking-wider text-text-tertiary mb-1'
 
 export default function NodeConfigPanel() {
@@ -77,18 +87,12 @@ export default function NodeConfigPanel() {
           <div className="space-y-3">
             <div>
               <label className={LABEL_CLS}>{t('controlCenter.nodeType')}</label>
-              <select
+              <NativeSelect
+                size="sm"
                 value={selectedNode.data.nodeType}
-                onChange={(e) => updateNodeData(selectedNode.id, { nodeType: e.target.value as never })}
-                className={SELECT_CLS}
-              >
-                <option value="capability">Capability</option>
-                <option value="intent">Intent</option>
-                <option value="condition">Condition</option>
-                <option value="human_in_loop">Human Gate</option>
-                <option value="llm_call">LLM Call</option>
-                <option value="subgraph">Subgraph</option>
-              </select>
+                options={NODE_TYPE_OPTIONS}
+                onChange={(v) => updateNodeData(selectedNode.id, { nodeType: v as never })}
+              />
             </div>
 
             <div>
@@ -199,24 +203,20 @@ export default function NodeConfigPanel() {
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
-                <select
+                <NativeSelect
+                  size="sm"
                   value={field.type}
-                  onChange={(e) => updateStateField(idx, { type: e.target.value })}
-                  className="px-2 py-1 rounded-md bg-surface-2 border border-border-subtle text-text-primary text-[10px] focus:outline-none focus:ring-1 focus:ring-accent/40 cursor-pointer"
-                >
-                  {TYPE_OPTIONS.map((tp) => (
-                    <option key={tp} value={tp}>{tp}</option>
-                  ))}
-                </select>
-                <select
+                  options={TYPE_OPTIONS.map((tp) => ({ value: tp, label: tp }))}
+                  onChange={(v) => updateStateField(idx, { type: v })}
+                  fullWidth
+                />
+                <NativeSelect
+                  size="sm"
                   value={field.reducer}
-                  onChange={(e) => updateStateField(idx, { reducer: e.target.value })}
-                  className="px-2 py-1 rounded-md bg-surface-2 border border-border-subtle text-text-primary text-[10px] focus:outline-none focus:ring-1 focus:ring-accent/40 cursor-pointer"
-                >
-                  {REDUCER_OPTIONS.map((r) => (
-                    <option key={r} value={r}>{r || 'no reducer'}</option>
-                  ))}
-                </select>
+                  options={REDUCER_OPTIONS.map((r) => ({ value: r, label: r || 'no reducer' }))}
+                  onChange={(v) => updateStateField(idx, { reducer: v })}
+                  fullWidth
+                />
               </div>
             </div>
           ))}

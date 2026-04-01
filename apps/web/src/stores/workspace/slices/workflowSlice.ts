@@ -62,6 +62,8 @@ function runWorkflowSession(
           status: 'running',
           agentType: 'pm',
           steps: [],
+          taskIds: [],
+          resultType: 'unknown',
           startedAt: new Date().toISOString(),
         }
         get().upsertExecution(exec)
