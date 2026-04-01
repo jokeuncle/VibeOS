@@ -47,8 +47,19 @@ export default function App() {
 
   useEffect(() => {
     fetchWorkspaces().then(() => {
-      if (useWorkspaceStore.getState().activeWorkspaceId) {
-        refreshActiveWorkspace()
+      const state = useWorkspaceStore.getState()
+      const { activeWorkspaceId, workspaces, setActiveWorkspace } = state
+      if (activeWorkspaceId) {
+        const exists = workspaces.some((w) => w.id === activeWorkspaceId)
+        if (!exists) {
+          setActiveWorkspace(null)
+          useUIStore.getState().addToast({
+            type: 'info',
+            message: 'Previous workspace is no longer available.',
+          })
+        } else {
+          refreshActiveWorkspace()
+        }
       }
     })
     return () => disconnectWebSocket()

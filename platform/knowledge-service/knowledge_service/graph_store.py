@@ -74,8 +74,14 @@ class GraphStore:
 
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
+        self._available = False
+
+    def _require_age(self) -> None:
+        if not self._available:
+            raise RuntimeError("Apache AGE extension is not available")
 
     async def _connect(self) -> psycopg.AsyncConnection:  # type: ignore[type-arg]
+        self._require_age()
         conn = await psycopg.AsyncConnection.connect(self.database_url)
         await conn.execute("LOAD 'age'")
         await conn.execute(
@@ -84,10 +90,20 @@ class GraphStore:
         return conn
 
     async def initialize(self) -> None:
-        """Create the graph (idempotent) and load the AGE extension."""
+        """Create the graph (idempotent) and load the AGE extension.
+
+        Degrades gracefully when the AGE extension is not installed in
+        the database so that the service can still start (graph endpoints
+        will return errors, but non-graph endpoints remain usable).
+        """
+        self._available = False
         conn = await psycopg.AsyncConnection.connect(self.database_url)
         async with conn:
-            await conn.execute("CREATE EXTENSION IF NOT EXISTS age")
+            try:
+                await conn.execute("CREATE EXTENSION IF NOT EXISTS age")
+            except Exception as exc:
+                logger.warning("Apache AGE extension not available – graph features disabled: %s", exc)
+                return
             await conn.execute("LOAD 'age'")
             await conn.execute(
                 "SET search_path = ag_catalog, \"$user\", public"
@@ -98,7 +114,7 @@ class GraphStore:
                 )
             except Exception:
                 pass  # graph already exists
-            await conn.commit()
+            self._available = True
 
     # ------------------------------------------------------------------
     # Nodes

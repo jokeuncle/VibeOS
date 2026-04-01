@@ -86,34 +86,6 @@ CREATE INDEX idx_tasks_phase ON tasks(phase_id);
 CREATE INDEX idx_tasks_workspace ON tasks(workspace_id);
 CREATE INDEX idx_tasks_requirement ON tasks(requirement_id);
 
--- Agent executions: persistent, first-class execution records
-CREATE TABLE agent_executions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
-    task_ids UUID[] NOT NULL DEFAULT '{}',
-    intent_type VARCHAR(128) NOT NULL,
-    intent_summary TEXT NOT NULL DEFAULT '',
-    triggered_by VARCHAR(32) NOT NULL DEFAULT 'nlp',
-    user_message TEXT NOT NULL DEFAULT '',
-    status VARCHAR(32) NOT NULL DEFAULT 'queued',
-    agent_type VARCHAR(32) NOT NULL,
-    steps JSONB NOT NULL DEFAULT '[]',
-    result_type VARCHAR(64) NOT NULL DEFAULT 'general',
-    result_payload JSONB,
-    chat_message_id UUID REFERENCES chat_messages(id) ON DELETE SET NULL,
-    error_message TEXT NOT NULL DEFAULT '',
-    parent_execution_id UUID REFERENCES agent_executions(id) ON DELETE SET NULL,
-    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_agent_executions_workspace ON agent_executions(workspace_id);
-CREATE INDEX idx_agent_executions_requirement ON agent_executions(requirement_id) WHERE requirement_id IS NOT NULL;
-CREATE INDEX idx_agent_executions_parent ON agent_executions(parent_execution_id) WHERE parent_execution_id IS NOT NULL;
-CREATE INDEX idx_agent_executions_status ON agent_executions(workspace_id, status);
-CREATE INDEX idx_agent_executions_chat_msg ON agent_executions(chat_message_id) WHERE chat_message_id IS NOT NULL;
-
 -- Activities (Event Sourcing)
 CREATE TABLE activities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -167,7 +139,6 @@ CREATE TABLE chat_messages (
     rich_blocks JSONB,
     agent_type VARCHAR(32),
     requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
-    execution_id UUID REFERENCES agent_executions(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -176,6 +147,37 @@ CREATE INDEX idx_chat_messages_ws_cursor ON chat_messages(workspace_id, created_
 CREATE INDEX idx_chat_messages_context ON chat_messages(context_type, created_at DESC, id DESC);
 CREATE INDEX idx_chat_messages_home ON chat_messages(created_at DESC, id DESC) WHERE context_type = 'home';
 CREATE INDEX idx_chat_messages_req ON chat_messages(requirement_id, created_at DESC) WHERE requirement_id IS NOT NULL;
+
+-- Agent executions: persistent, first-class execution records
+CREATE TABLE agent_executions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
+    task_ids UUID[] NOT NULL DEFAULT '{}',
+    intent_type VARCHAR(128) NOT NULL,
+    intent_summary TEXT NOT NULL DEFAULT '',
+    triggered_by VARCHAR(32) NOT NULL DEFAULT 'nlp',
+    user_message TEXT NOT NULL DEFAULT '',
+    status VARCHAR(32) NOT NULL DEFAULT 'queued',
+    agent_type VARCHAR(32) NOT NULL,
+    steps JSONB NOT NULL DEFAULT '[]',
+    result_type VARCHAR(64) NOT NULL DEFAULT 'general',
+    result_payload JSONB,
+    chat_message_id UUID REFERENCES chat_messages(id) ON DELETE SET NULL,
+    error_message TEXT NOT NULL DEFAULT '',
+    parent_execution_id UUID REFERENCES agent_executions(id) ON DELETE SET NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_agent_executions_workspace ON agent_executions(workspace_id);
+CREATE INDEX idx_agent_executions_requirement ON agent_executions(requirement_id) WHERE requirement_id IS NOT NULL;
+CREATE INDEX idx_agent_executions_parent ON agent_executions(parent_execution_id) WHERE parent_execution_id IS NOT NULL;
+CREATE INDEX idx_agent_executions_status ON agent_executions(workspace_id, status);
+CREATE INDEX idx_agent_executions_chat_msg ON agent_executions(chat_message_id) WHERE chat_message_id IS NOT NULL;
+
+-- Back-reference: chat_messages → agent_executions (added after both tables exist)
+ALTER TABLE chat_messages ADD COLUMN execution_id UUID REFERENCES agent_executions(id) ON DELETE SET NULL;
 CREATE INDEX idx_chat_messages_exec ON chat_messages(execution_id) WHERE execution_id IS NOT NULL;
 
 -- Notifications

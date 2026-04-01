@@ -9,6 +9,7 @@ dependencies = [
     "llama-index-core",
     "llama-index-vector-stores-qdrant",
     "llama-index-embeddings-openai",
+    "llama-index-embeddings-openai-like",
     "llama-index-llms-openai",
     "pydantic>=2.0",
     "qdrant-client>=1.12.0",

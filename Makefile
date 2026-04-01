@@ -38,15 +38,17 @@ infra: ## Start infrastructure containers
 infra-down: ## Stop infrastructure containers
 	cd deploy && docker compose down
 
+DOCKER_PSQL := docker compose -f deploy/docker-compose.yml exec -T postgres psql -U vibeos -d vibeos
+
 .PHONY: db-init
 db-init: ## Initialize database schema
-	psql "$(DATABASE_URL)" -f deploy/init.sql
+	cat deploy/init.sql | $(DOCKER_PSQL)
 
 .PHONY: db-migrate
 db-migrate: ## Apply all migrations
 	@for f in deploy/migrations/*.sql; do \
 		echo "== Applying $$f =="; \
-		psql "$(DATABASE_URL)" -f "$$f"; \
+		cat "$$f" | $(DOCKER_PSQL); \
 	done
 
 # ---------------------------------------------------------------------------

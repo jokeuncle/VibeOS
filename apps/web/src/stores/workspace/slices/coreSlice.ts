@@ -3,6 +3,7 @@ import type { Workspace } from '../../../types'
 import { workspaceApi } from '../../../lib/api'
 import { patchWorkspace } from '../helpers'
 import type { CoreSlice, WorkspaceState } from '../types'
+import { useUIStore } from '../../ui'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
@@ -56,7 +57,23 @@ export function buildCoreSlice(set: SetState, get: GetState) {
         })
       } catch (err) {
         console.error('Failed to refresh workspace document:', err)
-        if (get().activeWorkspaceId === id) set({ workspaceDetailReady: true })
+        const is404 = err instanceof Error && (
+          err.message.includes('404') ||
+          err.message.includes('Not Found')
+        )
+        if (is404 && get().activeWorkspaceId === id) {
+          set({ activeWorkspaceId: null, workspaceDetailReady: true })
+          useUIStore.getState().addToast({
+            type: 'error',
+            message: 'Workspace not found. It may have been deleted.',
+          })
+          const firstWorkspace = get().workspaces[0]
+          if (firstWorkspace) {
+            setTimeout(() => get().setActiveWorkspace(firstWorkspace.id), 100)
+          }
+        } else if (get().activeWorkspaceId === id) {
+          set({ workspaceDetailReady: true })
+        }
       }
     },
 
@@ -96,7 +113,23 @@ export function buildCoreSlice(set: SetState, get: GetState) {
         })
       } catch (err) {
         console.error('Failed to refresh workspace:', err)
-        if (get().activeWorkspaceId === id) set({ workspaceDetailReady: true })
+        const is404 = err instanceof Error && (
+          err.message.includes('404') ||
+          err.message.includes('Not Found')
+        )
+        if (is404 && get().activeWorkspaceId === id) {
+          set({ activeWorkspaceId: null, workspaceDetailReady: true })
+          useUIStore.getState().addToast({
+            type: 'error',
+            message: 'Workspace not found. It may have been deleted.',
+          })
+          const firstWorkspace = get().workspaces[0]
+          if (firstWorkspace) {
+            setTimeout(() => get().setActiveWorkspace(firstWorkspace.id), 100)
+          }
+        } else if (get().activeWorkspaceId === id) {
+          set({ workspaceDetailReady: true })
+        }
       }
     },
 
