@@ -811,7 +811,7 @@ export const trustApi = {
 
 export const approvalApi = {
   resolve: (approvalKey: string, approved: boolean) =>
-    request<{ status: string }>('/api/agents/workflow/approve', {
+    request<{ status: string }>('/api/workflow/approve', {
       method: 'POST',
       body: JSON.stringify({ approval_key: approvalKey, approved }),
     }),

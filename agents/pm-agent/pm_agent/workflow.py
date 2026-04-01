@@ -600,9 +600,8 @@ class WorkflowEngine:
             _logger.debug("Could not load pipeline config for %s", workspace_id)
         return []
 
-    async def _resolve_phase_order(self, workspace_id: str) -> list[str]:
-        """Build phase execution list from pipeline config, falling back to defaults."""
-        configs = await self._resolve_pipeline_configs(workspace_id)
+    def _phase_order_from_configs(self, configs: list[dict[str, Any]]) -> list[str]:
+        """Derive phase execution order from pipeline configs."""
         if configs:
             phases: list[str] = []
             for cfg in configs:
@@ -617,9 +616,11 @@ class WorkflowEngine:
 
     async def _check_quality_gate(
         self, workspace_id: str, phase_type: str, sid: str,
+        configs: list[dict[str, Any]] | None = None,
     ) -> bool:
         """Run post-phase quality gate. Returns True if gate passes or no gate configured."""
-        configs = await self._resolve_pipeline_configs(workspace_id)
+        if configs is None:
+            configs = await self._resolve_pipeline_configs(workspace_id)
         gate_expr: str | None = None
         for cfg in configs:
             key = cfg.get("phaseKey", "")
@@ -690,7 +691,8 @@ class WorkflowEngine:
         )
         yield self.sm.session_start(sid, "workflow_project", workspace_id)
 
-        phase_order = await self._resolve_phase_order(workspace_id)
+        pipeline_configs = await self._resolve_pipeline_configs(workspace_id)
+        phase_order = self._phase_order_from_configs(pipeline_configs)
 
         payload_start = {"workspace_id": workspace_id, "phases": phase_order}
         yield self.sm.ev(sid, "project", "start", payload_start)
@@ -724,7 +726,7 @@ class WorkflowEngine:
                 await self._recover_after_project_error(workspace_id, phase_type, failed_task_id)
                 break
 
-            gate_passed = await self._check_quality_gate(workspace_id, phase_type, sid)
+            gate_passed = await self._check_quality_gate(workspace_id, phase_type, sid, configs=pipeline_configs)
             if not gate_passed:
                 payload_gate_fail = {"phase": phase_type, "error": "quality gate failed"}
                 yield self.sm.ev(sid, "project", "error", payload_gate_fail)

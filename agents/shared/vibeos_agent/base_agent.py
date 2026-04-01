@@ -291,6 +291,7 @@ class BaseAgent(ABC):
         enrich_context: bool = True,
         system_prompt_override: str | None = None,
         repo_context: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream LLM response token-by-token. Yields content deltas."""
         enriched_system = system_prompt_override or self.system_prompt
@@ -310,7 +311,7 @@ class BaseAgent(ABC):
         messages.append({"role": "user", "content": user_message})
 
         full_reply = ""
-        async for chunk in self.llm.chat_stream(messages):
+        async for chunk in self.llm.chat_stream(messages, model=model):
             delta = (
                 chunk.get("choices", [{}])[0]
                 .get("delta", {})
@@ -494,6 +495,7 @@ class BaseAgent(ABC):
         enrich_context: bool = True,
         max_iterations: int = 5,
         repo_context: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> AsyncIterator[str]:
         """Like ``_call_llm_with_tools`` but yields content deltas for the final
         text response. Tool-call iterations use streaming to detect tool_calls vs
@@ -509,6 +511,7 @@ class BaseAgent(ABC):
                 extra_messages=extra_messages,
                 enrich_context=enrich_context,
                 repo_context=repo_context,
+                model=model,
             ):
                 yield delta
             return
@@ -528,7 +531,7 @@ class BaseAgent(ABC):
             content_parts: list[str] = []
             tool_calls_acc: list[dict[str, Any]] = []
 
-            async for chunk in self.llm.chat_stream(messages, tools=tool_schemas):
+            async for chunk in self.llm.chat_stream(messages, tools=tool_schemas, model=model):
                 choice = chunk.get("choices", [{}])[0]
                 delta = choice.get("delta", {})
 

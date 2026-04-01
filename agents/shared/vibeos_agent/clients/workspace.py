@@ -420,10 +420,10 @@ class WorkspaceClient:
 
     async def list_agents(self, workspace_id: str) -> list[dict[str, Any]]:
         """Fetch workspace agent rows (type, status, preferredModel)."""
-        ws = await self.get_workspace(workspace_id)
-        if isinstance(ws, dict) and "data" in ws:
-            ws = ws["data"]
-        return ws.get("agents", []) if isinstance(ws, dict) else []
+        resp = await self._http.get(f"/api/workspaces/{workspace_id}/agents")
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", data) if isinstance(data, dict) else data
 
     # ------------------------------------------------------------------
     # Extensibility (MCP / Skills / User Context)
