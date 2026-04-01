@@ -144,8 +144,8 @@ class RequirementAgent(BaseAgent):
         super().__init__()
         from vibeos_agent.tools.workspace_tools import create_workspace_tools
         from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "requirement"))
-        self.tool_registry.register_many(create_delegation_tools("requirement"))
+        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "requirement"))
+        self._static_provider.register_many(create_delegation_tools("requirement"))
 
     capabilities = [
         CapabilityContract(

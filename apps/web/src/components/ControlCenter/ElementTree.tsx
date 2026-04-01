@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, Zap, Box, Cpu, GitFork, Copy, FileStack, GripVertical, UserCheck, MessageSquare, Layers, Wrench, Sparkles } from 'lucide-react'
+import { ChevronRight, Zap, Box, Cpu, GitFork, Copy, FileStack, GripVertical, UserCheck, MessageSquare, Layers, Wrench, Sparkles, Bot } from 'lucide-react'
 import { registryApi } from '../../lib/api'
 import type { RegistryIntent, RegistryCapability, RegistryTaskTemplate } from '../../lib/api'
 import { useGraphStore } from './useGraphStore'
@@ -30,6 +30,7 @@ const DRAG_TYPE_CFG: Record<string, { icon: typeof Zap; dot: string }> = {
   human_in_loop:{ icon: UserCheck,    dot: 'bg-emerald-400'},
   llm_call:     { icon: MessageSquare,dot: 'bg-cyan-400'   },
   subgraph:     { icon: Layers,       dot: 'bg-rose-400'   },
+  agentic:      { icon: Bot,          dot: 'bg-orange-400' },
 }
 
 const NODE_TYPES: DragItem[] = [
@@ -37,6 +38,7 @@ const NODE_TYPES: DragItem[] = [
   { id: 'human_in_loop', name: 'Human Gate', registryName: '', meta: '', dragType: 'human_in_loop' },
   { id: 'llm_call',      name: 'LLM Call',   registryName: '', meta: '', dragType: 'llm_call'      },
   { id: 'subgraph',      name: 'Subgraph',   registryName: '', meta: '', dragType: 'subgraph'      },
+  { id: 'agentic',       name: 'Agentic',    registryName: '', meta: '', dragType: 'agentic'       },
 ]
 
 export default function ElementTree() {

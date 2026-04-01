@@ -85,10 +85,10 @@ class DevelopmentAgent(SDLCAgent):
         from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
         from vibeos_agent.tools.dev_tools import create_dev_tools
         from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self.tool_registry.register_many(create_workspace_tools(self.workspace_svc, "development"))
-        self.tool_registry.register_many(create_gitlab_tools())
-        self.tool_registry.register_many(create_dev_tools(self.llm))
-        self.tool_registry.register_many(create_delegation_tools("development"))
+        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "development"))
+        self._static_provider.register_many(create_gitlab_tools())
+        self._static_provider.register_many(create_dev_tools(self.llm))
+        self._static_provider.register_many(create_delegation_tools("development"))
 
     async def _resolve_repo_context(self, task: AgentTask) -> dict[str, Any] | None:
         ctx = task.context or {}

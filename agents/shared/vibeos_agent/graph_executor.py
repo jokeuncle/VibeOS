@@ -36,7 +36,7 @@ except ImportError:
 @dataclass
 class GraphNodeDef:
     id: str
-    type: str  # capability | llm_call | human_in_loop | condition | subgraph | intent
+    type: str  # capability | llm_call | human_in_loop | condition | subgraph | intent | agentic
     capability_ref: str = ""
     config: dict[str, Any] = field(default_factory=dict)
     position: dict[str, float] = field(default_factory=dict)
@@ -373,6 +373,68 @@ class GraphExecutor:
                         sub_results.update(output)
             return {**sub_results, "_last_node": node_def.id}
 
+        async def _agentic_node(state: dict[str, Any]) -> dict[str, Any]:
+            """LLM tool-use loop: the model can autonomously call tools."""
+            if not self._llm or not self._tool_manager:
+                return {"_last_node": node_def.id, "_error": "LLM or ToolManager unavailable"}
+
+            system_prompt = node_config.get("system_prompt", "You are a helpful agent with access to tools.")
+            prompt_template = node_config.get("prompt", "")
+            model = node_config.get("model")
+            max_iterations = node_config.get("max_iterations", 10)
+            tool_filter: list[str] | None = node_config.get("enabled_tools")
+
+            user_msg = prompt_template or state.get("user_message", "")
+            if not user_msg:
+                user_msg = str(state.get("_summary", "Continue processing."))
+            upstream = _get_upstream_context(state)
+            if upstream and str(upstream) not in user_msg:
+                user_msg = f"{user_msg}\n\nContext from previous step:\n{str(upstream)[:2000]}"
+
+            tool_schemas = await self._tool_manager.get_schemas()
+            if tool_filter:
+                allowed = set(tool_filter)
+                tool_schemas = [s for s in tool_schemas if s.get("function", {}).get("name") in allowed]
+
+            if not tool_schemas:
+                return {"_last_node": node_def.id, "_error": "No tools available for agentic node"}
+
+            import json as _json
+            messages: list[dict[str, Any]] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg},
+            ]
+
+            final_text = ""
+            for _ in range(max_iterations):
+                result = await self._llm.chat(messages, tools=tool_schemas, model=model)
+                choice = result.get("choices", [{}])[0]
+                msg = choice.get("message", {})
+                tool_calls = msg.get("tool_calls")
+
+                if not tool_calls:
+                    final_text = msg.get("content", "")
+                    break
+
+                messages.append(msg)
+                for tc in tool_calls:
+                    fn = tc.get("function", {})
+                    t_name = fn.get("name", "")
+                    raw_args = fn.get("arguments", "{}")
+                    try:
+                        t_args = _json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                    except _json.JSONDecodeError:
+                        t_args = {}
+                    logger.info("Agentic node %s calling tool %s", node_def.id, t_name)
+                    t_result = await self._tool_manager.execute(t_name, t_args)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", ""),
+                        "content": t_result.output,
+                    })
+
+            return {"_last_node": node_def.id, "llm_output": final_text, "_result": final_text}
+
         async def _passthrough_node(state: dict[str, Any]) -> dict[str, Any]:
             return {"_last_node": node_def.id}
 
@@ -382,6 +444,7 @@ class GraphExecutor:
             "human_in_loop": _human_node,
             "intent": _intent_node,
             "subgraph": _subgraph_node,
+            "agentic": _agentic_node,
         }
         return dispatch.get(node_type, _passthrough_node)
 

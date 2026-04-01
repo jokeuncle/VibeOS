@@ -49,7 +49,7 @@ from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
 from .session import SessionManager
 from .sse import sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
 from .telemetry import get_meter, get_tracer, init_telemetry
-from .tools import BaseTool, MCPServerConfig, MCPToolProvider, StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider, ToolRegistry
+from .tools import BaseTool, MCPServerConfig, MCPToolProvider, StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider
 
 __all__ = [
     "Activity",
@@ -90,7 +90,7 @@ __all__ = [
     "ToolDescriptor",
     "ToolManager",
     "ToolProvider",
-    "ToolRegistry",
+    
     "SandboxAgent",
     "SDLCAgent",
     "ArtifactConfig",

@@ -25,8 +25,9 @@ from .models import (
 )
 from .registry import AgentManifest, CapabilityDef, RegistryClient
 from .session import SessionManager
-from .skills import Skill, SkillRegistry
-from .tools import ToolRegistry
+from .skills import Skill, SkillRegistry, SkillToolProvider
+from .tools import ToolManager, StaticToolProvider
+from .tools.mcp_provider import MCPServerConfig, MCPToolProvider
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,10 @@ class BaseAgent(ABC):
 
     def __init__(self) -> None:
         self.clients = ClientContainer()
-        self.tool_registry = ToolRegistry()
+        self._static_provider = StaticToolProvider()
+        self.tool_manager = ToolManager()
+        self.tool_manager.register_provider(self._static_provider)
+        self._workspace_tools_loaded: set[str] = set()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._task_context_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
             "task_context", default=None,
@@ -354,15 +358,11 @@ class BaseAgent(ABC):
         except Exception:
             logger.debug("Failed to persist memory after _call_llm_stream", exc_info=True)
 
-    def _get_tool_schemas(self) -> list[dict[str, Any]] | None:
-        """Return tool schemas from the registry, filtered by task-level enabled_tools.
-
-        When the current task specifies ``enabled_tools``, only tools whose
-        names appear in that list are exposed to the LLM.
-        """
-        if not self.tool_registry.has_tools:
+    async def _get_tool_schemas(self) -> list[dict[str, Any]] | None:
+        """Return tool schemas from all providers, filtered by task-level enabled_tools."""
+        if not self.tool_manager.has_tools:
             return None
-        schemas = self.tool_registry.get_schemas()
+        schemas = await self.tool_manager.get_schemas()
         task = self._get_current_task()
         enabled = getattr(task, "enabled_tools", None) if task else None
         if enabled:
@@ -409,7 +409,7 @@ class BaseAgent(ABC):
             except Exception:
                 logger.debug("Failed to publish tool log for %s", tool_name, exc_info=True)
 
-            tool_result = await self.tool_registry.execute(tool_name, parsed_args)
+            tool_result = await self.tool_manager.execute(tool_name, parsed_args)
             self._tool_results.append({
                 "tool": tool_name,
                 "ok": tool_result.ok,
@@ -473,7 +473,8 @@ class BaseAgent(ABC):
 
         Falls back to ``_call_llm`` behavior when no tools are registered.
         """
-        tool_schemas = self._get_tool_schemas()
+        await self._ensure_workspace_tools(workspace_id)
+        tool_schemas = await self._get_tool_schemas()
         if not tool_schemas:
             self._tool_results = []
             return await self._call_llm(
@@ -540,7 +541,8 @@ class BaseAgent(ABC):
         text, but only yield deltas on the final (text) iteration.
         Falls back to ``_call_llm_stream`` when no tools are registered.
         """
-        tool_schemas = self._get_tool_schemas()
+        await self._ensure_workspace_tools(workspace_id)
+        tool_schemas = await self._get_tool_schemas()
         if not tool_schemas:
             self._tool_results = []
             async for delta in self._call_llm_stream(
@@ -931,8 +933,48 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         "testing": "test-agent",
     }
 
+    async def _ensure_workspace_tools(self, workspace_id: str) -> None:
+        """Lazy-load MCP + Skill providers for *workspace_id* (once per process)."""
+        if workspace_id in self._workspace_tools_loaded:
+            return
+        try:
+            mcp_servers = await self.workspace_svc.list_mcp_servers(workspace_id)
+            for row in (mcp_servers or []):
+                if not row.get("enabled", True):
+                    continue
+                try:
+                    cfg = MCPServerConfig.from_db_row(row)
+                    provider = MCPToolProvider(cfg)
+                    provider.provider_key = f"mcp:{cfg.name}:{workspace_id}"
+                    self.tool_manager.register_provider(provider)
+                except Exception:
+                    logger.debug("Skip MCP server %s", row.get("name", "?"), exc_info=True)
+        except Exception:
+            logger.debug("Failed to load MCP servers for ws=%s", workspace_id, exc_info=True)
+
+        try:
+            db_skills = await self.workspace_svc.list_skills(workspace_id)
+            if db_skills:
+                skill_provider = SkillToolProvider(
+                    [Skill.from_db_config(
+                        s.get("config", {}),
+                        id=s.get("id", ""),
+                        name=s.get("name", ""),
+                        description=s.get("description", ""),
+                        version=s.get("version", "1.0"),
+                        enabled=s.get("enabled", True),
+                    ) for s in db_skills],
+                    _enum_val(self.agent_type),
+                )
+                skill_provider.provider_key = f"skill:{workspace_id}"
+                self.tool_manager.register_provider(skill_provider)
+        except Exception:
+            logger.debug("Failed to load skills for ws=%s", workspace_id, exc_info=True)
+
+        self._workspace_tools_loaded.add(workspace_id)
+
     def _build_capability_defs(self) -> list[CapabilityDef]:
-        """Derive capability definitions from class-level capabilities + registered tools."""
+        """Derive capability definitions from class-level capabilities + static tools."""
         import os
         from .config import config as _cfg
 
@@ -954,18 +996,15 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 source=agent_key,
             ))
 
-        for schema in self.tool_registry.get_schemas():
-            fn = schema.get("function", {})
-            name = fn.get("name", "")
-            if name:
-                defs.append(CapabilityDef(
-                    name=f"{agent_key}.{name}",
-                    provider=agent_key,
-                    description=fn.get("description", ""),
-                    endpoint=execute_endpoint,
-                    input_schema=fn.get("parameters", {}),
-                    source=agent_key,
-                ))
+        for tool in self._static_provider._tools.values():
+            defs.append(CapabilityDef(
+                name=f"{agent_key}.{tool.name}",
+                provider=agent_key,
+                description=tool.description,
+                endpoint=execute_endpoint,
+                input_schema=tool.parameters,
+                source=agent_key,
+            ))
 
         return defs
 
@@ -1019,7 +1058,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         """
         import json as _json
         agent_key = _enum_val(self.agent_type)
-        tool_schemas = self.tool_registry.get_schemas() if self.tool_registry.has_tools else []
+        tool_schemas = [t.schema() for t in self._static_provider._tools.values()]
         caps: dict[str, Any] = {}
         for cap in self.capabilities:
             caps[cap.name] = cap.model_dump(mode="json")
