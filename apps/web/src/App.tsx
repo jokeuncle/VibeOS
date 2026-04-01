@@ -22,6 +22,7 @@ import AgentChat from './components/AgentChat'
 import WorkspaceTemplates from './components/WorkspaceTemplates'
 import ShortcutsOverlay from './components/ShortcutsOverlay'
 import Dock from './components/Dock'
+import LoginPage from './components/LoginPage'
 
 export default function App() {
   const { activeWorkspaceId } = useWorkspaceStore()
@@ -37,6 +38,8 @@ export default function App() {
   } = useUIStore()
   const { locale } = useI18nStore()
   const restoreSession = useAuthStore((s) => s.restoreSession)
+  const authToken = useAuthStore((s) => s.token)
+  const authChecked = useAuthStore((s) => s.checked)
 
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
   const refreshActiveWorkspace = useWorkspaceStore((s) => s.refreshActiveWorkspace)
@@ -108,6 +111,14 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [toggleSidebar, setSettingsOpen, settingsOpen, shortcutsOpen, setShortcutsOpen, commandPaletteOpen])
+
+  if (!authChecked) {
+    return <div className="h-screen flex items-center justify-center bg-surface-0" />
+  }
+
+  if (!authToken) {
+    return <LoginPage />
+  }
 
   return (
     <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">

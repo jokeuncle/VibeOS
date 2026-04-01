@@ -95,12 +95,15 @@ class SDLCAgent(BaseAgent):
                 level="success", task_id=task.task_id,
             )
 
+            await self._report_trust_outcome(task, success=True)
+
             yield self._make_event("result", task.workspace_id, {
                 "summary": structured.get("summary", ""),
                 "artifacts": structured.get("artifacts", []),
                 "created_tasks": created_tasks,
             })
         except Exception as exc:
+            await self._report_trust_outcome(task, success=False)
             try:
                 await _log(task.workspace_id, agent_name, f"Execution failed: {exc}", level="error", task_id=task.task_id)
             except Exception:
@@ -138,6 +141,29 @@ class SDLCAgent(BaseAgent):
     ) -> None:
         """Hook for domain-specific post-processing after artifacts and tasks."""
         pass
+
+    # ------------------------------------------------------------------
+    # Trust / governance
+    # ------------------------------------------------------------------
+
+    async def _report_trust_outcome(self, task: AgentTask, *, success: bool) -> None:
+        """Report execution outcome to llm-gateway trust score system."""
+        agent_name = _enum_val(self.agent_type)
+        model = "default"
+        try:
+            ws = await self.workspace_svc.get_workspace(task.workspace_id)
+            agents = ws.get("agents", []) if ws else []
+            for ag in agents:
+                if ag.get("type") == agent_name and ag.get("preferredModel"):
+                    model = ag["preferredModel"]
+                    break
+        except Exception:
+            pass
+
+        try:
+            await self.llm.report_trust_outcome(model, agent_name, success=success)
+        except Exception:
+            logger.debug("Failed to report trust outcome for %s", agent_name, exc_info=True)
 
     # ------------------------------------------------------------------
     # Internal helpers

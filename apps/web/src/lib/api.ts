@@ -658,8 +658,9 @@ export const feedbackApi = {
     workspace_id: string
     message_id?: string
     agent_type?: string
-    action_type: 'approve' | 'reject'
+    action_type: 'approve' | 'reject' | 'edit'
     original_output?: string
+    modified_output?: string
     context?: Record<string, unknown>
   }) =>
     request<{ status: string; error?: string }>('/api/feedback', {
@@ -670,6 +671,8 @@ export const feedbackApi = {
     }),
 }
 
+/** Proxied to platform/llm-gateway (8030). */
+const PLATFORM_LLM = '/svc/llm'
 /** Proxied to platform/memory-service (8050). */
 const PLATFORM_MEMORY = '/svc/memory'
 /** Proxied to platform/rag-pipeline (8060). */
@@ -772,6 +775,34 @@ export const platformApi = {
         }),
       }),
   },
+}
+
+// ---------------------------------------------------------------------------
+// Trust / Autonomy API (proxied to llm-gateway via /svc/llm)
+// ---------------------------------------------------------------------------
+
+export interface TrustScore {
+  model: string
+  agent_type: string
+  score: number
+  autonomy: 'supervised' | 'semi_autonomous' | 'autonomous'
+  total_calls: number
+  success_rate?: number
+}
+
+export const trustApi = {
+  list: () =>
+    platformRequest<{ scores: TrustScore[] }>(`${PLATFORM_LLM}/api/trust`).then(
+      (r) => r.scores,
+    ),
+
+  get: (model: string, agentType: string) =>
+    platformRequest<TrustScore>(`${PLATFORM_LLM}/api/trust/${model}/${agentType}`),
+
+  checkAutonomy: (model: string, agentType: string) =>
+    platformRequest<{ model: string; agent_type: string; autonomy: string; auto_approve: boolean }>(
+      `${PLATFORM_LLM}/api/trust/autonomy/${model}/${agentType}`,
+    ),
 }
 
 // ---------------------------------------------------------------------------

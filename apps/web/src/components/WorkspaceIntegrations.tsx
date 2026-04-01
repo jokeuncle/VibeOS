@@ -4,10 +4,15 @@ import {
   Plug2, CheckCircle2, Circle, ExternalLink,
   GitBranch, Zap, Bell, Cloud, Puzzle, Plus,
   ChevronRight, Settings2, AlertCircle, Link,
+  Sparkles, User,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useAuthStore } from '../stores/auth'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
+import WorkspaceMCPServers from './WorkspaceMCPServers'
+import WorkspaceSkills from './WorkspaceSkills'
+import UserContextEditor from './UserContextEditor'
 
 type IntegrationStatus = 'connected' | 'disconnected' | 'error'
 
@@ -206,87 +211,54 @@ function IntegrationRow({
   )
 }
 
-export default function WorkspaceIntegrations() {
+type IntegrationTab = 'services' | 'mcp' | 'skills' | 'userContext'
+
+const TABS: { key: IntegrationTab; labelKey: TranslationKey; icon: typeof Plug2 }[] = [
+  { key: 'services', labelKey: 'integrations.tab.services', icon: Link },
+  { key: 'mcp', labelKey: 'integrations.tab.mcp', icon: Puzzle },
+  { key: 'skills', labelKey: 'integrations.tab.skills', icon: Sparkles },
+  { key: 'userContext', labelKey: 'integrations.tab.userContext', icon: User },
+]
+
+function ServicesTab() {
   const t = useT()
   const { workspaces, activeWorkspaceId } = useWorkspaceStore()
   const workspace = workspaces.find(w => w.id === activeWorkspaceId)
   const repos = workspace?.repos ?? []
 
-  // Derive real GitLab status from workspace repos
   const gitlabRepos = repos.filter(r => r.gitlabUrl)
   const gitlabConnected = gitlabRepos.length > 0
   const gitlabDetail = gitlabConnected
     ? `${gitlabRepos.length} repo${gitlabRepos.length > 1 ? 's' : ''} bound`
     : undefined
-  // GitLab CI is connected if there's a primary repo with a CI-capable strategy
   const gitlabCiConnected = gitlabRepos.some(r => r.isPrimary)
 
   const derivedIntegrations = useMemo<Integration[]>(() => INTEGRATIONS.map(i => {
-    if (i.id === 'gitlab') return {
-      ...i,
-      status: gitlabConnected ? 'connected' : 'disconnected',
-      detail: gitlabDetail,
-    }
-    if (i.id === 'gitlab-ci') return {
-      ...i,
-      status: gitlabCiConnected ? 'connected' : 'disconnected',
-      detail: gitlabCiConnected ? 'Linked via GitLab integration' : undefined,
-    }
+    if (i.id === 'gitlab') return { ...i, status: gitlabConnected ? 'connected' : 'disconnected', detail: gitlabDetail }
+    if (i.id === 'gitlab-ci') return { ...i, status: gitlabCiConnected ? 'connected' : 'disconnected', detail: gitlabCiConnected ? 'Linked via GitLab integration' : undefined }
     return i
   }), [gitlabConnected, gitlabDetail, gitlabCiConnected])
 
   const [integrations, setIntegrations] = useState<Integration[]>(derivedIntegrations)
-
-  // Sync with real data when repos change (useEffect, not useMemo — this is a side effect)
-  useEffect(() => {
-    setIntegrations(derivedIntegrations)
-  }, [derivedIntegrations])
+  useEffect(() => { setIntegrations(derivedIntegrations) }, [derivedIntegrations])
 
   function handleConnect(id: string) {
-    if (id === 'gitlab') {
-      // Clicking GitLab navigates to the Integrations settings (repos panel)
-      // The actual connection happens through WorkspaceSettings > GitLab Repos
-      return
-    }
+    if (id === 'gitlab') return
     setIntegrations(prev =>
-      prev.map(i => i.id === id && i.status === 'disconnected'
-        ? { ...i, status: 'connected', detail: 'Just connected' }
-        : i
-      )
+      prev.map(i => i.id === id && i.status === 'disconnected' ? { ...i, status: 'connected', detail: 'Just connected' } : i),
     )
   }
 
-  const categories = CATEGORY_ORDER.filter(cat =>
-    integrations.some(i => i.categoryKey === cat)
-  )
-
+  const categories = CATEGORY_ORDER.filter(cat => integrations.some(i => i.categoryKey === cat))
   const connectedCount = integrations.filter(i => i.status === 'connected').length
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-6"
-    >
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Plug2 className="w-4 h-4 text-accent" />
-          <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('integrations.title')}</h1>
-          <span className="ml-auto text-[11px] font-mono text-text-tertiary">
-            {connectedCount} {t('integrations.connected')}
-          </span>
-        </div>
-        <p className="text-[12px] text-text-tertiary">{t('integrations.desc')}</p>
-      </div>
-
+    <div className="space-y-5">
       {connectedCount > 0 && (
         <div className="rounded-xl border border-border-subtle bg-surface-1/30 p-4">
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-text-tertiary">
-              {t('integrations.activeConnections')}
-            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-text-tertiary">{t('integrations.activeConnections')}</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {integrations.filter(i => i.status === 'connected').map(i => (
@@ -303,22 +275,15 @@ export default function WorkspaceIntegrations() {
       {categories.map(categoryKey => {
         const CatIcon = CATEGORY_ICONS[categoryKey] || ChevronRight
         const items = integrations.filter(i => i.categoryKey === categoryKey)
-
         return (
           <div key={categoryKey} className="rounded-xl border border-border-subtle bg-surface-1/30 p-5">
             <div className="flex items-center gap-2 mb-4">
               <CatIcon className="w-3.5 h-3.5 text-text-tertiary" />
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-text-tertiary">
-                {t(categoryKey)}
-              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-text-tertiary">{t(categoryKey)}</span>
             </div>
             <div className="space-y-2">
               {items.map(integration => (
-                <IntegrationRow
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                />
+                <IntegrationRow key={integration.id} integration={integration} onConnect={handleConnect} />
               ))}
             </div>
           </div>
@@ -335,6 +300,52 @@ export default function WorkspaceIntegrations() {
           <ExternalLink className="w-3 h-3" />
         </button>
       </div>
+    </div>
+  )
+}
+
+export default function WorkspaceIntegrations() {
+  const t = useT()
+  const [tab, setTab] = useState<IntegrationTab>('services')
+  const authUser = useAuthStore(s => s.user)
+  const userId = authUser?.id || 'default'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-6"
+    >
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Plug2 className="w-4 h-4 text-accent" />
+          <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('integrations.title')}</h1>
+        </div>
+        <p className="text-[12px] text-text-tertiary">{t('integrations.desc')}</p>
+      </div>
+
+      <div className="flex gap-1 border-b border-border-subtle">
+        {TABS.map(({ key, labelKey, icon: TabIcon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium border-b-2 transition-colors cursor-pointer -mb-px ${
+              tab === key
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-tertiary hover:text-text-secondary'
+            }`}
+          >
+            <TabIcon className="w-3 h-3" />
+            {t(labelKey)}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'services' && <ServicesTab />}
+      {tab === 'mcp' && <WorkspaceMCPServers />}
+      {tab === 'skills' && <WorkspaceSkills />}
+      {tab === 'userContext' && <UserContextEditor userId={userId} />}
     </motion.div>
   )
 }

@@ -135,6 +135,7 @@ const common = {
 
   'feedback.approve': 'Helpful',
   'feedback.reject': 'Not helpful',
+  'feedback.edit': 'Suggest correction',
   'feedback.thanks': 'Thanks for your feedback!',
 
   'error.llmRateLimit': 'The AI model has reached its usage limit. Please try again later or switch to another model.',

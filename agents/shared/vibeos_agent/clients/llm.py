@@ -80,5 +80,39 @@ class LLMGatewayClient:
                     except json.JSONDecodeError:
                         continue
 
+    async def report_trust_outcome(
+        self,
+        model: str,
+        agent_type: str,
+        *,
+        success: bool,
+        latency_ms: float = 0,
+    ) -> dict[str, Any]:
+        """Report an execution outcome to update the trust score for a model+agent pair."""
+        resp = await self._http.post(
+            "/api/trust/outcome",
+            json={
+                "model": model,
+                "agent_type": agent_type,
+                "success": success,
+                "latency_ms": latency_ms,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def check_autonomy(self, model: str, agent_type: str) -> dict[str, Any]:
+        """Check the autonomy level for a model+agent pair."""
+        resp = await self._http.get(f"/api/trust/autonomy/{model}/{agent_type}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def list_trust_scores(self) -> list[dict[str, Any]]:
+        """List all trust scores from llm-gateway."""
+        resp = await self._http.get("/api/trust")
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("scores", [])
+
     async def close(self) -> None:
         await self._http.aclose()

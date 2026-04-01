@@ -7,6 +7,7 @@ interface AuthState {
   token: string | null
   loading: boolean
   error: string | null
+  checked: boolean
 
   login: (email: string, password: string) => Promise<boolean>
   register: (email: string, password: string, name?: string) => Promise<boolean>
@@ -19,13 +20,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: localStorage.getItem('vibeos_token'),
   loading: false,
   error: null,
+  checked: false,
 
   login: async (email, password) => {
     set({ loading: true, error: null })
     try {
       const { token, user } = await authApi.login(email, password)
       localStorage.setItem('vibeos_token', token)
-      set({ user, token, loading: false })
+      set({ user, token, loading: false, checked: true })
       return true
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Login failed' })
@@ -38,7 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { token, user } = await authApi.register(email, password, name)
       localStorage.setItem('vibeos_token', token)
-      set({ user, token, loading: false })
+      set({ user, token, loading: false, checked: true })
       return true
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Registration failed' })
@@ -53,13 +55,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   restoreSession: async () => {
     const token = localStorage.getItem('vibeos_token')
-    if (!token) return
+    if (!token) { set({ checked: true }); return }
     try {
       const user = await authApi.me()
-      set({ user, token })
+      set({ user, token, checked: true })
     } catch {
       localStorage.removeItem('vibeos_token')
-      set({ user: null, token: null })
+      set({ user: null, token: null, checked: true })
     }
   },
 }))

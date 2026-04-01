@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
   Bot, Settings2, ChevronDown, ChevronUp,
   Cpu, Wrench, MessageSquare, ToggleLeft, ToggleRight,
   Sparkles, Code2, TestTube, Rocket, Eye, Brush, ClipboardList,
-  Circle,
+  Circle, ShieldCheck, ShieldAlert, Shield,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
-import { workspaceApi } from '../lib/api'
+import { workspaceApi, trustApi } from '../lib/api'
+import type { TrustScore } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import type { AgentStatus } from '../types'
@@ -136,18 +137,32 @@ function statusDot(status: AgentStatus) {
   return map[status] ?? 'bg-surface-4'
 }
 
+function autonomyIcon(level: string) {
+  if (level === 'autonomous') return ShieldCheck
+  if (level === 'semi_autonomous') return ShieldAlert
+  return Shield
+}
+
+function autonomyColor(level: string) {
+  if (level === 'autonomous') return 'text-success'
+  if (level === 'semi_autonomous') return 'text-warning'
+  return 'text-text-tertiary'
+}
+
 function AgentCard({
   meta,
   liveStatus,
   liveModel,
   agentId,
   wsId,
+  trust,
 }: {
   meta: AgentMeta
   liveStatus: AgentStatus
   liveModel?: string
   agentId?: string
   wsId: string
+  trust?: TrustScore
 }) {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
@@ -261,6 +276,42 @@ function AgentCard({
             </label>
             <p className="text-[11px] text-text-tertiary italic">{t('agentTeam.field.systemPromptHint')}</p>
           </div>
+
+          {trust && trust.total_calls > 0 && (() => {
+            const AIcon = autonomyIcon(trust.autonomy)
+            const labelKey = trust.autonomy === 'autonomous'
+              ? 'agentTeam.trust.autonomous'
+              : trust.autonomy === 'semi_autonomous'
+                ? 'agentTeam.trust.semiAutonomous'
+                : 'agentTeam.trust.supervised'
+            return (
+              <div>
+                <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-text-tertiary mb-2">
+                  <AIcon className={`w-3 h-3 ${autonomyColor(trust.autonomy)}`} />
+                  {t('agentTeam.trust.title' as TranslationKey)}
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg bg-surface-2/40 border border-border-subtle p-2.5">
+                    <div className="text-[10px] text-text-tertiary mb-1">{t('agentTeam.trust.score' as TranslationKey)}</div>
+                    <div className="text-sm font-semibold text-text-primary tabular-nums">{trust.score.toFixed(1)}</div>
+                    <div className="mt-1 h-1 bg-surface-3 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(trust.score, 100)}%` }} />
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-surface-2/40 border border-border-subtle p-2.5">
+                    <div className="text-[10px] text-text-tertiary mb-1">{t('agentTeam.trust.autonomy' as TranslationKey)}</div>
+                    <div className={`text-[11px] font-semibold ${autonomyColor(trust.autonomy)}`}>
+                      {t(labelKey as TranslationKey)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-surface-2/40 border border-border-subtle p-2.5">
+                    <div className="text-[10px] text-text-tertiary mb-1">{t('agentTeam.trust.calls' as TranslationKey)}</div>
+                    <div className="text-sm font-semibold text-text-primary tabular-nums">{trust.total_calls}</div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </motion.div>
       )}
     </motion.div>
@@ -272,6 +323,12 @@ export default function WorkspaceAgentTeam() {
   const { workspaces, activeWorkspaceId } = useWorkspaceStore()
   const workspace = workspaces.find(w => w.id === activeWorkspaceId)
   const liveAgents = workspace?.agents ?? []
+
+  const [trustScores, setTrustScores] = useState<TrustScore[]>([])
+  const fetchTrust = useCallback(() => {
+    trustApi.list().then(setTrustScores).catch(() => {})
+  }, [])
+  useEffect(() => { fetchTrust() }, [fetchTrust])
 
   const activeCount = liveAgents.filter(a => a.status !== 'idle').length
 
@@ -338,6 +395,10 @@ export default function WorkspaceAgentTeam() {
       <div className="space-y-2">
         {AGENT_META.map(meta => {
           const live = liveAgents.find(a => a.type === meta.type)
+          const agentModel = live?.preferredModel ?? meta.defaultModel
+          const trust = trustScores.find(
+            s => s.agent_type === meta.type && s.model === agentModel,
+          ) ?? trustScores.find(s => s.agent_type === meta.type)
           return (
             <AgentCard
               key={meta.type}
@@ -346,6 +407,7 @@ export default function WorkspaceAgentTeam() {
               liveModel={live?.preferredModel}
               agentId={live?.id}
               wsId={activeWorkspaceId ?? ''}
+              trust={trust}
             />
           )
         })}

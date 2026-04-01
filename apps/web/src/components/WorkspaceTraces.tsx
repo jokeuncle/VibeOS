@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { AgentExecution } from '../types'
 import type { TranslationKey } from '../i18n/en'
+import ArtifactPanel from './ArtifactPanel'
 
 type TraceStatus = 'success' | 'error' | 'running' | 'info'
 
@@ -245,6 +246,8 @@ export default function WorkspaceTraces() {
           filtered.map(exec => <ExecutionTraceRow key={exec.id} exec={exec} />)
         )}
       </div>
+
+      <ArtifactPanel />
     </motion.div>
   )
 }

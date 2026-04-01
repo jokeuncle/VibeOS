@@ -5,6 +5,7 @@ import { useT } from '../i18n'
 import type { Phase, Agent, AgentStatus } from '../types'
 import type { TranslationKey } from '../i18n/en'
 import ActivityLog from './ActivityLog'
+import SummaryPanel from './SummaryPanel'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import type { NlpContextDescriptor } from '../lib/nlpContext'
@@ -229,6 +230,15 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
           </div>
         </motion.div>
       </div>
+
+      {/* Summary */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+      >
+        <SummaryPanel />
+      </motion.div>
 
       {/* Activity Log */}
       {workspace && (

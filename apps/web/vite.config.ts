@@ -34,6 +34,11 @@ export default defineConfig({
         changeOrigin: true,
       },
       // Platform services (workspace-scoped UIs; avoid clashing with workspace-svc `/api/*`)
+      '/svc/llm': {
+        target: 'http://localhost:8030',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/svc\/llm/, ''),
+      },
       '/svc/memory': {
         target: 'http://localhost:8050',
         changeOrigin: true,

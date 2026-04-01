@@ -135,6 +135,7 @@ const common = {
 
   'feedback.approve': '有帮助',
   'feedback.reject': '没帮助',
+  'feedback.edit': '建议修正',
   'feedback.thanks': '感谢您的反馈！',
 
   'error.llmRateLimit': 'AI 模型已达到使用限制，请稍后重试或切换到其他模型。',

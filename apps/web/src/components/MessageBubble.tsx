@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react'
-import { motion } from 'framer-motion'
-import { Bot, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { useState, useCallback, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Bot, ThumbsUp, ThumbsDown, Pencil, Check, X } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
-import { feedbackApi, workspaceApi } from '../lib/api'
+import { feedbackApi } from '../lib/api'
 import { RichBlockRenderer } from './RichBlockRenderer'
 import { HomeReasoningPanel } from './HomeReasoningPanel'
 import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
@@ -38,62 +38,109 @@ export function FeedbackButtons({ msg }: { msg: Message }) {
   const t = useT()
   const { addToast } = useUIStore()
   const { activeWorkspaceId } = useWorkspaceStore()
-  const [voted, setVoted] = useState<'approve' | 'reject' | null>(null)
+  const [voted, setVoted] = useState<'approve' | 'reject' | 'edit' | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const handleFeedback = useCallback(
-    async (action: 'approve' | 'reject') => {
-      if (voted || !activeWorkspaceId) return
+  const sendFeedback = useCallback(
+    async (action: 'approve' | 'reject' | 'edit', modifiedOutput?: string) => {
+      if (!activeWorkspaceId) return
       setVoted(action)
       try {
-        await Promise.allSettled([
-          feedbackApi.send({
-            workspace_id: activeWorkspaceId,
-            message_id: msg.id,
-            agent_type: msg.agentType || '',
-            action_type: action,
-            original_output: msg.content?.slice(0, 500) || '',
-          }),
-          workspaceApi.createFeedbackSignal(activeWorkspaceId, {
-            agentType: msg.agentType || '',
-            actionType: action,
-            originalOutput: msg.content?.slice(0, 1000) || '',
-            context: JSON.stringify({ message_id: msg.id }),
-          }),
-        ])
+        await feedbackApi.send({
+          workspace_id: activeWorkspaceId,
+          message_id: msg.id,
+          agent_type: msg.agentType || '',
+          action_type: action,
+          original_output: msg.content?.slice(0, 500) || '',
+          ...(modifiedOutput ? { modified_output: modifiedOutput } : {}),
+        })
         addToast({ type: 'success', message: t('feedback.thanks' as TranslationKey) })
       } catch {
         setVoted(null)
       }
     },
-    [voted, activeWorkspaceId, msg, addToast, t],
+    [activeWorkspaceId, msg, addToast, t],
   )
 
+  const handleEdit = () => {
+    setEditText(msg.content || '')
+    setEditing(true)
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }
+
+  const submitEdit = async () => {
+    if (!editText.trim() || editText === msg.content) { setEditing(false); return }
+    setEditing(false)
+    await sendFeedback('edit', editText.trim())
+  }
+
   return (
-    <div className="flex items-center gap-1 mt-1">
-      <button
-        onClick={() => handleFeedback('approve')}
-        disabled={voted !== null}
-        className={`p-1 rounded-md transition-colors cursor-pointer ${
-          voted === 'approve' ? 'text-success bg-success/10'
-          : voted ? 'text-text-tertiary/30'
-          : 'text-text-tertiary/50 hover:text-success hover:bg-success/10'
-        }`}
-        title={t('feedback.approve' as TranslationKey)}
-      >
-        <ThumbsUp className="w-3 h-3" />
-      </button>
-      <button
-        onClick={() => handleFeedback('reject')}
-        disabled={voted !== null}
-        className={`p-1 rounded-md transition-colors cursor-pointer ${
-          voted === 'reject' ? 'text-danger bg-danger/10'
-          : voted ? 'text-text-tertiary/30'
-          : 'text-text-tertiary/50 hover:text-danger hover:bg-danger/10'
-        }`}
-        title={t('feedback.reject' as TranslationKey)}
-      >
-        <ThumbsDown className="w-3 h-3" />
-      </button>
+    <div className="mt-1 space-y-1.5">
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => sendFeedback('approve')}
+          disabled={voted !== null}
+          className={`p-1 rounded-md transition-colors cursor-pointer ${
+            voted === 'approve' ? 'text-success bg-success/10'
+            : voted ? 'text-text-tertiary/30'
+            : 'text-text-tertiary/50 hover:text-success hover:bg-success/10'
+          }`}
+          title={t('feedback.approve' as TranslationKey)}
+        >
+          <ThumbsUp className="w-3 h-3" />
+        </button>
+        <button
+          onClick={() => sendFeedback('reject')}
+          disabled={voted !== null}
+          className={`p-1 rounded-md transition-colors cursor-pointer ${
+            voted === 'reject' ? 'text-danger bg-danger/10'
+            : voted ? 'text-text-tertiary/30'
+            : 'text-text-tertiary/50 hover:text-danger hover:bg-danger/10'
+          }`}
+          title={t('feedback.reject' as TranslationKey)}
+        >
+          <ThumbsDown className="w-3 h-3" />
+        </button>
+        {!voted && (
+          <button
+            onClick={handleEdit}
+            className="p-1 rounded-md transition-colors cursor-pointer text-text-tertiary/50 hover:text-accent hover:bg-accent/10"
+            title={t('feedback.edit' as TranslationKey)}
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      <AnimatePresence>
+        {editing && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-lg border border-accent/25 bg-surface-2/40 p-2">
+              <textarea
+                ref={textareaRef}
+                value={editText}
+                onChange={e => setEditText(e.target.value)}
+                rows={3}
+                className="w-full text-xs bg-transparent text-text-primary resize-none focus:outline-none"
+              />
+              <div className="flex justify-end gap-1.5 mt-1">
+                <button onClick={() => setEditing(false)} className="p-1 rounded text-text-tertiary hover:text-text-secondary transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={submitEdit} className="p-1 rounded text-accent hover:bg-accent/10 transition-colors">
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

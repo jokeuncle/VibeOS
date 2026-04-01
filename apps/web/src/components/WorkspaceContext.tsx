@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Layers, Brain, Library, Share2 } from 'lucide-react'
+import { Layers, Brain, Library, Share2, GraduationCap } from 'lucide-react'
 import WorkspaceProjectMemory from './WorkspaceProjectMemory'
 import WorkspaceKnowledgeBase from './WorkspaceKnowledgeBase'
 import WorkspaceTechKnowledge from './WorkspaceTechKnowledge'
+import WorkspaceLearning from './WorkspaceLearning'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 
-type Tab = 'memory' | 'knowledge' | 'tech'
+type Tab = 'memory' | 'knowledge' | 'tech' | 'learning'
 
 const TABS: { key: Tab; labelKey: TranslationKey; icon: typeof Brain; descKey: TranslationKey }[] = [
   {
@@ -27,6 +28,12 @@ const TABS: { key: Tab; labelKey: TranslationKey; icon: typeof Brain; descKey: T
     labelKey: 'context.tab.tech',
     icon: Share2,
     descKey: 'context.tab.tech.desc',
+  },
+  {
+    key: 'learning',
+    labelKey: 'context.tab.learning',
+    icon: GraduationCap,
+    descKey: 'context.tab.learning.desc',
   },
 ]
 
@@ -49,7 +56,7 @@ export default function WorkspaceContext() {
         <p className="text-[12px] text-text-tertiary">{t('context.desc')}</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {TABS.map(tab => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
@@ -79,6 +86,7 @@ export default function WorkspaceContext() {
         {activeTab === 'memory' && <WorkspaceProjectMemory />}
         {activeTab === 'knowledge' && <WorkspaceKnowledgeBase />}
         {activeTab === 'tech' && <WorkspaceTechKnowledge />}
+        {activeTab === 'learning' && <WorkspaceLearning />}
       </div>
     </motion.div>
   )

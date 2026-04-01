@@ -176,6 +176,7 @@ class FeedbackRequest(BaseModel):
     agent_type: str = ""
     action_type: str
     original_output: str = ""
+    modified_output: str = ""
     context: dict[str, Any] | None = None
 
 class GraphExecuteRequest(BaseModel):
@@ -777,13 +778,21 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
             workspace_id=req.workspace_id, agent_type=req.agent_type,
             action_type=req.action_type, context=req.context or {},
             original_output=req.original_output,
+            modified_output=req.modified_output,
         )
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
     try:
+        body: dict[str, Any] = {
+            "agentType": req.agent_type,
+            "actionType": req.action_type,
+            "originalOutput": req.original_output[:1000] if req.original_output else "",
+            "context": json.dumps(req.context or {}),
+        }
+        if req.modified_output:
+            body["modifiedOutput"] = req.modified_output[:1000]
         await ws_client._http.post(
-            f"/api/workspaces/{req.workspace_id}/feedback",
-            json={"agentType": req.agent_type, "actionType": req.action_type, "originalOutput": req.original_output[:1000] if req.original_output else "", "context": json.dumps(req.context or {})},
+            f"/api/workspaces/{req.workspace_id}/feedback", json=body,
         )
     except Exception:
         pass
