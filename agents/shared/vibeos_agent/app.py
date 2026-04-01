@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .models import AgentTask
+from .telemetry import init_telemetry
 from .sse import (
     sse_delta,
     sse_done,
@@ -56,6 +57,7 @@ def create_agent_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        init_telemetry(f"{agent_key}-agent")
         agent = agent_class()
         app.state.agent = agent
         yield

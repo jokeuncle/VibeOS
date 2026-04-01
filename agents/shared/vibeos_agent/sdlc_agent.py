@@ -1,0 +1,223 @@
+"""SDLCAgent -- declarative base for standard SDLC domain agents.
+
+Extracts the common execute() skeleton shared across requirement, architecture,
+design, development, testing, CICD, and monitoring agents into a configurable
+base class.  Subclasses provide ``artifact_configs`` and ``phase_key`` to
+control how LLM output is parsed, persisted, and surfaced.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from typing import Any
+
+from .base_agent import BaseAgent
+from .clients._utils import _enum_val
+from .models import (
+    AgentEvent,
+    AgentStatus,
+    AgentTask,
+    RichBlock,
+    Task,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ArtifactConfig:
+    """Describes one artifact type this agent may produce."""
+
+    type: str
+    parse_path: str = ""
+    language: str = "text"
+    title_key: str = "title"
+    content_key: str = "content"
+
+
+class SDLCAgent(BaseAgent):
+    """Standard SDLC agent with declarative task execution.
+
+    Subclasses set ``phase_key``, ``artifact_configs``, and optionally
+    override ``_build_execute_prompt`` or ``_post_process`` for domain logic.
+    """
+
+    phase_key: str = ""
+    artifact_configs: list[ArtifactConfig] = []
+
+    async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
+        yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
+        agent_name = _enum_val(self.agent_type)
+        _log = self.ws.publish_log
+
+        try:
+            await self.ws.publish_agent_status(
+                task.workspace_id, self.agent_type, AgentStatus.RUNNING, detail=task.intent
+            )
+            await _log(task.workspace_id, agent_name, f"Starting task: {task.intent}", task_id=task.task_id)
+
+            prompt = self._build_execute_prompt(task)
+            self._current_task_context = task.context
+
+            repo_context = await self._resolve_repo_context(task)
+
+            await _log(task.workspace_id, agent_name, "Calling LLM...", task_id=task.task_id)
+            raw_reply = await self._call_llm_with_tools(
+                prompt, workspace_id=task.workspace_id, repo_context=repo_context
+            )
+            await _log(task.workspace_id, agent_name, "LLM response received.", level="success", task_id=task.task_id)
+
+            structured = self._extract_json(raw_reply)
+
+            rich_blocks: list[RichBlock] = []
+            await self._save_structured_artifacts(task, structured, rich_blocks, agent_name)
+
+            yield self._make_event("progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"})
+
+            created_tasks = await self._create_phase_tasks(task, structured, rich_blocks, agent_name)
+
+            await self._post_process(task, structured, rich_blocks)
+
+            msg = self._make_message(
+                task.workspace_id,
+                structured.get("summary", raw_reply),
+                rich_blocks=rich_blocks,
+            )
+            await self.session.append(task.workspace_id, self.agent_type, msg)
+            await self.ws.publish_message(task.workspace_id, msg)
+
+            await _log(
+                task.workspace_id, agent_name,
+                f"Execution complete. {len(created_tasks)} tasks created.",
+                level="success", task_id=task.task_id,
+            )
+
+            yield self._make_event("result", task.workspace_id, {
+                "summary": structured.get("summary", ""),
+                "artifacts": structured.get("artifacts", []),
+                "created_tasks": created_tasks,
+            })
+        except Exception as exc:
+            try:
+                await _log(task.workspace_id, agent_name, f"Execution failed: {exc}", level="error", task_id=task.task_id)
+            except Exception:
+                pass
+            yield self._make_event("error", task.workspace_id, {"error": "execute failed"})
+            raise
+        finally:
+            try:
+                await self.ws.publish_agent_status(task.workspace_id, self.agent_type, AgentStatus.IDLE)
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Overridable hooks
+    # ------------------------------------------------------------------
+
+    def _build_execute_prompt(self, task: AgentTask) -> str:
+        user_msg = task.user_message or task.description
+        return (
+            f"Task: {task.intent}\n"
+            f"Description: {task.description}\n"
+            f"User request: {user_msg}\n"
+            f"Context: {json.dumps(task.context)}"
+        )
+
+    async def _resolve_repo_context(self, task: AgentTask) -> dict[str, Any] | None:
+        """Override to provide repo context (dev/cicd agents)."""
+        return None
+
+    async def _post_process(
+        self,
+        task: AgentTask,
+        structured: dict[str, Any],
+        rich_blocks: list[RichBlock],
+    ) -> None:
+        """Hook for domain-specific post-processing after artifacts and tasks."""
+        pass
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    async def _save_structured_artifacts(
+        self,
+        task: AgentTask,
+        structured: dict[str, Any],
+        rich_blocks: list[RichBlock],
+        agent_name: str,
+    ) -> None:
+        _log = self.ws.publish_log
+
+        if self.artifact_configs:
+            for cfg in self.artifact_configs:
+                data = structured.get(cfg.parse_path) if cfg.parse_path else None
+                if data is None and "artifacts" in structured:
+                    for art in structured["artifacts"]:
+                        if art.get("type") == cfg.type:
+                            data = art
+                            break
+                if data is None:
+                    continue
+
+                title = data.get(cfg.title_key, cfg.type) if isinstance(data, dict) else cfg.type
+                content = data.get(cfg.content_key, json.dumps(data)) if isinstance(data, dict) else str(data)
+
+                try:
+                    await self._save_artifact(
+                        task.workspace_id, artifact_type=cfg.type, title=title, content=content,
+                    )
+                    await _log(task.workspace_id, agent_name, f"Artifact saved: {title}", level="success", task_id=task.task_id)
+                except Exception as exc:
+                    await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
+
+                rich_blocks.append(RichBlock(
+                    type="code", language=cfg.language, content=content, metadata={"title": title},
+                ))
+        else:
+            for artifact in structured.get("artifacts", []):
+                art_title = artifact.get("title", "untitled")
+                art_type = artifact.get("type", "unknown")
+                art_content = artifact.get("content", "")
+                try:
+                    await self._save_artifact(
+                        task.workspace_id, artifact_type=art_type, title=art_title, content=art_content,
+                    )
+                    await _log(task.workspace_id, agent_name, f"Artifact saved: {art_title}", level="success", task_id=task.task_id)
+                except Exception as exc:
+                    await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
+                rich_blocks.append(RichBlock(
+                    type="code", language="text", content=art_content, metadata={"title": art_title},
+                ))
+
+    async def _create_phase_tasks(
+        self,
+        task: AgentTask,
+        structured: dict[str, Any],
+        rich_blocks: list[RichBlock],
+        agent_name: str,
+    ) -> list[dict[str, Any]]:
+        _log = self.ws.publish_log
+        phase_key = self.phase_key or _enum_val(self.agent_type)
+        phase_id = await self.workspace_svc.find_phase_by_type(task.workspace_id, phase_key)
+
+        created: list[dict[str, Any]] = []
+        task_list = structured.get("tasks", [])
+        if task_list:
+            await _log(task.workspace_id, agent_name, f"Creating {len(task_list)} tasks...", task_id=task.task_id)
+
+        for t in task_list:
+            title = t.get("title", "Untitled")
+            new_task = Task(title=title, description=t.get("description", ""))
+            try:
+                result = await self.workspace_svc.create_task(task.workspace_id, new_task, phase_id=phase_id)
+                created.append(result)
+                await _log(task.workspace_id, agent_name, f"Task created: {title}", level="success", task_id=task.task_id)
+                rich_blocks.append(RichBlock(type="task_card", content=title, metadata={"task": result}))
+            except Exception as exc:
+                await _log(task.workspace_id, agent_name, f"Failed to create task: {exc}", level="error", task_id=task.task_id)
+                rich_blocks.append(RichBlock(type="task_card", content=title, metadata={"description": t.get("description", "")}))
+        return created

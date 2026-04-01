@@ -1,5 +1,5 @@
 ---
-description: Python agent SDK conventions — BaseAgent, BaseTool, FastAPI app structure
+description: Python agent SDK conventions — BaseAgent, SDLCAgent, SandboxAgent, tools, middleware, and FastAPI app factory
 globs: agents/**/*.py, platform/**/*.py
 alwaysApply: false
 ---
@@ -8,63 +8,83 @@ alwaysApply: false
 
 ## Agent Structure
 
-Every domain agent subclasses `BaseAgent` from `vibeos_agent.protocol`:
+Prefer `SDLCAgent` (for SDLC domain agents) or `SandboxAgent` (for coding/sandbox agents). `BaseAgent` remains available for complex cases:
 
 ```python
-class MyAgent(BaseAgent):
+class MyAgent(SDLCAgent):
     agent_type = AgentType.MY_DOMAIN
-    system_prompt = SYSTEM_PROMPT       # module-level constant
-    chat_prompt = CHAT_PROMPT           # used by default chat_stream()
+    system_prompt = SYSTEM_PROMPT
+    chat_prompt = CHAT_PROMPT
+    phase_key = "my_phase"
+    artifact_configs = [ArtifactConfig(type="spec", language="markdown")]
 
     def __init__(self) -> None:
         super().__init__()
         self.tool_registry.register_many(create_my_tools())
 ```
 
-- `system_prompt` and `chat_prompt` are class-level attributes
-- `ToolRegistry` is the single source of truth for tool schemas — do NOT add a class-level `tools` list
-- `BaseAgent` provides default `chat()` and `chat_stream()` — override only if needed
-- `BaseAgent._extract_json()` is available as a static method for parsing LLM JSON output
-- `BaseAgent.__init__` provides shared clients: `self.workspace_svc`, `self.llm`, `self.ws`, `self.session`, `self.memory`, `self.rag`, `self.knowledge`
+- `SDLCAgent` provides a declarative `execute()` that handles artifact saving, task creation, and WS publishing
+- Override `_build_execute_prompt()`, `_resolve_repo_context()`, or `_post_process()` for domain-specific behavior
+- `SandboxAgent` delegates execution to `_run_sandbox()` for isolated code execution (OpenHands, E2B)
+- `BaseAgent.__init__` sets up `self.clients` (`ClientContainer`) — access clients via `self.llm`, `self.ws`, etc. (backward-compatible properties)
+
+## Dependency Injection
+
+`ClientContainer` owns all service clients. `BaseAgent.__init__` creates one:
+
+```python
+self.clients = ClientContainer()
+# Access: self.clients.llm, self.clients.workspace, self.clients.ws, etc.
+# Backward-compat aliases: self.llm, self.workspace_svc, self.ws, etc.
+```
+
+## Tool System
+
+`ToolManager` federates multiple `ToolProvider` sources:
+
+- `StaticToolProvider` — wraps `BaseTool` instances (classic tools)
+- `MCPToolProvider` — connects to MCP servers (stdio/SSE/streamable-http)
+- `SkillToolProvider` — tools from skill bundles
+
+Legacy `ToolRegistry` still works for static tools. New agents should consider `ToolManager` for federated resolution.
+
+## Middleware Pipeline
+
+Cross-cutting concerns are composable middleware (`vibeos_agent.middleware`):
+
+- `WSStatusMiddleware` — agent status RUNNING/IDLE/ERROR
+- `ContextEnricherMiddleware` — memory, RAG, knowledge, upstream artifacts
+- `SessionMiddleware` — history with token budget trimming
+- `MemoryWriterMiddleware` — auto-persist interactions
+- `ObservabilityMiddleware` — structured logging + OpenTelemetry spans
+- `ToolOrchestratorMiddleware` — tool loop with pluggable strategies
+
+## FastAPI App Factory
+
+Use `create_agent_app` — eliminates boilerplate:
+
+```python
+from vibeos_agent.app import create_agent_app
+from .agent import MyAgent
+app = create_agent_app(MyAgent, "My Agent", "my_type")
+```
+
+Routes: `/health`, `/api/execute`, `/api/execute/stream`, `/api/chat`, `/api/chat/stream`.
 
 ## Tool Pattern
-
-Subclass `BaseTool` from `vibeos_agent.tools.base`:
 
 ```python
 class MyTool(BaseTool):
     name = "my_tool_name"
     description = "What this tool does"
-    parameters = {
-        "type": "object",
-        "properties": { ... },
-        "required": [...]
-    }
+    parameters = {"type": "object", "properties": {...}, "required": [...]}
 
     async def execute(self, **kwargs: Any) -> str:
-        result = await do_work(kwargs["param"])
         return self._json_result(result)
 ```
 
-- `execute` returns a **string** (use `_json_result()` for dicts/lists)
-- Group related tools via factory: `create_xxx_tools()` returns `list[BaseTool]`
-
-## FastAPI App Pattern
-
-```python
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    agent = MyAgent()
-    app.state.agent = agent
-    yield
-    await agent.close()
-
-app = FastAPI(title="My Agent", version="0.1.0", lifespan=lifespan)
-```
-
-Standard routes: `/health`, `/api/execute`, `/api/execute/stream`, `/api/chat`, `/api/chat/stream`.
-CORS middleware with permissive dev defaults.
+Group related tools via factory: `create_xxx_tools()` returns `list[BaseTool]`.
 
 ## Configuration
 
-Use `vibeos_agent.config.Config` (env-backed with defaults). Service URLs default to Docker hostnames; override with env vars for local dev (e.g., `WORKSPACE_SVC_URL=http://localhost:8010`).
+Use `vibeos_agent.config.Config` (env-backed with defaults). Service URLs default to Docker hostnames; override with env vars for local dev.

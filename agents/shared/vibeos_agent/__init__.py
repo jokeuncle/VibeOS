@@ -41,10 +41,15 @@ from .registry import (
 )
 from .app import create_agent_app
 from .container import ClientContainer
+from .sandbox_agent import SandboxAgent
+from .sdlc_agent import ArtifactConfig, SDLCAgent
+from .skills import Skill, SkillRegistry, SkillToolProvider
+from .user_context import UserContext, UserContextClient
 from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
 from .session import SessionManager
 from .sse import sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
-from .tools import BaseTool, StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider, ToolRegistry
+from .telemetry import get_meter, get_tracer, init_telemetry
+from .tools import BaseTool, MCPServerConfig, MCPToolProvider, StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider, ToolRegistry
 
 __all__ = [
     "Activity",
@@ -86,8 +91,21 @@ __all__ = [
     "ToolManager",
     "ToolProvider",
     "ToolRegistry",
+    "SandboxAgent",
+    "SDLCAgent",
+    "ArtifactConfig",
+    "Skill",
+    "SkillRegistry",
+    "SkillToolProvider",
     "StaticToolProvider",
+    "UserContext",
+    "UserContextClient",
+    "MCPServerConfig",
+    "MCPToolProvider",
     "create_agent_app",
+    "get_meter",
+    "get_tracer",
+    "init_telemetry",
     "load_manifest_from_yaml",
     "WSGatewayClient",
     "Workspace",
