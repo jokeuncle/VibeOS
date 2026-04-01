@@ -182,8 +182,20 @@ run-web: ## Run frontend dev server (:3000)
 # Convenience
 # ---------------------------------------------------------------------------
 
+SERVICE_PORTS := 8010 8020 8030 8040 8041 8044 8050 8060 8070 3000
+
+.PHONY: stop
+stop: ## Stop all dev services (by port)
+	@for port in $(SERVICE_PORTS); do \
+		pids=$$(lsof -ti :$$port 2>/dev/null | tr '\n' ' '); \
+		if [ -n "$$pids" ]; then \
+			kill $$pids 2>/dev/null; \
+			printf "Stopped port %-5s (pid %s)\n" "$$port" "$$pids"; \
+		fi; \
+	done
+
 .PHONY: dev
-dev: ## Start all core services (infra + backend + frontend, backgrounded)
+dev: stop ## Start all core services (infra + backend + frontend, backgrounded)
 	@echo "Starting infrastructure..."
 	@$(MAKE) infra
 	@echo ""

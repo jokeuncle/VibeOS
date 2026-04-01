@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "knowledge-service"
 version = "0.1.0"
@@ -10,3 +14,6 @@ dependencies = [
     "httpx>=0.28.0",
     "redis>=5.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["knowledge_service"]

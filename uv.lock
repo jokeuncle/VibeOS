@@ -1896,7 +1896,7 @@ wheels = [
 [[package]]
 name = "knowledge-service"
 version = "0.1.0"
-source = { virtual = "platform/knowledge-service" }
+source = { editable = "platform/knowledge-service" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
@@ -2516,7 +2516,7 @@ wheels = [
 [[package]]
 name = "memory-service"
 version = "0.1.0"
-source = { virtual = "platform/memory-service" }
+source = { editable = "platform/memory-service" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
