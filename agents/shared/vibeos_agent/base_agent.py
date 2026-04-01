@@ -13,15 +13,8 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any
 
-from .clients import (
-    KnowledgeClient,
-    LLMGatewayClient,
-    MemoryClient,
-    RAGClient,
-    WorkspaceClient,
-    WSGatewayClient,
-)
 from .clients._utils import _enum_val
+from .container import ClientContainer
 from .models import (
     AgentEvent,
     AgentTask,
@@ -71,15 +64,8 @@ class BaseAgent(ABC):
     manifest: AgentManifest | None = None
 
     def __init__(self) -> None:
-        self.workspace_svc = WorkspaceClient()
-        self.llm = LLMGatewayClient()
-        self.ws = WSGatewayClient()
-        self.session = SessionManager()
-        self.memory = MemoryClient()
-        self.rag = RAGClient()
-        self.knowledge = KnowledgeClient()
+        self.clients = ClientContainer()
         self.tool_registry = ToolRegistry()
-        self._registry = RegistryClient()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._task_context_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
             "task_context", default=None,
@@ -87,6 +73,39 @@ class BaseAgent(ABC):
         self._tool_results_var: contextvars.ContextVar[list[dict[str, Any]]] = contextvars.ContextVar(
             "tool_results", default=[],
         )
+
+    # Backward-compatible aliases so existing subclass code keeps working.
+    @property
+    def workspace_svc(self):
+        return self.clients.workspace
+
+    @property
+    def llm(self):
+        return self.clients.llm
+
+    @property
+    def ws(self):
+        return self.clients.ws
+
+    @property
+    def session(self):
+        return self.clients.session
+
+    @property
+    def memory(self):
+        return self.clients.memory
+
+    @property
+    def rag(self):
+        return self.clients.rag
+
+    @property
+    def knowledge(self):
+        return self.clients.knowledge
+
+    @property
+    def _registry(self):
+        return self.clients.registry
 
     @property
     def _current_task_context(self) -> dict[str, Any] | None:
@@ -320,6 +339,93 @@ class BaseAgent(ABC):
             return self.tool_registry.get_schemas()
         return None
 
+    async def _process_tool_calls(
+        self,
+        tool_calls: list[dict[str, Any]],
+        workspace_id: str,
+        messages: list[dict[str, Any]],
+    ) -> None:
+        """Execute tool calls and append results to the message list."""
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            tool_name = fn.get("name", "")
+            raw_args = fn.get("arguments", "{}")
+            tc_id = tc.get("id", "")
+
+            if isinstance(raw_args, str):
+                try:
+                    parsed_args = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError:
+                    parsed_args = {}
+            else:
+                parsed_args = raw_args
+
+            parsed_args["_workspace_id"] = workspace_id
+            if self._current_task_context:
+                parsed_args.setdefault("_context", self._current_task_context)
+
+            logger.info(
+                "Tool call [%s] %s(%s)",
+                _enum_val(self.agent_type), tool_name, list(parsed_args.keys()),
+            )
+
+            try:
+                await self.ws.publish_log(
+                    workspace_id, _enum_val(self.agent_type),
+                    f"Calling tool: {tool_name}",
+                    level="info",
+                )
+            except Exception:
+                logger.debug("Failed to publish tool log for %s", tool_name, exc_info=True)
+
+            tool_result = await self.tool_registry.execute(tool_name, parsed_args)
+            self._tool_results.append({
+                "tool": tool_name,
+                "ok": tool_result.ok,
+                "result": tool_result.output[:500],
+            })
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc_id,
+                "content": tool_result.output,
+            })
+
+    async def _persist_memory(self, user_message: str, reply: str, workspace_id: str) -> None:
+        try:
+            await self.memory.add_memory(
+                f"User asked: {user_message}\nAgent replied: {reply[:500]}",
+                workspace_id=workspace_id,
+                agent_type=_enum_val(self.agent_type),
+            )
+        except Exception:
+            logger.debug("Failed to persist memory", exc_info=True)
+
+    async def _build_tool_loop_messages(
+        self,
+        user_message: str,
+        *,
+        workspace_id: str,
+        extra_messages: list[dict[str, Any]] | None = None,
+        enrich_context: bool = True,
+        repo_context: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Build the initial message list for a tool loop."""
+        enriched_system = self.system_prompt
+        if enrich_context:
+            enriched_system = await self._build_enriched_prompt(
+                workspace_id, user_message, repo_context=repo_context
+            )
+        history = await self.session.get_history(workspace_id, self.agent_type)
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": enriched_system}
+        ]
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+        if extra_messages:
+            messages.extend(extra_messages)
+        messages.append({"role": "user", "content": user_message})
+        return messages
+
     async def _call_llm_with_tools(
         self,
         user_message: str,
@@ -347,22 +453,13 @@ class BaseAgent(ABC):
             )
 
         self._tool_results = []
-
-        enriched_system = self.system_prompt
-        if enrich_context:
-            enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message, repo_context=repo_context
-            )
-
-        history = await self.session.get_history(workspace_id, self.agent_type)
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": enriched_system}
-        ]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        if extra_messages:
-            messages.extend(extra_messages)
-        messages.append({"role": "user", "content": user_message})
+        messages = await self._build_tool_loop_messages(
+            user_message,
+            workspace_id=workspace_id,
+            extra_messages=extra_messages,
+            enrich_context=enrich_context,
+            repo_context=repo_context,
+        )
 
         for _iteration in range(max_iterations):
             result = await self.llm.chat(messages, tools=tool_schemas)
@@ -372,66 +469,12 @@ class BaseAgent(ABC):
 
             if not tool_calls:
                 reply = msg.get("content", "")
-                try:
-                    await self.memory.add_memory(
-                        f"User asked: {user_message}\nAgent replied: {reply[:500]}",
-                        workspace_id=workspace_id,
-                        agent_type=_enum_val(self.agent_type),
-                    )
-                except Exception:
-                    logger.debug("Failed to persist memory after tool loop", exc_info=True)
+                await self._persist_memory(user_message, reply, workspace_id)
                 return reply
 
             messages.append(msg)
+            await self._process_tool_calls(tool_calls, workspace_id, messages)
 
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                tool_name = fn.get("name", "")
-                arguments = fn.get("arguments", "{}")
-                tc_id = tc.get("id", "")
-
-                if isinstance(arguments, str):
-                    try:
-                        parsed_args = json.loads(arguments) if arguments else {}
-                    except json.JSONDecodeError:
-                        parsed_args = {}
-                else:
-                    parsed_args = arguments
-
-                parsed_args["_workspace_id"] = workspace_id
-                if self._current_task_context:
-                    parsed_args.setdefault("_context", self._current_task_context)
-
-                logger.info(
-                    "Tool call [%s] %s(%s)", _enum_val(self.agent_type), tool_name, list(parsed_args.keys())
-                )
-
-                try:
-                    await self.ws.publish_log(
-                        workspace_id, _enum_val(self.agent_type),
-                        f"Calling tool: {tool_name}",
-                        level="info",
-                    )
-                except Exception:
-                    logger.debug("Failed to publish tool log for %s", tool_name, exc_info=True)
-
-                tool_result = await self.tool_registry.execute(tool_name, parsed_args)
-                is_error = any(
-                    marker in tool_result.lower()
-                    for marker in ("error:", "failed:", "exception:", "traceback")
-                )
-                self._tool_results.append({
-                    "tool": tool_name,
-                    "ok": not is_error,
-                    "result": tool_result[:500],
-                })
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc_id,
-                    "content": tool_result,
-                })
-
-        # max_iterations exhausted – return last available assistant content.
         for msg in reversed(messages):
             if isinstance(msg, dict) and msg.get("role") in ("assistant", "system"):
                 content = msg.get("content") or ""
@@ -468,22 +511,13 @@ class BaseAgent(ABC):
             return
 
         self._tool_results = []
-
-        enriched_system = self.system_prompt
-        if enrich_context:
-            enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message, repo_context=repo_context
-            )
-
-        history = await self.session.get_history(workspace_id, self.agent_type)
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": enriched_system}
-        ]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        if extra_messages:
-            messages.extend(extra_messages)
-        messages.append({"role": "user", "content": user_message})
+        messages = await self._build_tool_loop_messages(
+            user_message,
+            workspace_id=workspace_id,
+            extra_messages=extra_messages,
+            enrich_context=enrich_context,
+            repo_context=repo_context,
+        )
 
         full_reply = ""
 
@@ -526,55 +560,9 @@ class BaseAgent(ABC):
                     "tool_calls": tool_calls_acc,
                 }
                 messages.append(assistant_msg)
-
-                for tc in tool_calls_acc:
-                    fn = tc.get("function", {})
-                    tool_name = fn.get("name", "")
-                    raw_args = fn.get("arguments", "{}")
-                    tc_id = tc.get("id", "")
-
-                    if isinstance(raw_args, str):
-                        try:
-                            parsed_args = json.loads(raw_args) if raw_args else {}
-                        except json.JSONDecodeError:
-                            parsed_args = {}
-                    else:
-                        parsed_args = raw_args
-
-                    parsed_args["_workspace_id"] = workspace_id
-                    if self._current_task_context:
-                        parsed_args.setdefault("_context", self._current_task_context)
-
-                    logger.info(
-                        "Tool call [%s] %s(%s)",
-                        _enum_val(self.agent_type), tool_name, list(parsed_args.keys()),
-                    )
-
-                    try:
-                        await self.ws.publish_log(
-                            workspace_id, _enum_val(self.agent_type),
-                            f"Calling tool: {tool_name}",
-                            level="info",
-                        )
-                    except Exception:
-                        logger.debug("Failed to publish tool log for %s", tool_name, exc_info=True)
-
-                    tool_result = await self.tool_registry.execute(tool_name, parsed_args)
-                    is_error = any(
-                        marker in tool_result.lower()
-                        for marker in ("error:", "failed:", "exception:", "traceback")
-                    )
-                    self._tool_results.append({
-                        "tool": tool_name, "ok": not is_error, "result": tool_result[:500],
-                    })
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc_id,
-                        "content": tool_result,
-                    })
+                await self._process_tool_calls(tool_calls_acc, workspace_id, messages)
                 continue
 
-            # No tool calls – final text response already yielded above.
             joined = "".join(content_parts)
             remaining = joined[len(full_reply):]
             if remaining:
@@ -582,14 +570,7 @@ class BaseAgent(ABC):
                 yield remaining
             break
 
-        try:
-            await self.memory.add_memory(
-                f"User asked: {user_message}\nAgent replied: {full_reply[:500]}",
-                workspace_id=workspace_id,
-                agent_type=_enum_val(self.agent_type),
-            )
-        except Exception:
-            logger.debug("Failed to persist memory after stream tool loop", exc_info=True)
+        await self._persist_memory(user_message, full_reply, workspace_id)
 
     async def _build_enriched_prompt(
         self,
@@ -791,7 +772,6 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         metadata: str = "{}",
     ) -> dict[str, Any]:
         """Persist an artifact to workspace-svc and auto-index to RAG."""
-        import asyncio as _aio
         result = await self.workspace_svc.create_artifact(
             workspace_id,
             agent_type=_enum_val(self.agent_type),
@@ -802,7 +782,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             metadata=metadata,
         )
         if len(content) > 100:
-            _aio.create_task(self._auto_index_artifact(workspace_id, title, content, artifact_type))
+            await self._auto_index_artifact(workspace_id, title, content, artifact_type)
         return result
 
     async def _auto_index_artifact(
@@ -916,11 +896,4 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
 
     async def close(self) -> None:
         self.stop_heartbeat()
-        await self._registry.close()
-        await self.workspace_svc.close()
-        await self.llm.close()
-        await self.ws.close()
-        await self.session.close()
-        await self.memory.close()
-        await self.rag.close()
-        await self.knowledge.close()
+        await self.clients.close()

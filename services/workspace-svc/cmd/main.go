@@ -83,6 +83,7 @@ func main() {
 	execHandler := handler.NewExecutionHandler(svc, logger)
 	registryHandler := handler.NewRegistryHandler(st, logger)
 	wsGraphHandler := handler.NewWorkspaceGraphHandler(st, logger)
+	extHandler := handler.NewExtensibilityHandler(st, logger)
 
 	// ---- Router ----------------------------------------------------------
 	r := chi.NewRouter()
@@ -235,6 +236,26 @@ func main() {
 		r.Delete("/capabilities/{name}", registryHandler.DeleteCapability)
 
 		r.Post("/manifest", registryHandler.RegisterManifest)
+	})
+
+	// Extensibility: MCP servers, tool configs, skills, user contexts
+	r.Route("/api/ext", func(r chi.Router) {
+		r.Get("/mcp-servers", extHandler.ListMCPServers)
+		r.Post("/mcp-servers", extHandler.CreateMCPServer)
+		r.Get("/mcp-servers/{id}", extHandler.GetMCPServer)
+		r.Put("/mcp-servers/{id}", extHandler.UpdateMCPServer)
+		r.Delete("/mcp-servers/{id}", extHandler.DeleteMCPServer)
+
+		r.Get("/tool-configs", extHandler.ListToolConfigs)
+		r.Post("/tool-configs", extHandler.CreateToolConfig)
+		r.Delete("/tool-configs/{id}", extHandler.DeleteToolConfig)
+
+		r.Get("/skills", extHandler.ListSkills)
+		r.Post("/skills", extHandler.CreateSkill)
+		r.Delete("/skills/{id}", extHandler.DeleteSkill)
+
+		r.Get("/user-context", extHandler.GetUserContext)
+		r.Post("/user-context", extHandler.UpsertUserContext)
 	})
 
 	// GitLab credentials (admin-level, not per-workspace)

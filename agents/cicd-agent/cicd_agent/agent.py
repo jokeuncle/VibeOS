@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import re as _re
-import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
 from typing import Any
 
 from vibeos_agent import (
@@ -16,7 +13,6 @@ from vibeos_agent import (
     AgentType,
     BaseAgent,
     CapabilityContract,
-    Message,
     RichBlock,
     Task,
 )
@@ -62,26 +58,6 @@ and diagrams.\
 """
 
 
-def _extract_json(text: str) -> dict[str, Any]:
-    """Extract a JSON object from LLM output that may contain trailing prose."""
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    m = _re.search(r"\{[\s\S]*\}", text)
-    if m:
-        candidate = m.group()
-        while candidate:
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                last_brace = candidate.rfind("}", 0, len(candidate) - 1)
-                if last_brace == -1:
-                    break
-                candidate = candidate[:last_brace + 1]
-    return {"summary": text, "tasks": []}
-
-
 def _lang_for(infra_type: str) -> str:
     return {
         "container": "dockerfile",
@@ -93,6 +69,7 @@ def _lang_for(infra_type: str) -> str:
 class CicdAgent(BaseAgent):
     agent_type = AgentType.CICD
     system_prompt = SYSTEM_PROMPT
+    chat_prompt = CHAT_PROMPT
     capabilities = [
         CapabilityContract(
             name="cicd",
@@ -142,7 +119,7 @@ class CicdAgent(BaseAgent):
             )
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
-            structured = _extract_json(raw_reply)
+            structured = self._extract_json(raw_reply)
 
             # Save deployment output as artifact
             try:
@@ -249,86 +226,6 @@ class CicdAgent(BaseAgent):
             try:
                 await self.ws.publish_agent_status(
                     task.workspace_id, self.agent_type, AgentStatus.IDLE
-                )
-            except Exception:
-                pass
-
-    async def chat(
-        self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
-    ) -> AsyncIterator[Message]:
-        user_msg = Message(
-            id=uuid.uuid4().hex,
-            workspace_id=workspace_id,
-            agent_type=self.agent_type,
-            role="user",
-            content=message,
-            timestamp=datetime.now(timezone.utc),
-        )
-        await self.session.append(workspace_id, self.agent_type, user_msg)
-
-        try:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.RUNNING
-            )
-
-            reply_text = await self._call_llm(message, workspace_id=workspace_id)
-
-            reply_msg = self._make_message(workspace_id, reply_text)
-            await self.session.append(workspace_id, self.agent_type, reply_msg)
-
-            yield reply_msg
-        except Exception:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat failed"
-            )
-            raise
-        finally:
-            try:
-                await self.ws.publish_agent_status(
-                    workspace_id, self.agent_type, AgentStatus.IDLE
-                )
-            except Exception:
-                pass
-
-    async def chat_stream(
-        self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
-    ) -> AsyncIterator[str]:
-        """Stream chat response token-by-token."""
-        user_msg = Message(
-            id=uuid.uuid4().hex,
-            workspace_id=workspace_id,
-            agent_type=self.agent_type,
-            role="user",
-            content=message,
-            timestamp=datetime.now(timezone.utc),
-        )
-        await self.session.append(workspace_id, self.agent_type, user_msg)
-
-        try:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.RUNNING
-            )
-
-            full_reply = ""
-            async for delta in self._call_llm_stream(
-                message,
-                workspace_id=workspace_id,
-                system_prompt_override=CHAT_PROMPT,
-            ):
-                full_reply += delta
-                yield delta
-
-            reply_msg = self._make_message(workspace_id, full_reply)
-            await self.session.append(workspace_id, self.agent_type, reply_msg)
-        except Exception:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat stream failed"
-            )
-            raise
-        finally:
-            try:
-                await self.ws.publish_agent_status(
-                    workspace_id, self.agent_type, AgentStatus.IDLE
                 )
             except Exception:
                 pass

@@ -4,7 +4,25 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
+
+
+@dataclass
+class ToolResult:
+    """Structured result from a tool execution."""
+
+    output: str
+    ok: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @staticmethod
+    def success(output: str, **meta: Any) -> ToolResult:
+        return ToolResult(output=output, ok=True, metadata=meta)
+
+    @staticmethod
+    def error(output: str, **meta: Any) -> ToolResult:
+        return ToolResult(output=output, ok=False, metadata=meta)
 
 
 class BaseTool(ABC):

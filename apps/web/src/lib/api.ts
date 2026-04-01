@@ -959,4 +959,121 @@ export const registryApi = {
     ).then(unwrap),
 }
 
+// ---------------------------------------------------------------------------
+// Extensibility API (MCP servers, tool configs, skills, user context)
+// ---------------------------------------------------------------------------
+
+export interface MCPServerEntry {
+  id: string
+  workspaceId?: string
+  name: string
+  transport: 'stdio' | 'sse' | 'streamable-http'
+  config: Record<string, unknown>
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ToolConfigEntry {
+  id: string
+  workspaceId?: string
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+  implementation: Record<string, unknown>
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SkillEntry {
+  id: string
+  workspaceId?: string
+  name: string
+  description: string
+  config: Record<string, unknown>
+  version: string
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UserContextEntry {
+  id: string
+  userId: string
+  workspaceId?: string
+  customInstructions: string
+  preferences: Record<string, unknown>
+  activeSkills: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export const extApi = {
+  listMCPServers: (workspaceId?: string) =>
+    request<{ data: MCPServerEntry[] }>(
+      `/api/ext/mcp-servers${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
+    ).then(unwrap),
+
+  createMCPServer: (body: Partial<MCPServerEntry> & { name: string; transport: string }) =>
+    request<{ data: MCPServerEntry }>('/api/ext/mcp-servers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  updateMCPServer: (id: string, body: Partial<MCPServerEntry>) =>
+    request<{ data: MCPServerEntry }>(`/api/ext/mcp-servers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  deleteMCPServer: (id: string) =>
+    request<{ data: string }>(`/api/ext/mcp-servers/${id}`, { method: 'DELETE' }),
+
+  listToolConfigs: (workspaceId?: string) =>
+    request<{ data: ToolConfigEntry[] }>(
+      `/api/ext/tool-configs${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
+    ).then(unwrap),
+
+  createToolConfig: (body: Partial<ToolConfigEntry> & { name: string }) =>
+    request<{ data: ToolConfigEntry }>('/api/ext/tool-configs', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  deleteToolConfig: (id: string) =>
+    request<{ data: string }>(`/api/ext/tool-configs/${id}`, { method: 'DELETE' }),
+
+  listSkills: (workspaceId?: string) =>
+    request<{ data: SkillEntry[] }>(
+      `/api/ext/skills${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
+    ).then(unwrap),
+
+  createSkill: (body: Partial<SkillEntry> & { name: string; config: Record<string, unknown> }) =>
+    request<{ data: SkillEntry }>('/api/ext/skills', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+
+  deleteSkill: (id: string) =>
+    request<{ data: string }>(`/api/ext/skills/${id}`, { method: 'DELETE' }),
+
+  getUserContext: (userId: string, workspaceId?: string) =>
+    request<{ data: UserContextEntry }>(
+      `/api/ext/user-context?userId=${userId}${workspaceId ? `&workspaceId=${workspaceId}` : ''}`,
+    ).then(unwrap),
+
+  upsertUserContext: (body: {
+    userId: string
+    workspaceId?: string
+    customInstructions?: string
+    preferences?: Record<string, unknown>
+    activeSkills?: string[]
+  }) =>
+    request<{ data: UserContextEntry }>('/api/ext/user-context', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(unwrap),
+}
+
 export { mapNLPResultToMessage, mapAgentChatToMessage }

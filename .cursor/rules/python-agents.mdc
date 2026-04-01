@@ -14,15 +14,17 @@ Every domain agent subclasses `BaseAgent` from `vibeos_agent.protocol`:
 class MyAgent(BaseAgent):
     agent_type = AgentType.MY_DOMAIN
     system_prompt = SYSTEM_PROMPT       # module-level constant
-    tools = TOOLS                       # OpenAI function-calling schema list
+    chat_prompt = CHAT_PROMPT           # used by default chat_stream()
 
     def __init__(self) -> None:
         super().__init__()
         self.tool_registry.register_many(create_my_tools())
 ```
 
-- `system_prompt` and `tools` are class-level attributes
-- Tool schemas in `tools` list must match names in `tool_registry` exactly
+- `system_prompt` and `chat_prompt` are class-level attributes
+- `ToolRegistry` is the single source of truth for tool schemas — do NOT add a class-level `tools` list
+- `BaseAgent` provides default `chat()` and `chat_stream()` — override only if needed
+- `BaseAgent._extract_json()` is available as a static method for parsing LLM JSON output
 - `BaseAgent.__init__` provides shared clients: `self.workspace_svc`, `self.llm`, `self.ws`, `self.session`, `self.memory`, `self.rag`, `self.knowledge`
 
 ## Tool Pattern

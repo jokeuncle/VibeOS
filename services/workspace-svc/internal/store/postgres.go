@@ -158,6 +158,24 @@ type Store interface {
 	UpdateWorkspaceGraph(ctx context.Context, id string, req models.UpdateWorkspaceGraphReq) (*models.WorkspaceGraph, error)
 	DeleteWorkspaceGraph(ctx context.Context, id string) error
 	ActivateWorkspaceGraph(ctx context.Context, workspaceID, graphID string) error
+
+	// Extensibility: MCP servers, tool configs, skills, user contexts
+	ListMCPServers(ctx context.Context, workspaceID *string) ([]models.MCPServer, error)
+	CreateMCPServer(ctx context.Context, req models.CreateMCPServerReq) (*models.MCPServer, error)
+	GetMCPServer(ctx context.Context, id string) (*models.MCPServer, error)
+	UpdateMCPServer(ctx context.Context, id string, req models.UpdateMCPServerReq) (*models.MCPServer, error)
+	DeleteMCPServer(ctx context.Context, id string) error
+
+	ListToolConfigs(ctx context.Context, workspaceID *string) ([]models.ToolConfig, error)
+	CreateToolConfig(ctx context.Context, req models.CreateToolConfigReq) (*models.ToolConfig, error)
+	DeleteToolConfig(ctx context.Context, id string) error
+
+	ListSkills(ctx context.Context, workspaceID *string) ([]models.Skill, error)
+	CreateSkill(ctx context.Context, req models.CreateSkillReq) (*models.Skill, error)
+	DeleteSkill(ctx context.Context, id string) error
+
+	GetUserContext(ctx context.Context, userID string, workspaceID *string) (*models.UserContext, error)
+	UpsertUserContext(ctx context.Context, req models.UpsertUserContextReq) (*models.UserContext, error)
 }
 
 type PostgresStore struct {

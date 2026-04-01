@@ -39,10 +39,12 @@ from .registry import (
     TaskTemplateDef,
     load_manifest_from_yaml,
 )
+from .app import create_agent_app
+from .container import ClientContainer
 from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
 from .session import SessionManager
 from .sse import sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
-from .tools import BaseTool, ToolRegistry
+from .tools import BaseTool, StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider, ToolRegistry
 
 __all__ = [
     "Activity",
@@ -58,6 +60,7 @@ __all__ = [
     "BaseTool",
     "CapabilityContract",
     "CapabilityDef",
+    "ClientContainer",
     "Config",
     "GraphExecutor",
     "HAS_LANGGRAPH",
@@ -79,7 +82,12 @@ __all__ = [
     "SessionManager",
     "Task",
     "TaskTemplateDef",
+    "ToolDescriptor",
+    "ToolManager",
+    "ToolProvider",
     "ToolRegistry",
+    "StaticToolProvider",
+    "create_agent_app",
     "load_manifest_from_yaml",
     "WSGatewayClient",
     "Workspace",

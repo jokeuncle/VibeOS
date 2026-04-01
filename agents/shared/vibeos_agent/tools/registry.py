@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from .base import BaseTool
+from .base import BaseTool, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +38,27 @@ class ToolRegistry:
     def has_tools(self) -> bool:
         return bool(self._tools)
 
-    async def execute(self, name: str, arguments: str | dict[str, Any]) -> str:
-        """Execute a tool by name with the given arguments string or dict."""
+    async def execute(self, name: str, arguments: str | dict[str, Any]) -> ToolResult:
+        """Execute a tool by name. Returns a structured ``ToolResult``."""
         tool = self._tools.get(name)
         if tool is None:
-            return json.dumps({"error": f"Unknown tool: {name}"})
+            return ToolResult.error(json.dumps({"error": f"Unknown tool: {name}"}))
 
         if isinstance(arguments, str):
             try:
                 arguments = json.loads(arguments) if arguments else {}
             except json.JSONDecodeError:
-                return json.dumps({"error": f"Invalid JSON arguments: {arguments}"})
+                return ToolResult.error(
+                    json.dumps({"error": f"Invalid JSON arguments: {arguments}"})
+                )
 
         try:
             result = await tool.execute(**arguments)
             if len(result) > _MAX_TOOL_OUTPUT:
                 result = result[:_MAX_TOOL_OUTPUT] + "\n...(truncated)"
-            return result
+            return ToolResult.success(result)
         except Exception as exc:
             logger.exception("Tool %s execution failed", name)
-            return json.dumps({"error": f"Tool execution failed: {exc}"})
+            return ToolResult.error(
+                json.dumps({"error": f"Tool execution failed: {exc}"})
+            )
