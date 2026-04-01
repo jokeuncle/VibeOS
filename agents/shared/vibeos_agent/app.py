@@ -11,7 +11,10 @@ Usage (in each agent's ``main.py``)::
 
 from __future__ import annotations
 
+import logging
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI
@@ -29,6 +32,8 @@ from .sse import (
     sse_session_error,
     sse_session_start,
 )
+
+_log = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -60,6 +65,17 @@ def create_agent_app(
         init_telemetry(f"{agent_key}-agent")
         agent = agent_class()
         app.state.agent = agent
+
+        # Auto-discover agent-manifest.yaml next to the agent module
+        _load_agent_manifest(agent)
+
+        try:
+            await agent.register_with_registry()
+            agent.start_heartbeat()
+        except Exception:
+            _log.warning(
+                "Registry registration failed for %s (service may be starting)", agent_key,
+            )
         yield
         await agent.close()
 
@@ -73,6 +89,25 @@ def create_agent_app(
 
     _mount_routes(app, agent_key)
     return app
+
+
+def _load_agent_manifest(agent: Any) -> None:
+    """Discover and load ``agent-manifest.yaml`` from the agent's package directory."""
+    agent_module = type(agent).__module__
+    mod = sys.modules.get(agent_module)
+    if not mod or not hasattr(mod, "__file__") or not mod.__file__:
+        return
+    pkg_dir = Path(mod.__file__).resolve().parent
+    for candidate in (pkg_dir / "agent-manifest.yaml", pkg_dir.parent / "agent-manifest.yaml"):
+        if candidate.is_file():
+            try:
+                from .registry import load_manifest_from_yaml
+                manifest = load_manifest_from_yaml(str(candidate))
+                agent.manifest = manifest
+                _log.info("Loaded manifest from %s", candidate)
+            except Exception:
+                _log.warning("Failed to load manifest from %s", candidate, exc_info=True)
+            return
 
 
 def _mount_routes(app: FastAPI, agent_key: str) -> None:

@@ -235,6 +235,9 @@ templates:
         recursion_limit: 15
 
 capabilities:
+  # PM's own capabilities (only PM-specific ones here;
+  # domain agent capabilities are self-registered by each agent on startup
+  # and seeded by SQL migration 015_registry_seed.sql)
   - name: pm.create_task
     description: "Create tasks within a workspace phase"
     supports_streaming: false

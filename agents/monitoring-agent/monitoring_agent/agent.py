@@ -65,7 +65,11 @@ class MonitoringAgent(SDLCAgent):
 
     capabilities = [
         CapabilityContract(
-            name="monitoring",
+            name="setup",
+            required_context_window=16_000,
+        ),
+        CapabilityContract(
+            name="observability",
             required_context_window=16_000,
         ),
     ]

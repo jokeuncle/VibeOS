@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
     app.state.memory = MemoryClient()
     app.state.registry = RegistryClient()
     app.state.sm = SessionManager(app.state.ws_client, app.state.ws)
-    app.state.graph_executor = GraphExecutor(app.state.registry) if HAS_LANGGRAPH else None
+    app.state.graph_executor = GraphExecutor(app.state.registry, llm=app.state.llm) if HAS_LANGGRAPH else None
     app.state.workflow = WorkflowEngine(
         app.state.dispatcher, app.state.ws_client, app.state.ws, app.state.sm,
         graph_executor=app.state.graph_executor,

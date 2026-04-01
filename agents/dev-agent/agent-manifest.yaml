@@ -1,0 +1,8 @@
+agent:
+  type: development
+  version: "1.0.0"
+
+capabilities:
+  - name: development.code_gen
+    description: "Code generation, implementation plans, and dependency management"
+    supports_streaming: true

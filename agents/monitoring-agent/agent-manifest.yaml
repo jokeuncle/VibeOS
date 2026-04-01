@@ -1,0 +1,11 @@
+agent:
+  type: monitoring
+  version: "1.0.0"
+
+capabilities:
+  - name: monitoring.setup
+    description: "Monitoring plans, alert rules, dashboards, and runbooks"
+    supports_streaming: true
+  - name: monitoring.observability
+    description: "Observability design, SLOs, SLIs, and incident response"
+    supports_streaming: true

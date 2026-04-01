@@ -20,6 +20,7 @@ from vibeos_agent import (
     AgentTask,
     AgentType,
     BaseAgent,
+    CapabilityContract,
     Message,
 )
 
@@ -59,6 +60,14 @@ Guidelines:
 class CodingAgent(BaseAgent):
     agent_type = AgentType.CODING
     system_prompt = CODING_SYSTEM_PROMPT
+
+    capabilities = [
+        CapabilityContract(
+            name="execute",
+            required_context_window=32_000,
+            supports_tool_use=True,
+        ),
+    ]
 
     def __init__(self) -> None:
         super().__init__()

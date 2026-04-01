@@ -868,7 +868,15 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
 
     def _build_capability_defs(self) -> list[CapabilityDef]:
         """Derive capability definitions from class-level capabilities + registered tools."""
+        import os
+        from .config import config as _cfg
+
         agent_key = _enum_val(self.agent_type)
+        agent_base_url = os.getenv(
+            "AGENT_BASE_URL",
+            f"http://{agent_key}-agent:{_cfg.port}",
+        )
+        execute_endpoint = f"{agent_base_url}/api/execute"
         defs: list[CapabilityDef] = []
 
         for cap in self.capabilities:
@@ -876,6 +884,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 name=f"{agent_key}.{cap.name}",
                 provider=agent_key,
                 description=f"{cap.name} capability",
+                endpoint=execute_endpoint,
                 source=agent_key,
             ))
 
@@ -887,6 +896,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                     name=f"{agent_key}.{name}",
                     provider=agent_key,
                     description=fn.get("description", ""),
+                    endpoint=execute_endpoint,
                     input_schema=fn.get("parameters", {}),
                     source=agent_key,
                 ))
@@ -894,12 +904,39 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         return defs
 
     async def register_with_registry(self) -> None:
-        """Register this agent's manifest (intents, templates, capabilities) globally."""
+        """Register this agent's manifest (intents, templates, capabilities) globally.
+
+        When a YAML manifest is loaded (``self.manifest``), the auto-built
+        capability defs (with runtime-correct endpoints) are merged in so
+        that the registry always has valid endpoints regardless of what the
+        YAML declared.
+        """
         agent_key = _enum_val(self.agent_type)
-        manifest = self.manifest or AgentManifest(
-            agent_type=agent_key,
-            capabilities=self._build_capability_defs(),
-        )
+        auto_caps = self._build_capability_defs()
+
+        if self.manifest:
+            yaml_cap_names = {c.name for c in self.manifest.capabilities}
+            merged_caps = list(self.manifest.capabilities)
+            for ac in auto_caps:
+                if ac.name in yaml_cap_names:
+                    # Replace YAML entry with auto-built one (has correct endpoint)
+                    merged_caps = [c if c.name != ac.name else ac for c in merged_caps]
+                else:
+                    merged_caps.append(ac)
+            manifest = AgentManifest(
+                agent_type=self.manifest.agent_type or agent_key,
+                version=self.manifest.version,
+                source=self.manifest.source,
+                intents=list(self.manifest.intents),
+                templates=list(self.manifest.templates),
+                capabilities=merged_caps,
+            )
+        else:
+            manifest = AgentManifest(
+                agent_type=agent_key,
+                capabilities=auto_caps,
+            )
+
         try:
             result = await self._registry.register_manifest(manifest)
             logger.info(

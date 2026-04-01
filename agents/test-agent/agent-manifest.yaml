@@ -1,0 +1,8 @@
+agent:
+  type: testing
+  version: "1.0.0"
+
+capabilities:
+  - name: testing.run
+    description: "Test planning, test case generation, and coverage analysis"
+    supports_streaming: true

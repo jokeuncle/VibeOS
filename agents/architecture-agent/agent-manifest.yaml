@@ -1,0 +1,8 @@
+agent:
+  type: architecture
+  version: "1.0.0"
+
+capabilities:
+  - name: architecture.design
+    description: "Architecture design, schema modeling, API design, and ADRs"
+    supports_streaming: true

@@ -73,7 +73,7 @@ class DevelopmentAgent(SDLCAgent):
 
     capabilities = [
         CapabilityContract(
-            name="development",
+            name="code_gen",
             required_context_window=32_000,
             supports_tool_use=True,
         ),

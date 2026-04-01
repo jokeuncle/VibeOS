@@ -67,7 +67,7 @@ class TestingAgent(SDLCAgent):
 
     capabilities = [
         CapabilityContract(
-            name="testing",
+            name="run",
             required_context_window=16_000,
         ),
     ]

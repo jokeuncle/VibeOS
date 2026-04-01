@@ -1,0 +1,8 @@
+agent:
+  type: design
+  version: "1.0.0"
+
+capabilities:
+  - name: design.ui
+    description: "UI/UX design, wireframes, component hierarchies, and style guides"
+    supports_streaming: true

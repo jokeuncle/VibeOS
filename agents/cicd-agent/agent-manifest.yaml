@@ -1,0 +1,8 @@
+agent:
+  type: cicd
+  version: "1.0.0"
+
+capabilities:
+  - name: cicd.pipeline
+    description: "CI/CD pipeline design, deployment strategies, and infrastructure"
+    supports_streaming: true

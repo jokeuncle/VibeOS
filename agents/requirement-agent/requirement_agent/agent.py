@@ -149,7 +149,7 @@ class RequirementAgent(BaseAgent):
 
     capabilities = [
         CapabilityContract(
-            name="requirements",
+            name="analyze",
             required_context_window=16_000,
         ),
     ]

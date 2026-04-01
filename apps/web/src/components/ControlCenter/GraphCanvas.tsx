@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react'
 import type { Node } from '@xyflow/react'
 import { GripVertical } from 'lucide-react'
+import { useT } from '../../i18n'
 import { useGraphStore } from './useGraphStore'
 import type { GraphNodeData } from './useGraphStore'
 import CustomNode from './nodes/CustomNode'
@@ -25,6 +26,7 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
 }
 
 export default function GraphCanvas() {
+  const t = useT()
   const {
     nodes, edges,
     onNodesChange, onEdgesChange, onConnect,
@@ -129,9 +131,11 @@ export default function GraphCanvas() {
               <GripVertical className="w-5 h-5 text-text-tertiary" />
             </div>
             <div>
-              <p className="text-[12px] font-semibold text-text-secondary mb-1">Empty canvas</p>
+              <p className="text-[12px] font-semibold text-text-secondary mb-1">
+                {t('controlCenter.canvasEmpty.title')}
+              </p>
               <p className="text-[11px] text-text-tertiary leading-relaxed">
-                Drag elements from the left panel to start building your workflow graph
+                {t('controlCenter.canvasEmpty.desc')}
               </p>
             </div>
           </div>

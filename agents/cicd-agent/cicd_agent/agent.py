@@ -65,7 +65,7 @@ class CicdAgent(SDLCAgent):
 
     capabilities = [
         CapabilityContract(
-            name="cicd",
+            name="pipeline",
             required_context_window=16_000,
         ),
     ]

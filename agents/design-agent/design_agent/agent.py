@@ -65,7 +65,7 @@ class DesignAgent(SDLCAgent):
 
     capabilities = [
         CapabilityContract(
-            name="design",
+            name="ui",
             required_context_window=16_000,
         ),
     ]

@@ -1,0 +1,8 @@
+agent:
+  type: coding
+  version: "1.0.0"
+
+capabilities:
+  - name: coding.execute
+    description: "Agentic coding with full repo access via OpenHands runtime"
+    supports_streaming: true

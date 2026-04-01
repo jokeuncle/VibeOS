@@ -1,0 +1,8 @@
+agent:
+  type: requirement
+  version: "1.0.0"
+
+capabilities:
+  - name: requirement.analyze
+    description: "Analyze and refine requirements, produce user stories and PRDs"
+    supports_streaming: true

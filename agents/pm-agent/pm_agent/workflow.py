@@ -276,6 +276,56 @@ class WorkflowEngine:
             return await self._fetch_graph_by_id(workspace_id, graph_id)
         return await self._fetch_workspace_graph(workspace_id)
 
+    @staticmethod
+    def _auto_graph_for_tasks(
+        phase_type: str, tasks: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Generate a sequential capability graph from pending tasks.
+
+        Each task becomes a capability node targeting the phase's domain agent.
+        """
+        agent_type = _agent_for_phase(phase_type)
+        agent_key = agent_type.value
+        cap_ref_map: dict[str, str] = {
+            "requirement": "requirement.analyze",
+            "architecture": "architecture.design",
+            "design": "design.ui",
+            "development": "development.code_gen",
+            "testing": "testing.run",
+            "deployment": "cicd.pipeline",
+            "monitoring": "monitoring.setup",
+        }
+        cap_ref = cap_ref_map.get(phase_type, f"{agent_key}.{agent_key}")
+
+        nodes = [
+            {
+                "id": t["id"],
+                "type": "capability",
+                "capability_ref": cap_ref,
+                "config": {
+                    "task_title": t.get("title", "Untitled"),
+                    "task_description": t.get("description", ""),
+                    "timeout": 300,
+                },
+            }
+            for t in tasks
+        ]
+        edges: list[dict[str, str]] = []
+        if nodes:
+            edges.append({"source": "__start__", "target": nodes[0]["id"]})
+            for i in range(len(nodes) - 1):
+                edges.append({"source": nodes[i]["id"], "target": nodes[i + 1]["id"]})
+            edges.append({"source": nodes[-1]["id"], "target": "__end__"})
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "state_schema": {
+                "messages": {"type": "list", "reducer": "append"},
+            },
+            "config": {"checkpointer": "memory", "recursion_limit": 25},
+        }
+
     async def _execute_graph_for_phase(
         self, workspace_id: str, phase_type: str, graph_def: dict[str, Any],
         sid: str, user_message: str = "", preferred_model: str | None = None,
@@ -520,9 +570,50 @@ class WorkflowEngine:
             await self.sm.finish(sid, workspace_id)
             return
 
-        # Default agent dispatch mode
+        # Auto-generate graph from pending tasks when GraphExecutor is available
         tasks = await self.ws_client.get_tasks_by_phase(workspace_id, phase_id)
         pending = [t for t in tasks if t.get("status") != "completed"]
+
+        if pending and self.graph_executor and HAS_LANGGRAPH:
+            auto_graph = self._auto_graph_for_tasks(phase_type, pending)
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"Auto-generated graph for phase {phase_type} ({len(pending)} tasks)",
+            )
+            try:
+                await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
+            except Exception:
+                pass
+            graph_tasks = 0
+            graph_errors = 0
+            async for evt in self._execute_graph_for_phase(
+                workspace_id, phase_type, auto_graph, sid, user_message,
+                preferred_model=preferred_model,
+            ):
+                yield evt
+                if "task:complete" in evt:
+                    graph_tasks += 1
+                elif "task:error" in evt:
+                    graph_errors += 1
+            final_status = PhaseStatus.COMPLETED if graph_errors == 0 else PhaseStatus.IN_PROGRESS
+            try:
+                await self.ws_client.update_phase(workspace_id, phase_id, status=final_status)
+            except Exception:
+                pass
+            payload_done = {
+                "phase": phase_type,
+                "tasks_executed": graph_tasks,
+                "tasks_total": graph_tasks + graph_errors,
+                "tasks_failed": graph_errors,
+                "source": "auto_graph",
+            }
+            yield self.sm.ev(sid, "phase", "complete", payload_done)
+            await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_done)
+            yield self.sm.session_complete(sid)
+            await self.sm.finish(sid, workspace_id)
+            return
+
+        # Fallback: direct agent dispatch mode (no graph executor)
         if not pending:
             payload_skip = {"phase": phase_type, "reason": "no pending tasks"}
             yield self.sm.ev(sid, "phase", "skip", payload_skip)

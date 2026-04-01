@@ -120,6 +120,9 @@ const settings = {
   'controlCenter.workspaceGraphs': 'Workspace Graphs',
   'controlCenter.globalTemplates': 'Global Templates',
   'controlCenter.noGraphs': 'No custom graphs yet',
+  'controlCenter.canvasEmpty.title': 'Empty canvas',
+  'controlCenter.canvasEmpty.desc':
+    'Drag elements from the left panel to start building your workflow graph.',
   'controlCenter.publishTemplate': 'Publish as Template',
   'controlCenter.published': 'Published as global template',
 } as const

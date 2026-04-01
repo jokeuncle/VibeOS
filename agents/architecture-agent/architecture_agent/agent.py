@@ -55,7 +55,7 @@ class ArchitectureAgent(SDLCAgent):
 
     capabilities = [
         CapabilityContract(
-            name="architecture",
+            name="design",
             required_context_window=16_000,
             supports_tool_use=True,
         ),

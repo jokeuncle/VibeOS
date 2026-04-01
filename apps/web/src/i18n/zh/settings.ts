@@ -120,6 +120,8 @@ const settings = {
   'controlCenter.workspaceGraphs': '工作空间图',
   'controlCenter.globalTemplates': '全局模板',
   'controlCenter.noGraphs': '暂无自定义图',
+  'controlCenter.canvasEmpty.title': '画布为空',
+  'controlCenter.canvasEmpty.desc': '从左侧要素面板拖入节点，开始编排工作流图。',
   'controlCenter.publishTemplate': '发布为模板',
   'controlCenter.published': '已发布为全局模板',
 }
