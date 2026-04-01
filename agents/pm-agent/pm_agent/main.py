@@ -12,12 +12,16 @@ Business logic is split into:
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging as _logging
 import random
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator
+
+_log = _logging.getLogger(__name__)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +41,9 @@ from vibeos_agent import (
     WorkspaceClient,
     load_manifest_from_yaml,
 )
+from vibeos_agent.mcp_discovery import check_mcp_health
+from vibeos_agent.tools.mcp_provider import MCPToolProvider
+from vibeos_agent.tools.provider import ToolManager
 
 from .context import enrich_context_with_gitlab
 from .dispatch import Dispatcher
@@ -52,6 +59,7 @@ from .stream import yield_text_as_deltas
 from .workflow import WorkflowEngine
 
 
+# 获取NLPAgent的配置
 async def _resolve_nlp_agent_config(
     ws_client: WorkspaceClient, workspace_id: str, agent_type: str,
 ) -> dict[str, Any]:
@@ -66,6 +74,7 @@ async def _resolve_nlp_agent_config(
     return {}
 
 
+# 定义Agent的标签
 AGENT_LABELS: dict[str, dict[str, str]] = {
     "pm": {"zh": "项目管理 Agent", "en": "PM Agent"},
     "requirement": {"zh": "需求 Agent", "en": "Req Agent"},
@@ -77,11 +86,12 @@ AGENT_LABELS: dict[str, dict[str, str]] = {
     "monitoring": {"zh": "监控 Agent", "en": "Mon Agent"},
 }
 
-
+# 定义工作空间的前缀和后缀
 _HOME_WS_PREFIXES_ZH = ("雾屿", "星澜", "云洲", "青谷", "极客", "灵境", "数智", "光年")
 _HOME_WS_SUFFIXES_ZH = ("智研空间", "实验室", "工作台", "创新坊", "工作室", "工场")
 
 
+# 随机生成工作空间标题
 def _random_workspace_title() -> str:
     return f"{random.choice(_HOME_WS_PREFIXES_ZH)}{random.choice(_HOME_WS_SUFFIXES_ZH)}"
 
@@ -92,19 +102,38 @@ def _random_workspace_title() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 初始化LLM网关客户端
     app.state.llm = LLMGatewayClient()
+    # 初始化调度器，负责将任务分发给不同的Agent
     app.state.dispatcher = Dispatcher()
+    # 初始化webSocket网关客户端，负责发布事件到webSocket
     app.state.ws = WSGatewayClient()
+    # 初始化工作空间客户端，负责与工作空间进行交互
     app.state.ws_client = WorkspaceClient()
+    # 初始化记忆客户端，负责存储和检索记忆
     app.state.memory = MemoryClient()
+    # 初始化注册表客户端，负责存储和检索注册表
     app.state.registry = RegistryClient()
+    # 初始化会话管理器，负责管理会话
     app.state.sm = SessionManager(app.state.ws_client, app.state.ws)
-    app.state.graph_executor = GraphExecutor(app.state.registry, llm=app.state.llm) if HAS_LANGGRAPH else None
+    tool_manager = ToolManager()
+    app.state.tool_manager = tool_manager
+
+    if HAS_LANGGRAPH:
+        app.state.graph_executor = GraphExecutor(
+            app.state.registry, llm=app.state.llm, tool_manager=tool_manager,
+        )
+    else:
+        app.state.graph_executor = None
+
     app.state.workflow = WorkflowEngine(
         app.state.dispatcher, app.state.ws_client, app.state.ws, app.state.sm,
         graph_executor=app.state.graph_executor,
         llm=app.state.llm,
+        tool_manager=tool_manager,
+        registry=app.state.registry,
     )
+
     _manifest_path = Path(__file__).resolve().parent.parent / "agent-manifest.yaml"
     if _manifest_path.exists():
         try:
@@ -112,8 +141,27 @@ async def lifespan(app: FastAPI):
             await app.state.registry.register_manifest(manifest)
         except Exception:
             pass
+
     await load_intents_from_registry(app.state.registry)
+
+    async def _mcp_health_loop() -> None:
+        """Periodically probe MCP server health across known workspaces."""
+        while True:
+            await asyncio.sleep(60)
+            for ws_id in list(app.state.workflow._mcp_loaded_workspaces):
+                try:
+                    await check_mcp_health(app.state.ws_client, app.state.registry, ws_id)
+                except Exception:
+                    _log.debug("MCP health loop error for ws=%s", ws_id, exc_info=True)
+
+    health_task = asyncio.create_task(_mcp_health_loop())
+
     yield
+
+    health_task.cancel()
+    for prov in tool_manager._providers:
+        if isinstance(prov, MCPToolProvider):
+            await prov.close()
     await app.state.llm.close()
     await app.state.dispatcher.close()
     await app.state.ws.close()
@@ -709,10 +757,17 @@ async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
     registry: RegistryClient = app.state.registry
     ws_client: WorkspaceClient = app.state.ws_client
     sm: SessionManager = app.state.sm
+    workflow: WorkflowEngine = app.state.workflow
 
     async def event_gen() -> AsyncGenerator[str, None]:
         sid = await sm.create("graph", req.workspace_id or "__graph__", user_message="", intent_type="graph_execute", triggered_by="user")
         yield sm.session_start(sid, "graph", req.workspace_id or "__graph__")
+
+        if req.workspace_id:
+            try:
+                await workflow._ensure_mcp_providers(req.workspace_id)
+            except Exception:
+                pass
 
         if not executor:
             yield sm.session_error(sid, "LangGraph not available")

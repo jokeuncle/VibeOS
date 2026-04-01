@@ -85,7 +85,7 @@ class CodingAgent(BaseAgent):
             timestamp=datetime.now(timezone.utc),
         )
 
-        gitlab_url = ctx.get("gitlab_url", os.getenv("GITLAB_URL", ""))
+        gitlab_url = ctx.get("gitlab_url") or ctx.get("gitlab_primary_url") or os.getenv("GITLAB_URL", "")
         project_path = ctx.get("gitlab_primary_project", "")
         branch = ctx.get("gitlab_branch", "main")
         credential_id = ctx.get("gitlab_credential_id")

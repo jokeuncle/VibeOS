@@ -211,6 +211,7 @@ dev: stop ## Start all core services (infra + backend + frontend, backgrounded)
 	@$(MAKE) run-pm-agent &
 	@$(MAKE) run-dev-agent &
 	@$(MAKE) run-architecture-agent &
+	@$(MAKE) run-coding-agent &
 	@sleep 3
 	@echo ""
 	@echo "Starting frontend..."
@@ -222,7 +223,7 @@ health: ## Check health of all running services
 	@printf "%-22s %s\n" "---------------------" "------"
 	@for svc in \
 		"workspace-svc:8010" "ws-gateway:8020" "llm-gateway:8030" \
-		"pm-agent:8040" "architecture-agent:8041" "dev-agent:8044" \
+		"pm-agent:8040" "architecture-agent:8041" "dev-agent:8044" "coding-agent:8048" \
 		"memory-service:8050" "rag-pipeline:8060" "knowledge-service:8070"; \
 	do \
 		name=$${svc%%:*}; port=$${svc##*:}; \

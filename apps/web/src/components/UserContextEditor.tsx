@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { User, Save, RefreshCw } from 'lucide-react'
-import { extApi, type UserContextEntry } from '../lib/api'
+import { extApi } from '../lib/api'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useT } from '../i18n'
 
 export default function UserContextEditor({ userId }: { userId: string }) {
+  const t = useT()
   const workspaceId = useWorkspaceStore(s => s.activeWorkspaceId) ?? undefined
   const [instructions, setInstructions] = useState('')
   const [prefsText, setPrefsText] = useState('{}')
@@ -44,7 +46,7 @@ export default function UserContextEditor({ userId }: { userId: string }) {
   }
 
   if (loading) {
-    return <div className="text-xs text-text-tertiary py-8 text-center">Loading...</div>
+    return <div className="text-xs text-text-tertiary py-8 text-center">{t('integrations.loading')}</div>
   }
 
   return (
@@ -53,7 +55,7 @@ export default function UserContextEditor({ userId }: { userId: string }) {
         <div className="flex items-center gap-2">
           <User className="w-4 h-4 text-text-secondary" />
           <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-            User Context
+            {t('integrations.userContext.panelTitle')}
           </h3>
         </div>
         <div className="flex gap-2">
@@ -67,26 +69,26 @@ export default function UserContextEditor({ userId }: { userId: string }) {
         <div className="p-4 space-y-4">
           <div>
             <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block mb-1">
-              Custom Instructions
+              {t('integrations.userContext.label.instructions')}
             </label>
             <p className="text-[10px] text-text-tertiary mb-2">
-              Personal instructions injected into every agent conversation (like ChatGPT custom instructions).
+              {t('integrations.userContext.hint.instructions')}
             </p>
             <textarea
               value={instructions}
               onChange={e => setInstructions(e.target.value)}
               rows={5}
-              placeholder="e.g. Always use TypeScript strict mode. Prefer functional components. Write tests for all new functions."
+              placeholder={t('integrations.userContext.placeholder.instructions')}
               className="w-full text-xs rounded-lg bg-surface-2/40 border border-border-subtle px-3 py-2 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/35 resize-none"
             />
           </div>
 
           <div>
             <label className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider block mb-1">
-              Preferences (JSON)
+              {t('integrations.userContext.label.preferencesJson')}
             </label>
             <p className="text-[10px] text-text-tertiary mb-2">
-              Key-value preferences like coding style, frameworks, and conventions.
+              {t('integrations.userContext.hint.preferences')}
             </p>
             <textarea
               value={prefsText}
@@ -99,7 +101,7 @@ export default function UserContextEditor({ userId }: { userId: string }) {
 
         <div className="border-t border-border-subtle px-4 py-3 flex justify-end gap-2 bg-surface-2/20">
           {saved && (
-            <span className="text-[11px] text-green-400 self-center mr-2">Saved!</span>
+            <span className="text-[11px] text-green-400 self-center mr-2">{t('integrations.userContext.saved')}</span>
           )}
           <button
             onClick={save}
@@ -107,7 +109,7 @@ export default function UserContextEditor({ userId }: { userId: string }) {
             className="rounded-md bg-accent px-3 py-1.5 text-[11px] font-medium text-white hover:bg-accent/90 transition-colors disabled:opacity-50 flex items-center gap-1"
           >
             <Save className="w-3 h-3" />
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </div>

@@ -197,17 +197,19 @@ class GraphExecutor:
                 logger.warning("Capability %s not found, returning empty", cap_ref)
                 return {"_last_node": node_def.id, "_error": f"capability {cap_ref} not found"}
 
-            # MCP tool routing: provider == "mcp" means use ToolManager
-            if cap.get("provider") == "mcp" and self._tool_manager:
-                tool_name = cap.get("name", cap_ref)
+            provider = cap.get("provider", "")
+            is_mcp = provider == "mcp" or provider.startswith("mcp:") or cap.get("sourceType") == "mcp"
+            if is_mcp and self._tool_manager:
+                full_name = cap.get("name", cap_ref)
+                parts = full_name.split(".")
+                tool_name = parts[-1] if len(parts) > 1 else full_name
                 try:
-                    result = await self._tool_manager.execute(
-                        tool_name,
-                        {k: v for k, v in state.items() if not k.startswith("_")},
-                    )
+                    expected = set(cap.get("inputSchema", {}).get("properties", {}).keys())
+                    args = {k: v for k, v in state.items() if k in expected} if expected else {}
+                    result = await self._tool_manager.execute(tool_name, args)
                     return {
                         "_last_node": node_def.id,
-                        "_result": result.content if hasattr(result, "content") else str(result),
+                        "_result": result.output if hasattr(result, "output") else str(result),
                     }
                 except Exception as exc:
                     return {"_last_node": node_def.id, "_error": f"MCP tool {tool_name}: {exc}"}

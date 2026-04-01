@@ -145,6 +145,7 @@ type Store interface {
 
 	ListCapabilities(ctx context.Context, enabledOnly bool) ([]models.CapabilityEntry, error)
 	ListCapabilitiesByProvider(ctx context.Context, provider string) ([]models.CapabilityEntry, error)
+	ListCapabilitiesFiltered(ctx context.Context, sourceType, workspaceID string) ([]models.CapabilityEntry, error)
 	FindCapabilityProviders(ctx context.Context, capabilityName string) ([]models.CapabilityEntry, error)
 	UpsertCapability(ctx context.Context, req models.CreateCapabilityReq) (*models.CapabilityEntry, error)
 	UpdateCapabilityHealth(ctx context.Context, name, provider, health string) error

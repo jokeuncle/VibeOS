@@ -39,6 +39,26 @@ class MCPServerConfig(BaseModel):
     enabled: bool = True
     workspace_id: str | None = None
 
+    @classmethod
+    def from_db_row(cls, row: dict[str, Any]) -> "MCPServerConfig":
+        """Construct from a workspace-svc MCP server API response row."""
+        cfg = row.get("config", {})
+        if isinstance(cfg, str):
+            import json as _json
+            cfg = _json.loads(cfg)
+        return cls(
+            id=row.get("id", ""),
+            name=row.get("name", ""),
+            transport=row.get("transport", "stdio"),
+            command=cfg.get("command"),
+            args=cfg.get("args", []),
+            url=cfg.get("url"),
+            env=cfg.get("env", {}),
+            headers=cfg.get("headers", {}),
+            enabled=row.get("enabled", True),
+            workspace_id=row.get("workspaceId") or row.get("workspace_id"),
+        )
+
 
 class MCPToolProvider(ToolProvider):
     """Wraps a single MCP server as a :class:`ToolProvider`.

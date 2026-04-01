@@ -157,7 +157,7 @@ async def handle_bind_workspace_repo(
         }
 
     cred_id, project = chosen
-    pid = str(project.get("id") or "")
+    pid = str(project.get("pathWithNamespace") or project.get("id") or "")
     pname = str(project.get("name") or path_ns.split("/")[-1])
     purl = str(project.get("webUrl") or "")
     if not pid:

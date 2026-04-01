@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ChevronRight, Zap, Box, Cpu, GitFork, Copy, FileStack, GripVertical, UserCheck, MessageSquare, Layers } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronRight, Zap, Box, Cpu, GitFork, Copy, FileStack, GripVertical, UserCheck, MessageSquare, Layers, Wrench, Sparkles } from 'lucide-react'
 import { registryApi } from '../../lib/api'
 import type { RegistryIntent, RegistryCapability, RegistryTaskTemplate } from '../../lib/api'
 import { useGraphStore } from './useGraphStore'
@@ -48,6 +48,8 @@ export default function ElementTree() {
     workspaceGraphs: true,
     intents:         true,
     capabilities:    true,
+    mcpTools:        true,
+    skillCaps:       true,
     nodeTypes:       true,
     globalTemplates: true,
   })
@@ -79,6 +81,26 @@ export default function ElementTree() {
     return translated
   }
 
+  const capsBySource = useMemo(() => {
+    const agent: RegistryCapability[] = []
+    const mcp: RegistryCapability[] = []
+    const skill: RegistryCapability[] = []
+    for (const c of capabilities) {
+      const st = c.sourceType || 'agent'
+      if (st === 'mcp') mcp.push(c)
+      else if (st === 'skill') skill.push(c)
+      else agent.push(c)
+    }
+    return { agent, mcp, skill }
+  }, [capabilities])
+
+  const capToItem = (c: RegistryCapability): DragItem => ({
+    id: `${c.name}::${c.provider}`,
+    name: getCapabilityName(c),
+    meta: c.provider,
+    dragType: 'capability',
+  })
+
   const sections: TreeSection[] = [
     {
       key: 'intents',
@@ -92,8 +114,22 @@ export default function ElementTree() {
       label: t('registry.tab.capabilities'),
       icon: Cpu,
       iconColor: 'text-blue-400',
-      items: capabilities.map((c) => ({ id: `${c.name}::${c.provider}`, name: getCapabilityName(c), meta: c.provider, dragType: 'capability' })),
+      items: capsBySource.agent.map(capToItem),
     },
+    ...(capsBySource.mcp.length > 0 ? [{
+      key: 'mcpTools',
+      label: 'MCP Tools',
+      icon: Wrench,
+      iconColor: 'text-emerald-400',
+      items: capsBySource.mcp.map(capToItem),
+    }] : []),
+    ...(capsBySource.skill.length > 0 ? [{
+      key: 'skillCaps',
+      label: 'Skills',
+      icon: Sparkles,
+      iconColor: 'text-rose-400',
+      items: capsBySource.skill.map(capToItem),
+    }] : []),
     {
       key: 'nodeTypes',
       label: t('controlCenter.nodeType'),

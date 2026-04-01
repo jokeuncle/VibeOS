@@ -18,7 +18,7 @@ type IntegrationStatus = 'connected' | 'disconnected' | 'error'
 
 interface Integration {
   id: string
-  name: string
+  nameKey: TranslationKey
   descKey: TranslationKey
   categoryKey: TranslationKey
   status: IntegrationStatus
@@ -29,79 +29,77 @@ interface Integration {
 const INTEGRATIONS: Integration[] = [
   {
     id: 'gitlab',
-    name: 'GitLab',
+    nameKey: 'integrations.name.gitlab',
     descKey: 'integrations.desc.gitlab',
     categoryKey: 'integrations.category.sourceControl',
     status: 'connected',
-    detail: 'gitlab.com · 2 repos bound',
   },
   {
     id: 'github',
-    name: 'GitHub',
+    nameKey: 'integrations.name.github',
     descKey: 'integrations.desc.github',
     categoryKey: 'integrations.category.sourceControl',
     status: 'disconnected',
   },
   {
     id: 'gitlab-ci',
-    name: 'GitLab CI',
+    nameKey: 'integrations.name.gitlabCi',
     descKey: 'integrations.desc.gitlabCi',
     categoryKey: 'integrations.category.cicd',
     status: 'connected',
-    detail: 'Linked via GitLab integration',
   },
   {
     id: 'github-actions',
-    name: 'GitHub Actions',
+    nameKey: 'integrations.name.githubActions',
     descKey: 'integrations.desc.githubActions',
     categoryKey: 'integrations.category.cicd',
     status: 'disconnected',
   },
   {
     id: 'slack',
-    name: 'Slack',
+    nameKey: 'integrations.name.slack',
     descKey: 'integrations.desc.slack',
     categoryKey: 'integrations.category.notifications',
     status: 'disconnected',
   },
   {
     id: 'webhook',
-    name: 'Webhook',
+    nameKey: 'integrations.name.webhook',
     descKey: 'integrations.desc.webhook',
     categoryKey: 'integrations.category.notifications',
     status: 'disconnected',
   },
   {
     id: 'datadog',
-    name: 'Datadog',
+    nameKey: 'integrations.name.datadog',
     descKey: 'integrations.desc.datadog',
     categoryKey: 'integrations.category.monitoring',
     status: 'disconnected',
   },
   {
     id: 'grafana',
-    name: 'Grafana',
+    nameKey: 'integrations.name.grafana',
     descKey: 'integrations.desc.grafana',
     categoryKey: 'integrations.category.monitoring',
     status: 'disconnected',
   },
   {
     id: 'aws',
-    name: 'AWS',
+    nameKey: 'integrations.name.aws',
     descKey: 'integrations.desc.aws',
     categoryKey: 'integrations.category.cloud',
     status: 'disconnected',
   },
   {
     id: 'gcp',
-    name: 'Google Cloud',
+    nameKey: 'integrations.name.gcp',
     descKey: 'integrations.desc.gcp',
     categoryKey: 'integrations.category.cloud',
     status: 'disconnected',
   },
   {
     id: 'mcp-custom',
-    name: 'Custom MCP Tool',
+    nameKey: 'integrations.name.mcpCustom',
     descKey: 'integrations.desc.mcpCustom',
     categoryKey: 'integrations.category.mcp',
     status: 'disconnected',
@@ -177,7 +175,7 @@ function IntegrationRow({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-[12px] font-semibold text-text-primary">{integration.name}</span>
+          <span className="text-[12px] font-semibold text-text-primary">{t(integration.nameKey)}</span>
           {integration.detail && (
             <span className="text-[10px] font-mono text-text-tertiary">{integration.detail}</span>
           )}
@@ -229,15 +227,17 @@ function ServicesTab() {
   const gitlabRepos = repos.filter(r => r.gitlabUrl)
   const gitlabConnected = gitlabRepos.length > 0
   const gitlabDetail = gitlabConnected
-    ? `${gitlabRepos.length} repo${gitlabRepos.length > 1 ? 's' : ''} bound`
+    ? (gitlabRepos.length === 1
+      ? t('integrations.services.repoBound')
+      : t('integrations.services.reposBound').replace('{count}', String(gitlabRepos.length)))
     : undefined
   const gitlabCiConnected = gitlabRepos.some(r => r.isPrimary)
 
   const derivedIntegrations = useMemo<Integration[]>(() => INTEGRATIONS.map(i => {
     if (i.id === 'gitlab') return { ...i, status: gitlabConnected ? 'connected' : 'disconnected', detail: gitlabDetail }
-    if (i.id === 'gitlab-ci') return { ...i, status: gitlabCiConnected ? 'connected' : 'disconnected', detail: gitlabCiConnected ? 'Linked via GitLab integration' : undefined }
+    if (i.id === 'gitlab-ci') return { ...i, status: gitlabCiConnected ? 'connected' : 'disconnected', detail: gitlabCiConnected ? t('integrations.detail.linkedViaGitlab') : undefined }
     return i
-  }), [gitlabConnected, gitlabDetail, gitlabCiConnected])
+  }), [gitlabConnected, gitlabDetail, gitlabCiConnected, t])
 
   const [integrations, setIntegrations] = useState<Integration[]>(derivedIntegrations)
   useEffect(() => { setIntegrations(derivedIntegrations) }, [derivedIntegrations])
@@ -245,7 +245,7 @@ function ServicesTab() {
   function handleConnect(id: string) {
     if (id === 'gitlab') return
     setIntegrations(prev =>
-      prev.map(i => i.id === id && i.status === 'disconnected' ? { ...i, status: 'connected', detail: 'Just connected' } : i),
+      prev.map(i => i.id === id && i.status === 'disconnected' ? { ...i, status: 'connected', detail: t('integrations.detail.justConnected') } : i),
     )
   }
 
@@ -264,7 +264,7 @@ function ServicesTab() {
             {integrations.filter(i => i.status === 'connected').map(i => (
               <div key={i.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-success/20 bg-success/6 text-[11px] font-medium text-success">
                 <CheckCircle2 className="w-3 h-3" />
-                {i.name}
+                {t(i.nameKey)}
                 {i.detail && <span className="text-[10px] text-success/70">· {i.detail}</span>}
               </div>
             ))}

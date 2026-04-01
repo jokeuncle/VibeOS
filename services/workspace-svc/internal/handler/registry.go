@@ -167,10 +167,14 @@ func (h *RegistryHandler) DeleteTaskTemplate(w http.ResponseWriter, r *http.Requ
 func (h *RegistryHandler) ListCapabilities(w http.ResponseWriter, r *http.Request) {
 	enabledOnly := r.URL.Query().Get("enabled") != "false"
 	provider := r.URL.Query().Get("provider")
+	sourceType := r.URL.Query().Get("source_type")
+	workspaceID := r.URL.Query().Get("workspace_id")
 
 	var entries []models.CapabilityEntry
 	var err error
-	if provider != "" {
+	if sourceType != "" || workspaceID != "" {
+		entries, err = h.store.ListCapabilitiesFiltered(r.Context(), sourceType, workspaceID)
+	} else if provider != "" {
 		entries, err = h.store.ListCapabilitiesByProvider(r.Context(), provider)
 	} else {
 		entries, err = h.store.ListCapabilities(r.Context(), enabledOnly)

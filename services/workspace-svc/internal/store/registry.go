@@ -235,7 +235,9 @@ func (s *PostgresStore) ListCapabilities(ctx context.Context, enabledOnly bool) 
 	             input_schema, output_schema, constraints,
 	             version, health, last_heartbeat,
 	             node_config_schema, supports_streaming,
-	             enabled, source, created_at, updated_at
+	             enabled, source,
+	             source_type, transport, workspace_id, mcp_config, skill_config, tags,
+	             created_at, updated_at
 	      FROM capability_registry`
 	if enabledOnly {
 		q += ` WHERE enabled = true`
@@ -265,7 +267,9 @@ func (s *PostgresStore) ListCapabilitiesByProvider(ctx context.Context, provider
 		        input_schema, output_schema, constraints,
 		        version, health, last_heartbeat,
 		        node_config_schema, supports_streaming,
-		        enabled, source, created_at, updated_at
+		        enabled, source,
+		        source_type, transport, workspace_id, mcp_config, skill_config, tags,
+		        created_at, updated_at
 		 FROM capability_registry
 		 WHERE provider = $1 AND enabled = true
 		 ORDER BY name`, provider)
@@ -291,7 +295,9 @@ func (s *PostgresStore) FindCapabilityProviders(ctx context.Context, capabilityN
 		        input_schema, output_schema, constraints,
 		        version, health, last_heartbeat,
 		        node_config_schema, supports_streaming,
-		        enabled, source, created_at, updated_at
+		        enabled, source,
+		        source_type, transport, workspace_id, mcp_config, skill_config, tags,
+		        created_at, updated_at
 		 FROM capability_registry
 		 WHERE name = $1 AND enabled = true AND health = 'healthy'
 		 ORDER BY priority_score(version) DESC, created_at`, capabilityName)
@@ -302,7 +308,9 @@ func (s *PostgresStore) FindCapabilityProviders(ctx context.Context, capabilityN
 				        input_schema, output_schema, constraints,
 				        version, health, last_heartbeat,
 				        node_config_schema, supports_streaming,
-				        enabled, source, created_at, updated_at
+				        enabled, source,
+				        source_type, transport, workspace_id, mcp_config, skill_config, tags,
+				        created_at, updated_at
 				 FROM capability_registry
 				 WHERE name = $1 AND enabled = true AND health = 'healthy'
 				 ORDER BY created_at`, capabilityName)
@@ -360,14 +368,36 @@ func (s *PostgresStore) UpsertCapability(ctx context.Context, req models.CreateC
 	if source == "" {
 		source = "system"
 	}
+	sourceType := req.SourceType
+	if sourceType == "" {
+		sourceType = "agent"
+	}
+	transport := req.Transport
+	if transport == "" {
+		transport = "http"
+	}
+	mcpConf := req.MCPConfig
+	if mcpConf == nil {
+		mcpConf = []byte("{}")
+	}
+	skillConf := req.SkillConfig
+	if skillConf == nil {
+		skillConf = []byte("{}")
+	}
+	tags := req.Tags
+	if tags == nil {
+		tags = []string{}
+	}
 
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO capability_registry
 		   (name, description, provider, endpoint, input_schema, output_schema,
 		    constraints, version, health, last_heartbeat,
 		    node_config_schema, supports_streaming,
-		    enabled, source, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'healthy',$9,$10,$11,$12,$13,$9,$9)
+		    enabled, source,
+		    source_type, transport, workspace_id, mcp_config, skill_config, tags,
+		    created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'healthy',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$9,$9)
 		 ON CONFLICT (name, provider) DO UPDATE SET
 		   description=EXCLUDED.description, endpoint=EXCLUDED.endpoint,
 		   input_schema=EXCLUDED.input_schema, output_schema=EXCLUDED.output_schema,
@@ -375,14 +405,21 @@ func (s *PostgresStore) UpsertCapability(ctx context.Context, req models.CreateC
 		   health='healthy', last_heartbeat=EXCLUDED.last_heartbeat,
 		   node_config_schema=EXCLUDED.node_config_schema,
 		   supports_streaming=EXCLUDED.supports_streaming,
-		   enabled=EXCLUDED.enabled, source=EXCLUDED.source, updated_at=EXCLUDED.updated_at
+		   enabled=EXCLUDED.enabled, source=EXCLUDED.source,
+		   source_type=EXCLUDED.source_type, transport=EXCLUDED.transport,
+		   workspace_id=EXCLUDED.workspace_id, mcp_config=EXCLUDED.mcp_config,
+		   skill_config=EXCLUDED.skill_config, tags=EXCLUDED.tags,
+		   updated_at=EXCLUDED.updated_at
 		 RETURNING id, name, description, provider, endpoint,
 		           input_schema, output_schema, constraints,
 		           version, health, last_heartbeat,
 		           node_config_schema, supports_streaming,
-		           enabled, source, created_at, updated_at`,
+		           enabled, source,
+		           source_type, transport, workspace_id, mcp_config, skill_config, tags,
+		           created_at, updated_at`,
 		req.Name, req.Description, req.Provider, req.Endpoint,
-		iSchema, oSchema, cons, ver, now, nodeConf, streaming, enabled, source)
+		iSchema, oSchema, cons, ver, now, nodeConf, streaming, enabled, source,
+		sourceType, transport, req.WorkspaceID, mcpConf, skillConf, tags)
 	return scanCapability(row)
 }
 
@@ -440,13 +477,55 @@ func scanTaskTemplate(s rowScanner) (*models.TaskTemplateEntry, error) {
 	return &e, err
 }
 
+func (s *PostgresStore) ListCapabilitiesFiltered(ctx context.Context, sourceType, workspaceID string) ([]models.CapabilityEntry, error) {
+	q := `SELECT id, name, description, provider, endpoint,
+	             input_schema, output_schema, constraints,
+	             version, health, last_heartbeat,
+	             node_config_schema, supports_streaming,
+	             enabled, source,
+	             source_type, transport, workspace_id, mcp_config, skill_config, tags,
+	             created_at, updated_at
+	      FROM capability_registry WHERE enabled = true`
+	args := []any{}
+	argIdx := 1
+	if sourceType != "" {
+		q += fmt.Sprintf(` AND source_type = $%d`, argIdx)
+		args = append(args, sourceType)
+		argIdx++
+	}
+	if workspaceID != "" {
+		q += fmt.Sprintf(` AND (workspace_id = $%d OR workspace_id IS NULL)`, argIdx)
+		args = append(args, workspaceID)
+		argIdx++
+	}
+	q += ` ORDER BY source_type, provider, name`
+
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list capabilities filtered: %w", err)
+	}
+	defer rows.Close()
+
+	var out []models.CapabilityEntry
+	for rows.Next() {
+		e, err := scanCapability(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *e)
+	}
+	return out, rows.Err()
+}
+
 func scanCapability(s rowScanner) (*models.CapabilityEntry, error) {
 	var e models.CapabilityEntry
 	err := s.Scan(&e.ID, &e.Name, &e.Description, &e.Provider, &e.Endpoint,
 		&e.InputSchema, &e.OutputSchema, &e.Constraints,
 		&e.Version, &e.Health, &e.LastHeartbeat,
 		&e.NodeConfigSchema, &e.SupportsStreaming,
-		&e.Enabled, &e.Source, &e.CreatedAt, &e.UpdatedAt)
+		&e.Enabled, &e.Source,
+		&e.SourceType, &e.Transport, &e.WorkspaceID, &e.MCPConfig, &e.SkillConfig, &e.Tags,
+		&e.CreatedAt, &e.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotFound
 	}

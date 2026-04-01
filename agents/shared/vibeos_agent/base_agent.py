@@ -25,6 +25,7 @@ from .models import (
 )
 from .registry import AgentManifest, CapabilityDef, RegistryClient
 from .session import SessionManager
+from .skills import Skill, SkillRegistry
 from .tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -712,6 +713,18 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         self, workspace_id: str, sections: list[str]
     ) -> None:
         """Append MCP servers, skills, and user-context instructions to prompt sections."""
+        active_skills: list[str] = []
+
+        try:
+            user_ctx = await self.workspace_svc.get_user_context("system", workspace_id)
+            if isinstance(user_ctx, dict):
+                instructions = user_ctx.get("customInstructions", "")
+                if instructions:
+                    sections.append(f"## Custom instructions\n{instructions}")
+                active_skills = user_ctx.get("activeSkills", [])
+        except Exception:
+            logger.debug("Failed to load user context for ws=%s", workspace_id, exc_info=True)
+
         try:
             mcp_servers = await self.workspace_svc.list_mcp_servers(workspace_id)
             if mcp_servers:
@@ -721,20 +734,30 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             logger.debug("Failed to load MCP servers for ws=%s", workspace_id, exc_info=True)
 
         try:
-            skills = await self.workspace_svc.list_skills(workspace_id)
-            if skills:
-                lines = [f"- {s.get('name', '?')}: {s.get('description', '')}" for s in skills[:10]]
-                sections.append("## Available skills\n" + "\n".join(lines))
+            db_skills = await self.workspace_svc.list_skills(workspace_id)
+            if db_skills:
+                registry = SkillRegistry()
+                agent_key = _enum_val(self.agent_type)
+                for row in db_skills:
+                    sk = Skill.from_db_config(
+                        row.get("config", {}),
+                        id=row.get("id", ""),
+                        name=row.get("name", ""),
+                        description=row.get("description", ""),
+                        version=row.get("version", "1.0"),
+                        enabled=row.get("enabled", True),
+                    )
+                    if active_skills and sk.name not in active_skills:
+                        sk.enabled = False
+                    registry.register(sk)
+                combined = registry.get_combined_prompt(agent_key)
+                if combined:
+                    sections.append(f"## Active skills\n{combined}")
+                else:
+                    lines = [f"- {s.get('name', '?')}: {s.get('description', '')}" for s in db_skills[:10]]
+                    sections.append("## Available skills\n" + "\n".join(lines))
         except Exception:
             logger.debug("Failed to load skills for ws=%s", workspace_id, exc_info=True)
-
-        try:
-            user_ctx = await self.workspace_svc.get_user_context("system", workspace_id)
-            instructions = user_ctx.get("customInstructions", "") if isinstance(user_ctx, dict) else ""
-            if instructions:
-                sections.append(f"## Custom instructions\n{instructions}")
-        except Exception:
-            logger.debug("Failed to load user context for ws=%s", workspace_id, exc_info=True)
 
     def _make_event(
         self,

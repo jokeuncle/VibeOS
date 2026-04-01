@@ -870,6 +870,12 @@ export interface RegistryCapability {
   supportsStreaming: boolean
   enabled: boolean
   source: string
+  sourceType: string
+  transport: string
+  workspaceId: string | null
+  mcpConfig: Record<string, unknown>
+  skillConfig: Record<string, unknown>
+  tags: string[]
   createdAt: string
   updatedAt: string
 }

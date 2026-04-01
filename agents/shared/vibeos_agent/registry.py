@@ -69,6 +69,12 @@ class CapabilityDef:
     supports_streaming: bool = False
     enabled: bool = True
     source: str = "system"
+    source_type: str = "agent"
+    transport: str = "http"
+    workspace_id: str | None = None
+    mcp_config: dict[str, Any] = field(default_factory=dict)
+    skill_config: dict[str, Any] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -289,6 +295,18 @@ def _capability_to_api(c: CapabilityDef) -> dict[str, Any]:
         d["supportsStreaming"] = c.supports_streaming
     d["enabled"] = c.enabled
     d["source"] = c.source
+    if c.source_type != "agent":
+        d["sourceType"] = c.source_type
+    if c.transport != "http":
+        d["transport"] = c.transport
+    if c.workspace_id:
+        d["workspaceId"] = c.workspace_id
+    if c.mcp_config:
+        d["mcpConfig"] = c.mcp_config
+    if c.skill_config:
+        d["skillConfig"] = c.skill_config
+    if c.tags:
+        d["tags"] = c.tags
     return d
 
 

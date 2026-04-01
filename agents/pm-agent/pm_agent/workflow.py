@@ -28,10 +28,14 @@ from vibeos_agent import (
     HAS_LANGGRAPH,
     LLMGatewayClient,
     PhaseStatus,
+    RegistryClient,
     WSGatewayClient,
     WorkspaceClient,
     config,
 )
+from vibeos_agent.mcp_discovery import discover_and_register_mcp_tools
+from vibeos_agent.tools.mcp_provider import MCPServerConfig, MCPToolProvider
+from vibeos_agent.tools.provider import ToolManager
 
 from .dispatch import Dispatcher
 from .session import SessionManager
@@ -117,6 +121,8 @@ class WorkflowEngine:
         sm: SessionManager,
         graph_executor: GraphExecutor | None = None,
         llm: LLMGatewayClient | None = None,
+        tool_manager: ToolManager | None = None,
+        registry: RegistryClient | None = None,
     ) -> None:
         self.dispatcher = dispatcher
         self.ws_client = ws_client
@@ -124,10 +130,40 @@ class WorkflowEngine:
         self.sm = sm
         self.graph_executor = graph_executor
         self.llm = llm
+        self.tool_manager = tool_manager
+        self.registry = registry
         self._workspace_locks: dict[str, asyncio.Lock] = {}
         self._active_runs: dict[str, str] = {}
         self._pending_approvals: dict[str, asyncio.Event] = {}
         self._approval_results: dict[str, bool] = {}
+        self._mcp_loaded_workspaces: set[str] = set()
+
+    async def _ensure_mcp_providers(self, workspace_id: str) -> None:
+        """Lazily load MCP tool providers for a workspace into the ToolManager."""
+        if not self.tool_manager or workspace_id in self._mcp_loaded_workspaces:
+            return
+        self._mcp_loaded_workspaces.add(workspace_id)
+        try:
+            servers = await self.ws_client.list_mcp_servers(workspace_id)
+            for srv in servers:
+                try:
+                    cfg = MCPServerConfig.from_db_row(srv)
+                except Exception:
+                    _logger.warning("Invalid MCP config: %s", srv.get("name", "?"), exc_info=True)
+                    continue
+                if cfg.enabled:
+                    provider = MCPToolProvider(cfg)
+                    self.tool_manager.register_provider(provider)
+            await self.tool_manager.refresh_index()
+        except Exception:
+            self._mcp_loaded_workspaces.discard(workspace_id)
+            _logger.warning("Failed to load MCP providers for ws=%s", workspace_id, exc_info=True)
+
+        if self.registry:
+            try:
+                await discover_and_register_mcp_tools(self.ws_client, self.registry, workspace_id)
+            except Exception:
+                _logger.debug("MCP discovery failed for ws=%s", workspace_id, exc_info=True)
 
     async def _resolve_agent_config(
         self, workspace_id: str, agent_type: str,
@@ -351,6 +387,7 @@ class WorkflowEngine:
         if not self.graph_executor:
             yield self.sm.ev(sid, "phase", "skip", {"phase": phase_type, "reason": "GraphExecutor not available"})
             return
+        await self._ensure_mcp_providers(workspace_id)
         input_state = {
             "workspace_id": workspace_id,
             "phase_type": phase_type,

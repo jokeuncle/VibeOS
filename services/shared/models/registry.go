@@ -119,6 +119,12 @@ type CapabilityEntry struct {
 	SupportsStreaming bool           `json:"supportsStreaming" db:"supports_streaming"`
 	Enabled          bool            `json:"enabled" db:"enabled"`
 	Source           string          `json:"source" db:"source"`
+	SourceType       string          `json:"sourceType" db:"source_type"`
+	Transport        string          `json:"transport" db:"transport"`
+	WorkspaceID      *string         `json:"workspaceId,omitempty" db:"workspace_id"`
+	MCPConfig        json.RawMessage `json:"mcpConfig" db:"mcp_config"`
+	SkillConfig      json.RawMessage `json:"skillConfig" db:"skill_config"`
+	Tags             []string        `json:"tags" db:"tags"`
 	CreatedAt        time.Time       `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time       `json:"updatedAt" db:"updated_at"`
 }
@@ -136,6 +142,12 @@ type CreateCapabilityReq struct {
 	SupportsStreaming *bool          `json:"supportsStreaming,omitempty"`
 	Enabled          *bool           `json:"enabled,omitempty"`
 	Source           string          `json:"source,omitempty"`
+	SourceType       string          `json:"sourceType,omitempty"`
+	Transport        string          `json:"transport,omitempty"`
+	WorkspaceID      *string         `json:"workspaceId,omitempty"`
+	MCPConfig        json.RawMessage `json:"mcpConfig,omitempty"`
+	SkillConfig      json.RawMessage `json:"skillConfig,omitempty"`
+	Tags             []string        `json:"tags,omitempty"`
 }
 
 type UpdateCapabilityReq struct {
@@ -150,6 +162,12 @@ type UpdateCapabilityReq struct {
 	SupportsStreaming *bool           `json:"supportsStreaming,omitempty"`
 	Enabled          *bool            `json:"enabled,omitempty"`
 	Source           *string          `json:"source,omitempty"`
+	SourceType       *string          `json:"sourceType,omitempty"`
+	Transport        *string          `json:"transport,omitempty"`
+	WorkspaceID      *string          `json:"workspaceId,omitempty"`
+	MCPConfig        *json.RawMessage `json:"mcpConfig,omitempty"`
+	SkillConfig      *json.RawMessage `json:"skillConfig,omitempty"`
+	Tags             *[]string        `json:"tags,omitempty"`
 }
 
 // ---------------------------------------------------------------------------

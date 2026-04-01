@@ -21,6 +21,7 @@ MIGRATIONS=(
   "014_pipeline_graph_id.sql"
   "015_registry_seed.sql"
   "016_agent_descriptor.sql"
+  "017_unified_capability_registry.sql"
 )
 
 run_psql() {
