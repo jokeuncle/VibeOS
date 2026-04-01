@@ -110,18 +110,18 @@ export default function Dock() {
 
   // Clear StatusBar (h-7) + CommandBar (form + margins); extra offset when NLP context pill or floating assistant is shown
   const anyConversationVisible = conversationVisible.home || conversationVisible.workspace
-  const dockBottom = anyConversationVisible
-    ? 'bottom-[280px]'
-    : activeCtx
-      ? 'bottom-[148px]'
-      : 'bottom-[104px]'
+  const dockBottomPx = anyConversationVisible ? 280 : activeCtx ? 148 : 104
 
   return (
     <motion.div
-      initial={{ y: 20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.5, duration: 0.4 }}
-      className={`fixed right-4 z-50 flex flex-col items-end gap-1.5 ${dockBottom}`}
+      initial={{ y: 20, opacity: 0, bottom: dockBottomPx }}
+      animate={{ y: 0, opacity: 1, bottom: dockBottomPx }}
+      transition={{
+        y: { delay: 0.5, duration: 0.4 },
+        opacity: { delay: 0.5, duration: 0.4 },
+        bottom: { duration: 0.32, ease: [0.4, 0, 0.2, 1] },
+      }}
+      className="fixed right-4 z-50 flex flex-col items-end gap-1.5"
     >
       <AnimatePresence mode="wait">
         {dockVisible ? (
