@@ -184,7 +184,7 @@ run-web: ## Run frontend dev server (:3000)
 # Convenience
 # ---------------------------------------------------------------------------
 
-SERVICE_PORTS := 8010 8020 8030 8040 8041 8044 8050 8060 8070 3000
+SERVICE_PORTS := 8010 8020 8030 8040 8041 8044 8048 8050 8060 8070 3000
 
 .PHONY: stop
 stop: ## Stop all dev services (by port)
