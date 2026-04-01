@@ -955,17 +955,17 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         try:
             db_skills = await self.workspace_svc.list_skills(workspace_id)
             if db_skills:
-                skill_provider = SkillToolProvider(
-                    [Skill.from_db_config(
+                registry = SkillRegistry()
+                for s in db_skills:
+                    registry.register(Skill.from_db_config(
                         s.get("config", {}),
                         id=s.get("id", ""),
                         name=s.get("name", ""),
                         description=s.get("description", ""),
                         version=s.get("version", "1.0"),
                         enabled=s.get("enabled", True),
-                    ) for s in db_skills],
-                    _enum_val(self.agent_type),
-                )
+                    ))
+                skill_provider = SkillToolProvider(registry)
                 skill_provider.provider_key = f"skill:{workspace_id}"
                 self.tool_manager.register_provider(skill_provider)
         except Exception:
