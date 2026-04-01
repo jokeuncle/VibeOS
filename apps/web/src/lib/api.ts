@@ -806,6 +806,18 @@ export const trustApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Approval API (governance gate)
+// ---------------------------------------------------------------------------
+
+export const approvalApi = {
+  resolve: (approvalKey: string, approved: boolean) =>
+    request<{ status: string }>('/api/agents/workflow/approve', {
+      method: 'POST',
+      body: JSON.stringify({ approval_key: approvalKey, approved }),
+    }),
+}
+
+// ---------------------------------------------------------------------------
 // Global Registry API (intents, task templates, capabilities)
 // ---------------------------------------------------------------------------
 

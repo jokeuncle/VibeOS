@@ -26,6 +26,7 @@ from vibeos_agent import (
     AgentType,
     GraphExecutor,
     HAS_LANGGRAPH,
+    LLMGatewayClient,
     PhaseStatus,
     WSGatewayClient,
     WorkspaceClient,
@@ -41,10 +42,20 @@ KNOWLEDGE_SVC_URL = os.getenv("KNOWLEDGE_SVC_URL", config.knowledge_svc_url)
 RAG_SVC_URL = os.getenv("RAG_SVC_URL", config.rag_svc_url)
 MEMORY_SVC_URL = os.getenv("MEMORY_SVC_URL", config.memory_svc_url)
 
-PHASE_ORDER = [
+DEFAULT_PHASE_ORDER = [
     "requirement", "architecture", "design",
     "development", "testing", "deployment", "monitoring",
 ]
+
+PIPELINE_KEY_TO_PHASE: dict[str, str] = {
+    "requirement": "requirement",
+    "architecture": "architecture",
+    "design": "design",
+    "development": "development",
+    "testing": "testing",
+    "cicd": "deployment",
+    "monitoring": "monitoring",
+}
 
 
 def resolve_branch_name(task_title: str, strategy: str, default_branch: str) -> str:
@@ -105,14 +116,113 @@ class WorkflowEngine:
         ws_gw: WSGatewayClient,
         sm: SessionManager,
         graph_executor: GraphExecutor | None = None,
+        llm: LLMGatewayClient | None = None,
     ) -> None:
         self.dispatcher = dispatcher
         self.ws_client = ws_client
         self.ws_gw = ws_gw
         self.sm = sm
         self.graph_executor = graph_executor
+        self.llm = llm
         self._workspace_locks: dict[str, asyncio.Lock] = {}
         self._active_runs: dict[str, str] = {}
+        self._pending_approvals: dict[str, asyncio.Event] = {}
+        self._approval_results: dict[str, bool] = {}
+
+    async def _resolve_agent_config(
+        self, workspace_id: str, agent_type: str,
+    ) -> dict[str, Any]:
+        """Return agent row from workspace (status, preferredModel, etc.)."""
+        try:
+            agents = await self.ws_client.list_agents(workspace_id)
+            for ag in agents:
+                if ag.get("type") == agent_type:
+                    return ag
+        except Exception:
+            _logger.debug("Could not load agent config for %s/%s", workspace_id, agent_type)
+        return {}
+
+    async def _check_governance_gate(
+        self,
+        workspace_id: str,
+        agent_type: AgentType,
+        task: AgentTask,
+        *,
+        sid: str | None = None,
+        timeout: float = 300,
+    ) -> bool:
+        """Check autonomy level; if supervised, wait for human approval.
+
+        Returns True if execution may proceed, False if rejected.
+        """
+        if not self.llm:
+            return True
+        model = task.preferred_model or "default"
+        try:
+            result = await self.llm.check_autonomy(model, agent_type.value)
+            level = result.get("autonomy_level", "autonomous")
+        except Exception:
+            return True
+
+        if level == "autonomous":
+            return True
+
+        approval_key = f"{workspace_id}:{task.task_id}"
+        event = asyncio.Event()
+        self._pending_approvals[approval_key] = event
+
+        payload = {
+            "workspace_id": workspace_id,
+            "task_id": task.task_id,
+            "agent_type": agent_type.value,
+            "autonomy_level": level,
+            "description": task.description,
+            "approval_key": approval_key,
+        }
+        await self.ws_gw.publish({
+            "type": "approval:required",
+            "workspaceId": workspace_id,
+            "payload": payload,
+        })
+        if sid:
+            await self.sm.broadcast(workspace_id, sid, "approval", "required", payload)
+
+        await self.ws_gw.publish_log(
+            workspace_id, "pm",
+            f"Awaiting approval for {agent_type.value}: {task.description} (level={level})",
+            level="warn", task_id=task.task_id,
+        )
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            self._pending_approvals.pop(approval_key, None)
+            self._approval_results.pop(approval_key, None)
+            await self.ws_gw.publish_log(
+                workspace_id, "pm", f"Approval timed out for task {task.task_id}",
+                level="error", task_id=task.task_id,
+            )
+            return False
+
+        self._pending_approvals.pop(approval_key, None)
+        approved = self._approval_results.pop(approval_key, False)
+
+        result_str = "approved" if approved else "rejected"
+        await self.ws_gw.publish({
+            "type": f"approval:{result_str}",
+            "workspaceId": workspace_id,
+            "payload": {"approval_key": approval_key, "task_id": task.task_id},
+        })
+        return approved
+
+    def resolve_approval(self, approval_key: str, approved: bool) -> bool:
+        """Called by the REST endpoint when a human approves/rejects."""
+        event = self._pending_approvals.get(approval_key)
+        if not event:
+            return False
+        self._approval_results[approval_key] = approved
+        event.set()
+        return True
 
     def _get_lock(self, workspace_id: str) -> asyncio.Lock:
         if workspace_id not in self._workspace_locks:
@@ -234,11 +344,13 @@ class WorkflowEngine:
                 "gitlab_credential_id": primary.get("credentialId"),
             }
 
+        agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
         agent_task = AgentTask(
             task_id=task_id, workspace_id=workspace_id,
             intent=f"execute_{phase_type}", description=task_title,
             user_message=user_message or target_task.get("description", ""),
             context={"task_title": task_title, "task_description": target_task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
+            preferred_model=agent_cfg.get("preferredModel"),
         )
 
         try:
@@ -392,12 +504,24 @@ class WorkflowEngine:
                     "gitlab_credential_id": primary.get("credentialId"),
                 }
 
+            agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
             agent_task = AgentTask(
                 task_id=task["id"], workspace_id=workspace_id,
                 intent=f"execute_{phase_type}", description=task_title,
                 user_message=user_message or task.get("description", ""),
                 context={"task_title": task_title, "task_description": task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
+                preferred_model=agent_cfg.get("preferredModel"),
             )
+
+            approved = await self._check_governance_gate(
+                workspace_id, agent_type, agent_task, sid=sid,
+            )
+            if not approved:
+                tasks_failed += 1
+                payload_err = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "error": "Approval rejected or timed out"}
+                yield self.sm.ev(sid, "task", "error", payload_err)
+                await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
+                continue
 
             try:
                 result = await self.dispatcher.dispatch(agent_type, agent_task)
@@ -466,6 +590,98 @@ class WorkflowEngine:
             finally:
                 self._active_runs.pop(workspace_id, None)
 
+    async def _resolve_pipeline_configs(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Fetch pipeline configs from workspace-svc, or return empty list."""
+        try:
+            configs = await self.ws_client.get_pipeline_configs(workspace_id)
+            if isinstance(configs, list):
+                return configs
+        except Exception:
+            _logger.debug("Could not load pipeline config for %s", workspace_id)
+        return []
+
+    async def _resolve_phase_order(self, workspace_id: str) -> list[str]:
+        """Build phase execution list from pipeline config, falling back to defaults."""
+        configs = await self._resolve_pipeline_configs(workspace_id)
+        if configs:
+            phases: list[str] = []
+            for cfg in configs:
+                key = cfg.get("phaseKey", "")
+                if not cfg.get("enabled", True):
+                    continue
+                phase_type = PIPELINE_KEY_TO_PHASE.get(key, key)
+                phases.append(phase_type)
+            if phases:
+                return phases
+        return list(DEFAULT_PHASE_ORDER)
+
+    async def _check_quality_gate(
+        self, workspace_id: str, phase_type: str, sid: str,
+    ) -> bool:
+        """Run post-phase quality gate. Returns True if gate passes or no gate configured."""
+        configs = await self._resolve_pipeline_configs(workspace_id)
+        gate_expr: str | None = None
+        for cfg in configs:
+            key = cfg.get("phaseKey", "")
+            resolved = PIPELINE_KEY_TO_PHASE.get(key, key)
+            if resolved == phase_type:
+                gate_expr = cfg.get("qualityGate")
+                break
+
+        if not gate_expr:
+            return True
+
+        payload = {
+            "phase": phase_type,
+            "gate": gate_expr,
+            "workspace_id": workspace_id,
+        }
+
+        await self.ws_gw.publish_log(
+            workspace_id, "pm",
+            f"Quality gate check for {phase_type}: {gate_expr}",
+            level="info",
+        )
+        await self.ws_gw.publish({
+            "type": "quality_gate:check",
+            "workspaceId": workspace_id,
+            "payload": payload,
+        })
+
+        gate_lower = gate_expr.strip().lower()
+        if gate_lower == "manual":
+            approval_key = f"qg:{workspace_id}:{phase_type}"
+            event = asyncio.Event()
+            self._pending_approvals[approval_key] = event
+            await self.ws_gw.publish({
+                "type": "approval:required",
+                "workspaceId": workspace_id,
+                "payload": {
+                    "workspace_id": workspace_id,
+                    "phase": phase_type,
+                    "approval_key": approval_key,
+                    "agent_type": "pm",
+                    "description": f"Quality gate (manual) for {phase_type}",
+                },
+            })
+            try:
+                await asyncio.wait_for(event.wait(), timeout=600)
+            except asyncio.TimeoutError:
+                self._pending_approvals.pop(approval_key, None)
+                self._approval_results.pop(approval_key, None)
+                return False
+
+            self._pending_approvals.pop(approval_key, None)
+            passed = self._approval_results.pop(approval_key, False)
+            return passed
+
+        await self.ws_gw.publish({
+            "type": "quality_gate:passed",
+            "workspaceId": workspace_id,
+            "payload": {**payload, "result": "auto_pass"},
+        })
+        return True
+
     async def _run_project_inner(self, workspace_id: str, user_message: str = "", *, start_phase: str | None = None) -> AsyncIterator[str]:
         sid = await self.sm.create(
             "workflow_project", workspace_id, user_message=user_message,
@@ -474,17 +690,19 @@ class WorkflowEngine:
         )
         yield self.sm.session_start(sid, "workflow_project", workspace_id)
 
-        payload_start = {"workspace_id": workspace_id, "phases": PHASE_ORDER}
+        phase_order = await self._resolve_phase_order(workspace_id)
+
+        payload_start = {"workspace_id": workspace_id, "phases": phase_order}
         yield self.sm.ev(sid, "project", "start", payload_start)
         await self.sm.broadcast(workspace_id, sid, "project", "start", payload_start)
         await self.ws_gw.publish_agent_status(workspace_id, AgentType.PM, AgentStatus.RUNNING, detail="Running full project lifecycle")
 
         start_idx = 0
-        if start_phase and start_phase in PHASE_ORDER:
-            start_idx = PHASE_ORDER.index(start_phase)
+        if start_phase and start_phase in phase_order:
+            start_idx = phase_order.index(start_phase)
 
         has_error = False
-        for phase_type in PHASE_ORDER[start_idx:]:
+        for phase_type in phase_order[start_idx:]:
             failed_task_id: str | None = None
             async for event_str in self._run_phase_inner(workspace_id, phase_type, user_message):
                 yield event_str
@@ -504,6 +722,14 @@ class WorkflowEngine:
                     break
             if has_error:
                 await self._recover_after_project_error(workspace_id, phase_type, failed_task_id)
+                break
+
+            gate_passed = await self._check_quality_gate(workspace_id, phase_type, sid)
+            if not gate_passed:
+                payload_gate_fail = {"phase": phase_type, "error": "quality gate failed"}
+                yield self.sm.ev(sid, "project", "error", payload_gate_fail)
+                await self.sm.broadcast(workspace_id, sid, "project", "error", payload_gate_fail)
+                has_error = True
                 break
 
         payload_done = {"workspace_id": workspace_id, "success": not has_error}
@@ -620,6 +846,7 @@ class WorkflowEngine:
             if claimed is None:
                 continue
 
+            agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
             agent_task = AgentTask(
                 task_id=task["id"], workspace_id=workspace_id,
                 intent=f"execute_{phase_type}", description=task_title,
@@ -630,6 +857,7 @@ class WorkflowEngine:
                     "requirement_description": req.get("description", ""),
                     "related_artifacts": related_artifacts,
                 },
+                preferred_model=agent_cfg.get("preferredModel"),
             )
 
             try:

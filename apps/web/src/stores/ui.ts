@@ -15,6 +15,7 @@ export interface Notification {
   time: string
   read: boolean
   workspaceId?: string
+  approvalKey?: string
 }
 
 export interface ConfirmDialogState {
@@ -58,10 +59,10 @@ interface UIState {
     | 'requirements'
     | 'pipeline'
     | 'agentTeam'
-    | 'integrations'
+    | 'extensions'
     | 'controlCenter'
     | 'context'
-    | 'traces'
+    | 'execution'
     | 'budget'
     | 'settings'
   setViewMode: (
@@ -70,10 +71,10 @@ interface UIState {
       | 'requirements'
       | 'pipeline'
       | 'agentTeam'
-      | 'integrations'
+      | 'extensions'
       | 'controlCenter'
       | 'context'
-      | 'traces'
+      | 'execution'
       | 'budget'
       | 'settings',
   ) => void

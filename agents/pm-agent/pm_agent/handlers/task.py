@@ -200,6 +200,16 @@ async def handle_execute_task(
             "gitlab_credential_id": primary.get("credentialId"),
         }
 
+    preferred_model: str | None = None
+    try:
+        agents = await ws_client.list_agents(workspace_id)
+        for ag in agents:
+            if ag.get("type") == at.value and ag.get("preferredModel"):
+                preferred_model = ag["preferredModel"]
+                break
+    except Exception:
+        pass
+
     agent_task = AgentTask(
         task_id=target_task["id"],
         workspace_id=workspace_id,
@@ -207,6 +217,7 @@ async def handle_execute_task(
         description=task_title,
         user_message=user_message,
         context={"task_title": task_title, "task_description": target_task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
+        preferred_model=preferred_model,
     )
     result = await dispatcher.dispatch(at, agent_task)
 

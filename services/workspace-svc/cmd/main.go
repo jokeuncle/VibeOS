@@ -215,9 +215,6 @@ func main() {
 	r.Post("/api/messages", chatHandler.SaveGlobalMessage)
 	r.Delete("/api/messages", chatHandler.DeleteGlobalMessages)
 
-	// Trust scores (cross-workspace)
-	r.Get("/api/trust-scores", feedbackHandler.TrustScores)
-
 	// Global registry: intents, task templates, capabilities
 	r.Route("/api/registry", func(r chi.Router) {
 		r.Get("/intents", registryHandler.ListIntents)

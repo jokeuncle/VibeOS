@@ -88,6 +88,7 @@ async def lifespan(app: FastAPI):
     app.state.workflow = WorkflowEngine(
         app.state.dispatcher, app.state.ws_client, app.state.ws, app.state.sm,
         graph_executor=app.state.graph_executor,
+        llm=app.state.llm,
     )
     _manifest_path = Path(__file__).resolve().parent.parent / "agent-manifest.yaml"
     if _manifest_path.exists():
@@ -773,6 +774,7 @@ async def handle_graph_validate(req: GraphValidateRequest) -> dict[str, Any]:
 async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
     memory: MemoryClient = app.state.memory
     ws_client: WorkspaceClient = app.state.ws_client
+    llm: LLMGatewayClient = app.state.llm
     try:
         result = await memory.record_feedback(
             workspace_id=req.workspace_id, agent_type=req.agent_type,
@@ -782,6 +784,16 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
         )
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
+
+    if req.action_type in ("approve", "reject") and req.agent_type:
+        try:
+            await llm.report_trust_outcome(
+                "default", req.agent_type,
+                success=(req.action_type == "approve"),
+            )
+        except Exception:
+            pass
+
     try:
         body: dict[str, Any] = {
             "agentType": req.agent_type,
@@ -797,6 +809,21 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
     except Exception:
         pass
     return {"status": "ok", "result": result}
+
+
+class ApprovalRequest(BaseModel):
+    approval_key: str
+    approved: bool
+
+
+@app.post("/api/workflow/approve")
+async def handle_approval(req: ApprovalRequest) -> dict[str, Any]:
+    """Resolve a pending governance approval."""
+    workflow: WorkflowEngine = app.state.workflow
+    resolved = workflow.resolve_approval(req.approval_key, req.approved)
+    if not resolved:
+        return {"status": "not_found", "message": "No pending approval with that key"}
+    return {"status": "ok", "approved": req.approved}
 
 
 @app.get("/health")

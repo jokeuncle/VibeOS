@@ -415,62 +415,6 @@ func (s *PostgresStore) ListFeedbackSignals(ctx context.Context, workspaceID str
 	return out, nil
 }
 
-func (s *PostgresStore) UpsertTrustScore(ctx context.Context, agentType, actionType string) error {
-	approvalDelta := 0
-	rejectionDelta := 0
-	if actionType == "approve" {
-		approvalDelta = 1
-	} else if actionType == "reject" {
-		rejectionDelta = 1
-	}
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO trust_scores (model, agent_type, total_calls, approvals, rejections, score)
-		 VALUES ('default', $1, 1, $2, $3,
-		   CASE WHEN $2 = 1 THEN 1.0 ELSE 0.0 END)
-		 ON CONFLICT (model, agent_type) DO UPDATE SET
-		   total_calls = trust_scores.total_calls + 1,
-		   approvals = trust_scores.approvals + $2,
-		   rejections = trust_scores.rejections + $3,
-		   score = CASE WHEN (trust_scores.total_calls + 1) > 0
-		     THEN (trust_scores.approvals + $2)::float / (trust_scores.total_calls + 1)::float
-		     ELSE 0.5 END,
-		   updated_at = NOW()`,
-		agentType, approvalDelta, rejectionDelta,
-	)
-	return err
-}
-
-func (s *PostgresStore) GetTrustScores(ctx context.Context, agentType string) ([]models.TrustScore, error) {
-	var query string
-	var args []any
-	if agentType != "" {
-		query = `SELECT id, model, agent_type, total_calls, approvals, rejections, score, updated_at
-		         FROM trust_scores WHERE agent_type = $1 ORDER BY updated_at DESC`
-		args = []any{agentType}
-	} else {
-		query = `SELECT id, model, agent_type, total_calls, approvals, rejections, score, updated_at
-		         FROM trust_scores ORDER BY agent_type, updated_at DESC`
-	}
-	rows, err := s.pool.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []models.TrustScore
-	for rows.Next() {
-		var t models.TrustScore
-		if err := rows.Scan(&t.ID, &t.Model, &t.AgentType, &t.TotalCalls,
-			&t.Approvals, &t.Rejections, &t.Score, &t.UpdatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, t)
-	}
-	if out == nil {
-		out = []models.TrustScore{}
-	}
-	return out, nil
-}
-
 // =========================================================================
 // Budget settings
 // =========================================================================

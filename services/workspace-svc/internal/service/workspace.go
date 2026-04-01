@@ -38,8 +38,8 @@ var defaultPhases = []struct {
 	Description string
 }{
 	{models.PhaseRequirement, "Requirement Analysis", "Gather and analyze project requirements"},
-	{models.PhaseDesign, "UI/UX Design", "Design user interfaces and experience"},
 	{models.PhaseArchitecture, "Architecture", "Define system architecture and technical design"},
+	{models.PhaseDesign, "UI/UX Design", "Design user interfaces and experience"},
 	{models.PhaseDevelopment, "Development", "Implement features and functionality"},
 	{models.PhaseTesting, "Testing & QA", "Test and verify quality assurance"},
 	{models.PhaseDeployment, "Deployment", "Deploy to production environment"},
@@ -52,8 +52,8 @@ var defaultAgents = []struct {
 	Avatar string
 }{
 	{models.AgentRequirement, "Requirements Analyst", "📋"},
-	{models.AgentDesign, "UI/UX Designer", "🎨"},
 	{models.AgentArchitecture, "Solutions Architect", "🏗️"},
+	{models.AgentDesign, "UI/UX Designer", "🎨"},
 	{models.AgentDevelopment, "Developer", "💻"},
 	{models.AgentTesting, "QA Engineer", "🧪"},
 	{models.AgentCICD, "DevOps Engineer", "🚀"},
@@ -431,10 +431,6 @@ func (s *Service) CreateFeedbackSignal(ctx context.Context, wsID string, req mod
 		return nil, fmt.Errorf("create feedback signal: %w", err)
 	}
 
-	if err := s.store.UpsertTrustScore(ctx, req.AgentType, req.ActionType); err != nil {
-		s.log.Error("failed to upsert trust score", "error", err)
-	}
-
 	s.logActivity(ctx, wsID, "feedback_recorded",
 		fmt.Sprintf("%s %s output from %s", req.ActionType, "agent", req.AgentType),
 		nil)
@@ -444,10 +440,6 @@ func (s *Service) CreateFeedbackSignal(ctx context.Context, wsID string, req mod
 
 func (s *Service) ListFeedbackSignals(ctx context.Context, wsID string, limit int) ([]models.FeedbackSignal, error) {
 	return s.store.ListFeedbackSignals(ctx, wsID, limit)
-}
-
-func (s *Service) GetTrustScores(ctx context.Context, agentType string) ([]models.TrustScore, error) {
-	return s.store.GetTrustScores(ctx, agentType)
 }
 
 // ---------------------------------------------------------------------------

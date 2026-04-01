@@ -66,7 +66,8 @@ class SDLCAgent(BaseAgent):
 
             await _log(task.workspace_id, agent_name, "Calling LLM...", task_id=task.task_id)
             raw_reply = await self._call_llm_with_tools(
-                prompt, workspace_id=task.workspace_id, repo_context=repo_context
+                prompt, workspace_id=task.workspace_id, repo_context=repo_context,
+                model=task.preferred_model,
             )
             await _log(task.workspace_id, agent_name, "LLM response received.", level="success", task_id=task.task_id)
 
@@ -149,17 +150,7 @@ class SDLCAgent(BaseAgent):
     async def _report_trust_outcome(self, task: AgentTask, *, success: bool) -> None:
         """Report execution outcome to llm-gateway trust score system."""
         agent_name = _enum_val(self.agent_type)
-        model = "default"
-        try:
-            ws = await self.workspace_svc.get_workspace(task.workspace_id)
-            agents = ws.get("agents", []) if ws else []
-            for ag in agents:
-                if ag.get("type") == agent_name and ag.get("preferredModel"):
-                    model = ag["preferredModel"]
-                    break
-        except Exception:
-            pass
-
+        model = task.preferred_model or "default"
         try:
             await self.llm.report_trust_outcome(model, agent_name, success=success)
         except Exception:

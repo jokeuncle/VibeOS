@@ -1,8 +1,8 @@
 import {
   PanelLeftClose, PanelLeftOpen,
   LayoutDashboard, FileStack,
-  GitBranch, Bot, Plug2, Workflow,
-  Layers, Activity, Gauge,
+  GitBranch, Bot, Puzzle,
+  Layers, Zap, Gauge,
   Settings,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -17,10 +17,10 @@ type ViewMode =
   | 'requirements'
   | 'pipeline'
   | 'agentTeam'
-  | 'integrations'
+  | 'extensions'
   | 'controlCenter'
   | 'context'
-  | 'traces'
+  | 'execution'
   | 'budget'
   | 'settings'
 
@@ -43,19 +43,18 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    groupLabel: 'sidebar.group.os',
+    groupLabel: 'sidebar.group.orchestration',
     items: [
       { key: 'pipeline', icon: GitBranch, label: 'sidebar.pipeline' },
       { key: 'agentTeam', icon: Bot, label: 'sidebar.agentTeam' },
-      { key: 'integrations', icon: Plug2, label: 'sidebar.integrations' },
-      { key: 'controlCenter', icon: Workflow, label: 'sidebar.controlCenter' },
     ],
   },
   {
     groupLabel: 'sidebar.group.intelligence',
     items: [
+      { key: 'execution', icon: Zap, label: 'sidebar.execution' },
       { key: 'context', icon: Layers, label: 'sidebar.context' },
-      { key: 'traces', icon: Activity, label: 'sidebar.traces' },
+      { key: 'extensions', icon: Puzzle, label: 'sidebar.extensions' },
       { key: 'budget', icon: Gauge, label: 'sidebar.budget' },
     ],
   },

@@ -6,7 +6,7 @@ from typing import Any
 
 from vibeos_agent import WorkspaceClient
 
-from .workflow import PHASE_ORDER, resolve_branch_name
+from .workflow import DEFAULT_PHASE_ORDER, resolve_branch_name
 
 
 def phase_type_from_nlp_context(context: dict[str, Any] | None) -> str | None:
@@ -27,7 +27,7 @@ def start_phase_from_nlp_context(context: dict[str, Any] | None) -> str | None:
     raw = context.get("start_phase")
     if isinstance(raw, str) and raw.strip():
         s = raw.strip().lower()
-        if s in PHASE_ORDER:
+        if s in DEFAULT_PHASE_ORDER:
             return s
     return None
 

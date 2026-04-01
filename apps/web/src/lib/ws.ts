@@ -199,6 +199,28 @@ function handleWSEvent(event: Record<string, any>) {
     })
   }
 
+  // Governance approval requests
+  if (eventType === 'approval:required' && event.payload) {
+    const p = event.payload
+    addNotification({
+      title: `Approval required: ${p.agent_type || 'agent'}`,
+      description: p.description || 'A task requires human approval before proceeding',
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+      approvalKey: p.approval_key,
+    })
+  }
+
+  // Quality gate events
+  if (eventType === 'quality_gate:check' && event.payload) {
+    addNotification({
+      title: `Quality gate: ${event.payload.phase || 'unknown'}`,
+      description: `Checking: ${event.payload.gate || 'default'}`,
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+    })
+  }
+
   // Debounced full refresh for structural events
   if (event.workspaceId && event.workspaceId === activeWsId && eventType !== 'agent:status') {
     if (refreshDebounce) clearTimeout(refreshDebounce)

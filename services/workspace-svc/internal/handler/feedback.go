@@ -58,13 +58,3 @@ func (h *FeedbackHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.APIResponse[[]models.FeedbackSignal]{Data: signals})
 }
 
-func (h *FeedbackHandler) TrustScores(w http.ResponseWriter, r *http.Request) {
-	agentType := r.URL.Query().Get("agentType")
-	scores, err := h.svc.GetTrustScores(r.Context(), agentType)
-	if err != nil {
-		h.log.Error("get trust scores failed", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(w, http.StatusOK, models.APIResponse[[]models.TrustScore]{Data: scores})
-}

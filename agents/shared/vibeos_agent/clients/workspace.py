@@ -401,5 +401,65 @@ class WorkspaceClient:
         resp.raise_for_status()
         return resp.json().get("data", {})
 
+    # ------------------------------------------------------------------
+    # Pipeline config
+    # ------------------------------------------------------------------
+
+    async def get_pipeline_configs(
+        self, workspace_id: str
+    ) -> list[dict[str, Any]]:
+        """Fetch pipeline phase configs (enabled, requireApproval, qualityGate)."""
+        resp = await self._http.get(f"/api/workspaces/{workspace_id}/pipeline")
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    # ------------------------------------------------------------------
+    # Agent roster
+    # ------------------------------------------------------------------
+
+    async def list_agents(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Fetch workspace agent rows (type, status, preferredModel)."""
+        ws = await self.get_workspace(workspace_id)
+        if isinstance(ws, dict) and "data" in ws:
+            ws = ws["data"]
+        return ws.get("agents", []) if isinstance(ws, dict) else []
+
+    # ------------------------------------------------------------------
+    # Extensibility (MCP / Skills / User Context)
+    # ------------------------------------------------------------------
+
+    async def list_mcp_servers(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Fetch enabled MCP server configs for a workspace."""
+        resp = await self._http.get(
+            "/api/ext/mcp-servers", params={"workspaceId": workspace_id},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        items = data.get("data", data) if isinstance(data, dict) else data
+        return [s for s in items if s.get("enabled", True)] if isinstance(items, list) else []
+
+    async def list_skills(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Fetch enabled skills for a workspace."""
+        resp = await self._http.get(
+            "/api/ext/skills", params={"workspaceId": workspace_id},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        items = data.get("data", data) if isinstance(data, dict) else data
+        return [s for s in items if s.get("enabled", True)] if isinstance(items, list) else []
+
+    async def get_user_context(
+        self, user_id: str, workspace_id: str | None = None
+    ) -> dict[str, Any]:
+        """Fetch user context (customInstructions, preferences)."""
+        params: dict[str, str] = {"userId": user_id}
+        if workspace_id:
+            params["workspaceId"] = workspace_id
+        resp = await self._http.get("/api/ext/user-context", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", data) if isinstance(data, dict) else data
+
     async def close(self) -> None:
         await self._http.aclose()

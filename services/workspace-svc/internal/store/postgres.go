@@ -37,11 +37,9 @@ type Store interface {
 	ListAgentsByWorkspace(ctx context.Context, workspaceID string) ([]models.Agent, error)
 	UpdateAgent(ctx context.Context, id string, workspaceID string, req models.UpdateAgentReq) (*models.Agent, error)
 
-	// Feedback signals & trust scores
+	// Feedback signals
 	CreateFeedbackSignal(ctx context.Context, signal *models.FeedbackSignal) error
 	ListFeedbackSignals(ctx context.Context, workspaceID string, limit int) ([]models.FeedbackSignal, error)
-	UpsertTrustScore(ctx context.Context, agentType, actionType string) error
-	GetTrustScores(ctx context.Context, agentType string) ([]models.TrustScore, error)
 
 	CreateActivity(ctx context.Context, activity *models.Activity) error
 	ListActivities(ctx context.Context, workspaceID string, page, pageSize int) ([]models.Activity, int64, error)

@@ -26,15 +26,17 @@ type ViewMode =
   | 'requirements'
   | 'pipeline'
   | 'agentTeam'
-  | 'integrations'
+  | 'extensions'
   | 'controlCenter'
   | 'context'
-  | 'traces'
+  | 'execution'
   | 'budget'
   | 'knowledgeBase'
   | 'projectMemory'
   | 'techKnowledge'
   | 'settings'
+  | 'integrations'
+  | 'traces'
 
 const REQ_SUB_VIEWS: { key: 'list' | 'kanban' | 'graph'; icon: typeof FileStack; labelKey: TranslationKey }[] = [
   { key: 'list', icon: FileStack, labelKey: 'reqSubView.list' },
@@ -63,9 +65,9 @@ function ViewContent() {
 
   if (currentMode === 'pipeline') return <WorkspacePipeline />
   if (currentMode === 'agentTeam') return <WorkspaceAgentTeam />
-  if (currentMode === 'integrations') return <WorkspaceIntegrations />
+  if (currentMode === 'extensions' || currentMode === 'integrations') return <WorkspaceIntegrations />
   if (currentMode === 'context') return <WorkspaceContext />
-  if (currentMode === 'traces') return <WorkspaceTraces />
+  if (currentMode === 'execution' || currentMode === 'traces') return <WorkspaceTraces />
   if (currentMode === 'budget') return <WorkspaceBudget />
 
   // Legacy routes kept for backward compat
@@ -100,8 +102,10 @@ export default function WorkspaceView() {
     currentViewMode === 'techKnowledge' ||
     currentViewMode === 'pipeline' ||
     currentViewMode === 'agentTeam' ||
+    currentViewMode === 'extensions' ||
     currentViewMode === 'integrations' ||
     currentViewMode === 'context' ||
+    currentViewMode === 'execution' ||
     currentViewMode === 'traces' ||
     currentViewMode === 'budget'
   const maxW = isControlCenter ? 'max-w-none' : wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'

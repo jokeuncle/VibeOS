@@ -158,6 +158,7 @@ class AgentTask(BaseModel):
     description: str = ""
     user_message: str = ""
     context: dict[str, Any] = Field(default_factory=dict)
+    preferred_model: str | None = None
 
 
 class AgentEvent(BaseModel):

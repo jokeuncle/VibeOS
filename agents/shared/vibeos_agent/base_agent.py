@@ -249,6 +249,7 @@ class BaseAgent(ABC):
         extra_messages: list[dict[str, str]] | None = None,
         enrich_context: bool = True,
         repo_context: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> str:
         enriched_system = self.system_prompt
 
@@ -267,7 +268,7 @@ class BaseAgent(ABC):
             messages.extend(extra_messages)
         messages.append({"role": "user", "content": user_message})
 
-        result = await self.llm.chat(messages)
+        result = await self.llm.chat(messages, model=model)
         reply = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         try:
@@ -435,6 +436,7 @@ class BaseAgent(ABC):
         enrich_context: bool = True,
         max_iterations: int = 5,
         repo_context: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> str:
         """Call LLM with tool-use loop: if the model returns tool_calls, execute
         them and feed results back until a final text response is produced.
@@ -450,6 +452,7 @@ class BaseAgent(ABC):
                 extra_messages=extra_messages,
                 enrich_context=enrich_context,
                 repo_context=repo_context,
+                model=model,
             )
 
         self._tool_results = []
@@ -462,7 +465,7 @@ class BaseAgent(ABC):
         )
 
         for _iteration in range(max_iterations):
-            result = await self.llm.chat(messages, tools=tool_schemas)
+            result = await self.llm.chat(messages, tools=tool_schemas, model=model)
             choice = result.get("choices", [{}])[0]
             msg = choice.get("message", {})
             tool_calls = msg.get("tool_calls")
@@ -636,6 +639,8 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         except Exception:
             logger.warning("Failed to assemble memory context for ws=%s", workspace_id, exc_info=True)
 
+        await self._inject_extensibility_context(workspace_id, sections)
+
         try:
             rag_results = await self.rag.search(
                 user_message, workspace_id=workspace_id, top_k=3
@@ -662,6 +667,34 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             logger.warning("Knowledge search failed for ws=%s", workspace_id, exc_info=True)
 
         return "\n\n".join(sections)
+
+    async def _inject_extensibility_context(
+        self, workspace_id: str, sections: list[str]
+    ) -> None:
+        """Append MCP servers, skills, and user-context instructions to prompt sections."""
+        try:
+            mcp_servers = await self.workspace_svc.list_mcp_servers(workspace_id)
+            if mcp_servers:
+                lines = [f"- {s.get('name', '?')}: {s.get('description', '')}" for s in mcp_servers[:10]]
+                sections.append("## Available MCP servers\n" + "\n".join(lines))
+        except Exception:
+            logger.debug("Failed to load MCP servers for ws=%s", workspace_id, exc_info=True)
+
+        try:
+            skills = await self.workspace_svc.list_skills(workspace_id)
+            if skills:
+                lines = [f"- {s.get('name', '?')}: {s.get('description', '')}" for s in skills[:10]]
+                sections.append("## Available skills\n" + "\n".join(lines))
+        except Exception:
+            logger.debug("Failed to load skills for ws=%s", workspace_id, exc_info=True)
+
+        try:
+            user_ctx = await self.workspace_svc.get_user_context("system", workspace_id)
+            instructions = user_ctx.get("customInstructions", "") if isinstance(user_ctx, dict) else ""
+            if instructions:
+                sections.append(f"## Custom instructions\n{instructions}")
+        except Exception:
+            logger.debug("Failed to load user context for ws=%s", workspace_id, exc_info=True)
 
     def _make_event(
         self,
