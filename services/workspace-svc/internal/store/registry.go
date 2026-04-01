@@ -192,6 +192,12 @@ func (s *PostgresStore) UpsertTaskTemplate(ctx context.Context, req models.Creat
 		   (intent_pattern, context, task_type, required_capabilities, params_mapping,
 		    handler_type, handler_ref, graph_def, state_schema, priority, enabled, source, created_at, updated_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)
+		 ON CONFLICT (intent_pattern, context) DO UPDATE SET
+		   task_type=EXCLUDED.task_type, required_capabilities=EXCLUDED.required_capabilities,
+		   params_mapping=EXCLUDED.params_mapping, handler_type=EXCLUDED.handler_type,
+		   handler_ref=EXCLUDED.handler_ref, graph_def=EXCLUDED.graph_def,
+		   state_schema=EXCLUDED.state_schema, priority=EXCLUDED.priority,
+		   enabled=EXCLUDED.enabled, source=EXCLUDED.source, updated_at=EXCLUDED.updated_at
 		 RETURNING id, intent_pattern, context, task_type, required_capabilities, params_mapping,
 		           handler_type, handler_ref, graph_def, state_schema, priority, enabled, source, created_at, updated_at`,
 		req.IntentPattern, ctxVal, taskType, caps, mapping,

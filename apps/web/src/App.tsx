@@ -158,10 +158,8 @@ export default function App() {
 
                   {/* CommandBar: absolute overlay in pipeline mode, normal flow otherwise */}
                   {isPipeline && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
-                      <div className="pointer-events-auto px-6 pb-3 pt-2 sm:px-10">
-                        <CommandBar />
-                      </div>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-0 z-30 w-full max-w-2xl px-6 pb-2 pt-1 sm:px-10">
+                      <CommandBar />
                     </div>
                   )}
                 </div>

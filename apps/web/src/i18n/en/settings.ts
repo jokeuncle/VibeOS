@@ -125,6 +125,52 @@ const settings = {
     'Drag elements from the left panel to start building your workflow graph.',
   'controlCenter.publishTemplate': 'Publish as Template',
   'controlCenter.published': 'Published as global template',
+
+  // Capability names - PM
+  'capability.pm.create_task': 'Create Task',
+  'capability.pm.create_requirement': 'Create Requirement',
+  'capability.pm.bind_workspace_repo': 'Bind Repository',
+  'capability.pm.query_progress': 'Query Progress',
+  'capability.pm.execute_task': 'Execute Task',
+  'capability.pm.workflow': 'Workflow Execute',
+  'capability.pm.pipeline': 'Pipeline Ops',
+  'capability.pm.create_workspace': 'Create Workspace',
+  // Capability names - Core Agents
+  'capability.llm.chat': 'LLM Chat',
+  'capability.requirement.analyze': 'Requirement Analysis',
+  'capability.architecture.design': 'Architecture Design',
+  'capability.architecture.architecture': 'Architecture',
+  'capability.design.ui': 'UI Design',
+  'capability.development.code_gen': 'Code Generation',
+  'capability.development.development': 'Development',
+  'capability.development.generate_code': 'Generate Code',
+  'capability.testing.run': 'Test Execution',
+  'capability.cicd.pipeline': 'CI/CD Pipeline',
+  'capability.monitoring.setup': 'Monitoring Setup',
+  'capability.monitoring.observability': 'Observability Design',
+  'capability.coding.execute': 'Smart Coding',
+  // Capability names - Agent Delegation
+  'capability.architecture.delegate_to_agent': 'Delegate to Agent',
+  'capability.development.delegate_to_agent': 'Delegate to Agent',
+  // Capability names - Workspace Tools
+  'capability.architecture.workspace_create_artifact': 'Create Artifact',
+  'capability.architecture.workspace_create_task': 'Create Task',
+  'capability.architecture.workspace_query_phases': 'Query Phases',
+  'capability.architecture.workspace_update_task_status': 'Update Task Status',
+  'capability.development.workspace_create_artifact': 'Create Artifact',
+  'capability.development.workspace_create_task': 'Create Task',
+  'capability.development.workspace_query_phases': 'Query Phases',
+  'capability.development.workspace_update_task_status': 'Update Task Status',
+  // Capability names - GitLab Tools
+  'capability.development.gitlab_create_issue': 'GitLab Create Issue',
+  'capability.development.gitlab_create_mr': 'GitLab Create MR',
+  'capability.development.gitlab_list_pipelines': 'GitLab List Pipelines',
+  'capability.development.gitlab_push_file': 'GitLab Push File',
+  // Capability names - Development Tools
+  'capability.development.plan_implementation': 'Plan Implementation',
+  'capability.development.review_code': 'Code Review',
+  // Fallback
+  'capability.default': '{name}',
 } as const
 
 export default settings

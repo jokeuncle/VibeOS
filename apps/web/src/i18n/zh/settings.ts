@@ -124,6 +124,52 @@ const settings = {
   'controlCenter.canvasEmpty.desc': '从左侧要素面板拖入节点，开始编排工作流图。',
   'controlCenter.publishTemplate': '发布为模板',
   'controlCenter.published': '已发布为全局模板',
+
+  // Capability names - PM
+  'capability.pm.create_task': '创建任务',
+  'capability.pm.create_requirement': '创建需求',
+  'capability.pm.bind_workspace_repo': '绑定仓库',
+  'capability.pm.query_progress': '查询进度',
+  'capability.pm.execute_task': '执行任务',
+  'capability.pm.workflow': '工作流执行',
+  'capability.pm.pipeline': '流水线操作',
+  'capability.pm.create_workspace': '创建工作空间',
+  // Capability names - Core Agents
+  'capability.llm.chat': 'LLM 对话',
+  'capability.requirement.analyze': '需求分析',
+  'capability.architecture.design': '架构设计',
+  'capability.architecture.architecture': '架构方案',
+  'capability.design.ui': 'UI 设计',
+  'capability.development.code_gen': '代码生成',
+  'capability.development.development': '代码开发',
+  'capability.development.generate_code': '生成代码',
+  'capability.testing.run': '测试执行',
+  'capability.cicd.pipeline': 'CI/CD 流水线',
+  'capability.monitoring.setup': '监控配置',
+  'capability.monitoring.observability': '可观测性设计',
+  'capability.coding.execute': '智能编码',
+  // Capability names - Agent Delegation
+  'capability.architecture.delegate_to_agent': '委派子任务',
+  'capability.development.delegate_to_agent': '委派子任务',
+  // Capability names - Workspace Tools
+  'capability.architecture.workspace_create_artifact': '创建产出物',
+  'capability.architecture.workspace_create_task': '创建工作项',
+  'capability.architecture.workspace_query_phases': '查询阶段',
+  'capability.architecture.workspace_update_task_status': '更新任务状态',
+  'capability.development.workspace_create_artifact': '创建产出物',
+  'capability.development.workspace_create_task': '创建工作项',
+  'capability.development.workspace_query_phases': '查询阶段',
+  'capability.development.workspace_update_task_status': '更新任务状态',
+  // Capability names - GitLab Tools
+  'capability.development.gitlab_create_issue': 'GitLab 创建 Issue',
+  'capability.development.gitlab_create_mr': 'GitLab 创建 MR',
+  'capability.development.gitlab_list_pipelines': 'GitLab 查询流水线',
+  'capability.development.gitlab_push_file': 'GitLab 推送文件',
+  // Capability names - Development Tools
+  'capability.development.plan_implementation': '规划实现方案',
+  'capability.development.review_code': '代码审查',
+  // Fallback
+  'capability.default': '{name}',
 }
 
 export default settings

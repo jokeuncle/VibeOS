@@ -49,7 +49,7 @@ export default function ElementTree() {
     intents:         true,
     capabilities:    true,
     nodeTypes:       true,
-    globalTemplates: false,
+    globalTemplates: true,
   })
 
   const workspaceId     = useGraphStore((s) => s.workspaceId)
@@ -68,20 +68,31 @@ export default function ElementTree() {
     (tpl) => tpl.handlerType === 'graph' || (tpl.graphDef && Object.keys(tpl.graphDef).length > 0),
   )
 
+  // Helper to get capability display name with i18n
+  const getCapabilityName = (capability: RegistryCapability): string => {
+    const key = `capability.${capability.name}`
+    const translated = t(key as never)
+    // If translation returns the key itself, fallback to the raw name
+    if (translated === key) {
+      return capability.name
+    }
+    return translated
+  }
+
   const sections: TreeSection[] = [
     {
       key: 'intents',
       label: t('registry.tab.intents'),
       icon: Zap,
       iconColor: 'text-amber-400',
-      items: intents.map((i) => ({ id: i.name, name: i.name, meta: i.labelZh || i.labelEn || '', dragType: 'intent' })),
+      items: intents.map((i) => ({ id: i.name, name: i.labelZh || i.labelEn || i.name, meta: i.name, dragType: 'intent' })),
     },
     {
       key: 'capabilities',
       label: t('registry.tab.capabilities'),
       icon: Cpu,
       iconColor: 'text-blue-400',
-      items: capabilities.map((c) => ({ id: `${c.name}::${c.provider}`, name: c.name, meta: c.provider, dragType: 'capability' })),
+      items: capabilities.map((c) => ({ id: `${c.name}::${c.provider}`, name: getCapabilityName(c), meta: c.provider, dragType: 'capability' })),
     },
     {
       key: 'nodeTypes',
@@ -222,18 +233,27 @@ export default function ElementTree() {
             graphTemplates.map((tpl) => (
               <div
                 key={tpl.id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] text-text-secondary hover:bg-surface-3 transition-colors"
+                onClick={() => workspaceId && handleCloneTemplate(tpl)}
+                className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] text-text-secondary hover:bg-surface-3 transition-colors ${
+                  workspaceId ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                }`}
+                title={workspaceId ? 'Click to clone template' : 'Select a workspace first'}
               >
                 <span className="truncate flex-1">{tpl.intentPattern}</span>
-                {workspaceId && (
-                  <button
-                    onClick={() => handleCloneTemplate(tpl)}
-                    className="p-0.5 rounded hover:bg-accent/10 text-text-tertiary hover:text-accent cursor-pointer transition-colors"
-                    title="Clone to workspace"
-                  >
-                    <Copy className="w-3 h-3" />
-                  </button>
-                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (workspaceId) handleCloneTemplate(tpl)
+                  }}
+                  disabled={!workspaceId}
+                  className={`p-0.5 rounded transition-colors ${
+                    workspaceId
+                      ? 'hover:bg-accent/10 text-text-tertiary hover:text-accent cursor-pointer'
+                      : 'text-text-tertiary/30 cursor-not-allowed'
+                  }`}
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
               </div>
             ))
           )}

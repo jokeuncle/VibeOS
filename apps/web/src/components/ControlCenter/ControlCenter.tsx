@@ -57,7 +57,7 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
         {/* 3-panel layout */}
         <div className="flex flex-1 min-h-0">
           {/* Left: Element Tree */}
-          <div className="w-56 shrink-0 border-r border-border-subtle overflow-y-auto bg-surface-1/30">
+          <div className="w-56 shrink-0 border-r border-border-subtle overflow-y-auto bg-surface-1/30 pb-16">
             <ElementTree />
           </div>
 
