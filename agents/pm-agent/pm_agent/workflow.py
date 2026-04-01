@@ -132,7 +132,7 @@ class WorkflowEngine:
     async def _resolve_agent_config(
         self, workspace_id: str, agent_type: str,
     ) -> dict[str, Any]:
-        """Return agent row from workspace (status, preferredModel, etc.)."""
+        """Return agent row from workspace (status, preferredModel, descriptor fields, etc.)."""
         try:
             agents = await self.ws_client.list_agents(workspace_id)
             for ag in agents:
@@ -141,6 +141,24 @@ class WorkflowEngine:
         except Exception:
             _logger.debug("Could not load agent config for %s/%s", workspace_id, agent_type)
         return {}
+
+    @staticmethod
+    def _descriptor_kwargs(agent_cfg: dict[str, Any]) -> dict[str, Any]:
+        """Extract AgentTask descriptor fields from a workspace agent row."""
+        kw: dict[str, Any] = {}
+        if agent_cfg.get("preferredModel"):
+            kw["preferred_model"] = agent_cfg["preferredModel"]
+        if agent_cfg.get("systemPromptTemplate"):
+            kw["system_prompt"] = agent_cfg["systemPromptTemplate"]
+        if agent_cfg.get("type"):
+            kw["agent_type"] = agent_cfg["type"]
+        tools = agent_cfg.get("toolManifest")
+        if tools and isinstance(tools, list) and len(tools) > 0:
+            kw["enabled_tools"] = [t.get("name", t) if isinstance(t, dict) else t for t in tools]
+        caps = agent_cfg.get("capabilities")
+        if caps and isinstance(caps, dict) and caps:
+            kw["capability"] = caps
+        return kw
 
     async def _check_governance_gate(
         self,
@@ -160,7 +178,7 @@ class WorkflowEngine:
         model = task.preferred_model or "default"
         try:
             result = await self.llm.check_autonomy(model, agent_type.value)
-            level = result.get("autonomy_level", "autonomous")
+            level = result.get("autonomy", "autonomous")
         except Exception:
             return True
 
@@ -430,12 +448,13 @@ class WorkflowEngine:
             }
 
         agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
+        desc_kw = self._descriptor_kwargs(agent_cfg)
         agent_task = AgentTask(
             task_id=task_id, workspace_id=workspace_id,
             intent=f"execute_{phase_type}", description=task_title,
             user_message=user_message or target_task.get("description", ""),
             context={"task_title": task_title, "task_description": target_task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
-            preferred_model=agent_cfg.get("preferredModel"),
+            **desc_kw,
         )
 
         try:
@@ -522,14 +541,15 @@ class WorkflowEngine:
         # Resolve agent config + governance gate BEFORE choosing execution mode
         agent_type = _agent_for_phase(phase_type)
         agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
-        preferred_model = agent_cfg.get("preferredModel")
+        desc_kw = self._descriptor_kwargs(agent_cfg)
+        preferred_model = desc_kw.get("preferred_model")
 
         gate_task = AgentTask(
             task_id=f"phase:{phase_type}", workspace_id=workspace_id,
             intent=f"execute_{phase_type}", description=f"Phase: {phase_type}",
             user_message=user_message,
             context={"phase_type": phase_type},
-            preferred_model=preferred_model,
+            **desc_kw,
         )
         approved = await self._check_governance_gate(workspace_id, agent_type, gate_task, sid=sid)
         if not approved:
@@ -660,7 +680,7 @@ class WorkflowEngine:
                 intent=f"execute_{phase_type}", description=task_title,
                 user_message=user_message or task.get("description", ""),
                 context={"task_title": task_title, "task_description": task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
-                preferred_model=preferred_model,
+                **desc_kw,
             )
 
             try:
@@ -988,6 +1008,7 @@ class WorkflowEngine:
                 continue
 
             agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
+            req_desc_kw = self._descriptor_kwargs(agent_cfg)
             agent_task = AgentTask(
                 task_id=task["id"], workspace_id=workspace_id,
                 intent=f"execute_{phase_type}", description=task_title,
@@ -998,7 +1019,7 @@ class WorkflowEngine:
                     "requirement_description": req.get("description", ""),
                     "related_artifacts": related_artifacts,
                 },
-                preferred_model=agent_cfg.get("preferredModel"),
+                **req_desc_kw,
             )
 
             try:

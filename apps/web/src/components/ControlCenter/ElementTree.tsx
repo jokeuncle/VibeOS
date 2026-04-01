@@ -204,7 +204,7 @@ export default function ElementTree() {
                       )}
                       <span className="truncate flex-1">{item.name}</span>
                       {item.meta && (
-                        <span className="text-[9px] text-text-tertiary truncate max-w-[56px] font-mono">{item.meta}</span>
+                        <span className="text-[9px] text-text-tertiary truncate max-w-[7rem] font-mono">{item.meta}</span>
                       )}
                       {/* drag handle hint */}
                       <GripVertical className="w-3 h-3 text-text-tertiary/40 group-hover:text-text-tertiary/70 shrink-0 transition-colors" />

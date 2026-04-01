@@ -61,6 +61,7 @@ class SDLCAgent(BaseAgent):
 
             prompt = self._build_execute_prompt(task)
             self._current_task_context = task.context
+            self._set_current_task(task)
 
             repo_context = await self._resolve_repo_context(task)
 

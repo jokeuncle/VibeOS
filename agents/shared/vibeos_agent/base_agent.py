@@ -73,6 +73,9 @@ class BaseAgent(ABC):
         self._tool_results_var: contextvars.ContextVar[list[dict[str, Any]]] = contextvars.ContextVar(
             "tool_results", default=[],
         )
+        self._current_task_var: contextvars.ContextVar[Any | None] = contextvars.ContextVar(
+            "current_task", default=None,
+        )
 
     # Backward-compatible aliases so existing subclass code keeps working.
     @property
@@ -114,6 +117,19 @@ class BaseAgent(ABC):
     @_current_task_context.setter
     def _current_task_context(self, val: dict[str, Any] | None) -> None:
         self._task_context_var.set(val)
+
+    def _set_current_task(self, task: Any) -> None:
+        self._current_task_var.set(task)
+
+    def _get_current_task(self) -> Any | None:
+        return self._current_task_var.get(None)
+
+    def _effective_system_prompt(self) -> str:
+        """Return the system prompt, preferring a task-level override if set."""
+        task = self._get_current_task()
+        if task and getattr(task, "system_prompt", None):
+            return task.system_prompt
+        return self.system_prompt
 
     @property
     def _tool_results(self) -> list[dict[str, Any]]:
@@ -251,7 +267,7 @@ class BaseAgent(ABC):
         repo_context: dict[str, Any] | None = None,
         model: str | None = None,
     ) -> str:
-        enriched_system = self.system_prompt
+        enriched_system = self._effective_system_prompt()
 
         if enrich_context:
             enriched_system = await self._build_enriched_prompt(
@@ -268,7 +284,14 @@ class BaseAgent(ABC):
             messages.extend(extra_messages)
         messages.append({"role": "user", "content": user_message})
 
-        result = await self.llm.chat(messages, model=model)
+        task = self._get_current_task()
+        llm_kw: dict[str, Any] = {"workspace_id": workspace_id}
+        if task:
+            if getattr(task, "agent_type", None):
+                llm_kw["agent_type"] = task.agent_type
+            if getattr(task, "capability", None):
+                llm_kw["capability"] = task.capability
+        result = await self.llm.chat(messages, model=model, **llm_kw)
         reply = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         try:
@@ -331,15 +354,20 @@ class BaseAgent(ABC):
             logger.debug("Failed to persist memory after _call_llm_stream", exc_info=True)
 
     def _get_tool_schemas(self) -> list[dict[str, Any]] | None:
-        """Return tool schemas from the registry (single source of truth).
+        """Return tool schemas from the registry, filtered by task-level enabled_tools.
 
-        Class-level ``self.tools`` schemas are intentionally excluded: tools
-        without a registered executor cause runtime errors when the LLM invokes
-        them.  All callable tools must be registered in ``self.tool_registry``.
+        When the current task specifies ``enabled_tools``, only tools whose
+        names appear in that list are exposed to the LLM.
         """
-        if self.tool_registry.has_tools:
-            return self.tool_registry.get_schemas()
-        return None
+        if not self.tool_registry.has_tools:
+            return None
+        schemas = self.tool_registry.get_schemas()
+        task = self._get_current_task()
+        enabled = getattr(task, "enabled_tools", None) if task else None
+        if enabled:
+            allowed = set(enabled)
+            schemas = [s for s in schemas if s.get("function", {}).get("name") in allowed]
+        return schemas or None
 
     async def _process_tool_calls(
         self,
@@ -412,7 +440,7 @@ class BaseAgent(ABC):
         repo_context: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Build the initial message list for a tool loop."""
-        enriched_system = self.system_prompt
+        enriched_system = self._effective_system_prompt()
         if enrich_context:
             enriched_system = await self._build_enriched_prompt(
                 workspace_id, user_message, repo_context=repo_context
@@ -465,8 +493,17 @@ class BaseAgent(ABC):
             repo_context=repo_context,
         )
 
+        task = self._get_current_task()
+        llm_kw: dict[str, Any] = {}
+        if task:
+            if getattr(task, "agent_type", None):
+                llm_kw["agent_type"] = task.agent_type
+            if getattr(task, "capability", None):
+                llm_kw["capability"] = task.capability
+        llm_kw["workspace_id"] = workspace_id
+
         for _iteration in range(max_iterations):
-            result = await self.llm.chat(messages, tools=tool_schemas, model=model)
+            result = await self.llm.chat(messages, tools=tool_schemas, model=model, **llm_kw)
             choice = result.get("choices", [{}])[0]
             msg = choice.get("message", {})
             tool_calls = msg.get("tool_calls")
@@ -586,7 +623,7 @@ class BaseAgent(ABC):
         repo_context: dict[str, Any] | None = None,
     ) -> str:
         """Compose a context-aware system prompt from Memory + RAG + Knowledge + Upstream Artifacts."""
-        sections = [self.system_prompt]
+        sections = [self._effective_system_prompt()]
 
         if repo_context and repo_context.get("gitlab_primary_project"):
             primary_project = repo_context["gitlab_primary_project"]
@@ -950,6 +987,36 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             )
         except Exception as exc:
             logger.warning("Failed to register with global registry: %s", exc)
+
+    async def register_descriptor(self) -> None:
+        """Push code-level defaults (system prompt, tools, capabilities) to workspace-svc.
+
+        workspace-svc merges these into every workspace's agent row, preserving
+        any user overrides that are already set.
+        """
+        import json as _json
+        agent_key = _enum_val(self.agent_type)
+        tool_schemas = self.tool_registry.get_schemas() if self.tool_registry.has_tools else []
+        caps: dict[str, Any] = {}
+        for cap in self.capabilities:
+            caps[cap.name] = cap.model_dump(mode="json")
+
+        payload = {
+            "agentType": agent_key,
+            "systemPrompt": self.system_prompt,
+            "tools": _json.loads(_json.dumps(tool_schemas)),
+            "capabilities": caps,
+        }
+        try:
+            resp = await self.workspace_svc._http.post(
+                "/api/agent-manifest", json=payload,
+            )
+            if resp.status_code < 300:
+                logger.info("Registered descriptor for %s", agent_key)
+            else:
+                logger.warning("Descriptor registration returned %s", resp.status_code)
+        except Exception as exc:
+            logger.debug("Descriptor registration failed for %s: %s", agent_key, exc)
 
     async def _heartbeat_loop(self, interval: float = 30.0) -> None:
         """Periodically send heartbeats for all registered capabilities."""

@@ -159,6 +159,10 @@ class AgentTask(BaseModel):
     user_message: str = ""
     context: dict[str, Any] = Field(default_factory=dict)
     preferred_model: str | None = None
+    system_prompt: str | None = None
+    enabled_tools: list[str] | None = None
+    agent_type: str | None = None
+    capability: dict[str, Any] | None = None
 
 
 class AgentEvent(BaseModel):

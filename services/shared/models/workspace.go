@@ -162,15 +162,18 @@ type Task struct {
 }
 
 type Agent struct {
-	ID             string      `json:"id" db:"id"`
-	WorkspaceID    string      `json:"workspaceId" db:"workspace_id"`
-	Type           AgentType   `json:"type" db:"type"`
-	Name           string      `json:"name" db:"name"`
-	Status         AgentStatus `json:"status" db:"status"`
-	PreferredModel *string     `json:"preferredModel,omitempty" db:"preferred_model"`
-	Avatar         string      `json:"avatar" db:"avatar"`
-	CreatedAt      time.Time   `json:"createdAt" db:"created_at"`
-	UpdatedAt      time.Time   `json:"updatedAt" db:"updated_at"`
+	ID                   string          `json:"id" db:"id"`
+	WorkspaceID          string          `json:"workspaceId" db:"workspace_id"`
+	Type                 AgentType       `json:"type" db:"type"`
+	Name                 string          `json:"name" db:"name"`
+	Status               AgentStatus     `json:"status" db:"status"`
+	PreferredModel       *string         `json:"preferredModel,omitempty" db:"preferred_model"`
+	SystemPromptTemplate string          `json:"systemPromptTemplate" db:"system_prompt_template"`
+	ToolManifest         json.RawMessage `json:"toolManifest" db:"tool_manifest"`
+	Capabilities         json.RawMessage `json:"capabilities" db:"capabilities"`
+	Avatar               string          `json:"avatar" db:"avatar"`
+	CreatedAt            time.Time       `json:"createdAt" db:"created_at"`
+	UpdatedAt            time.Time       `json:"updatedAt" db:"updated_at"`
 }
 
 // ---------------------------------------------------------------------------

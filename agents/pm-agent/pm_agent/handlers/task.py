@@ -7,7 +7,7 @@ from typing import Any, TYPE_CHECKING
 from vibeos_agent import AgentTask, AgentType, LLMGatewayClient, WSGatewayClient, WorkspaceClient, Task
 
 from ..context import phase_type_from_nlp_context
-from ..workflow import resolve_branch_name
+from ..workflow import WorkflowEngine, resolve_branch_name
 
 if TYPE_CHECKING:
     from ..dispatch import Dispatcher
@@ -200,12 +200,12 @@ async def handle_execute_task(
             "gitlab_credential_id": primary.get("credentialId"),
         }
 
-    preferred_model: str | None = None
+    agent_cfg: dict[str, Any] = {}
     try:
         agents = await ws_client.list_agents(workspace_id)
         for ag in agents:
-            if ag.get("type") == at.value and ag.get("preferredModel"):
-                preferred_model = ag["preferredModel"]
+            if ag.get("type") == at.value:
+                agent_cfg = ag
                 break
     except Exception:
         pass
@@ -217,7 +217,7 @@ async def handle_execute_task(
         description=task_title,
         user_message=user_message,
         context={"task_title": task_title, "task_description": target_task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
-        preferred_model=preferred_model,
+        **WorkflowEngine._descriptor_kwargs(agent_cfg),
     )
     result = await dispatcher.dispatch(at, agent_task)
 

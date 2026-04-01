@@ -36,6 +36,7 @@ type Store interface {
 
 	ListAgentsByWorkspace(ctx context.Context, workspaceID string) ([]models.Agent, error)
 	UpdateAgent(ctx context.Context, id string, workspaceID string, req models.UpdateAgentReq) (*models.Agent, error)
+	UpsertManifest(ctx context.Context, workspaceID string, req models.UpsertManifestReq) error
 
 	// Feedback signals
 	CreateFeedbackSignal(ctx context.Context, signal *models.FeedbackSignal) error

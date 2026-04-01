@@ -104,6 +104,9 @@ func main() {
 	r.Post("/api/auth/login", authHandler.Login)
 	r.With(mw.RequireAuth).Get("/api/auth/me", authHandler.Me)
 
+	// Agent descriptor registration (global, called by agents at boot)
+	r.Post("/api/agent-manifest", agentHandler.UpsertManifest)
+
 	r.Route("/api/workspaces", func(r chi.Router) {
 		r.Get("/", wsHandler.List)
 		r.Post("/", wsHandler.Create)

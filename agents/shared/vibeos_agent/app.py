@@ -76,6 +76,13 @@ def create_agent_app(
             _log.warning(
                 "Registry registration failed for %s (service may be starting)", agent_key,
             )
+
+        try:
+            await agent.register_descriptor()
+        except Exception:
+            _log.warning(
+                "Descriptor registration failed for %s (workspace-svc may be starting)", agent_key,
+            )
         yield
         await agent.close()
 

@@ -31,7 +31,8 @@ func scanAgent(s rowScanner) (*models.Agent, error) {
 	var a models.Agent
 	var agentType, status string
 	err := s.Scan(&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
-		&a.PreferredModel, &a.Avatar, &a.CreatedAt, &a.UpdatedAt)
+		&a.PreferredModel, &a.SystemPromptTemplate, &a.ToolManifest, &a.Capabilities,
+		&a.Avatar, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +316,9 @@ func (s *PostgresStore) queryPhases(ctx context.Context, wsIDs []string) ([]mode
 
 func (s *PostgresStore) queryAgents(ctx context.Context, wsIDs []string) ([]models.Agent, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, workspace_id, type, name, status, preferred_model, avatar, created_at, updated_at
+		`SELECT id, workspace_id, type, name, status, preferred_model,
+		        system_prompt_template, tool_manifest, capabilities,
+		        avatar, created_at, updated_at
 		 FROM agents WHERE workspace_id = ANY($1) ORDER BY type`, wsIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query agents: %w", err)

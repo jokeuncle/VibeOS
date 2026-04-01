@@ -1,5 +1,7 @@
 package models
 
+import "encoding/json"
+
 // API request/response types
 
 type CreateWorkspaceReq struct {
@@ -156,10 +158,22 @@ type ArchiveWorkspaceReq struct {
 	Status string `json:"status"` // active | archived
 }
 
-// Agent status update
+// Agent config update (control plane fields)
 type UpdateAgentReq struct {
-	Status         *string `json:"status,omitempty"`
-	PreferredModel *string `json:"preferredModel,omitempty"`
+	Status               *string          `json:"status,omitempty"`
+	PreferredModel       *string          `json:"preferredModel,omitempty"`
+	SystemPromptTemplate *string          `json:"systemPromptTemplate,omitempty"`
+	ToolManifest         *json.RawMessage `json:"toolManifest,omitempty"`
+	Capabilities         *json.RawMessage `json:"capabilities,omitempty"`
+}
+
+// UpsertManifestReq is sent by agents at boot to register code-level defaults.
+type UpsertManifestReq struct {
+	AgentType    string          `json:"agentType"`
+	Version      string          `json:"version,omitempty"`
+	SystemPrompt string          `json:"systemPrompt"`
+	Tools        json.RawMessage `json:"tools"`
+	Capabilities json.RawMessage `json:"capabilities"`
 }
 
 // Budget settings update

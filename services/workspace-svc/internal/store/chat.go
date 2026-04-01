@@ -346,14 +346,32 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 		args = append(args, *req.PreferredModel)
 		idx++
 	}
+	if req.SystemPromptTemplate != nil {
+		sets = append(sets, fmt.Sprintf("system_prompt_template = $%d", idx))
+		args = append(args, *req.SystemPromptTemplate)
+		idx++
+	}
+	if req.ToolManifest != nil {
+		sets = append(sets, fmt.Sprintf("tool_manifest = $%d", idx))
+		args = append(args, *req.ToolManifest)
+		idx++
+	}
+	if req.Capabilities != nil {
+		sets = append(sets, fmt.Sprintf("capabilities = $%d", idx))
+		args = append(args, *req.Capabilities)
+		idx++
+	}
 	if len(sets) == 0 {
 		return nil, fmt.Errorf("no fields to update")
 	}
 
 	sets = append(sets, "updated_at = NOW()")
+	returning := `id, workspace_id, type, name, status, preferred_model,
+	              system_prompt_template, tool_manifest, capabilities,
+	              avatar, created_at, updated_at`
 	query := fmt.Sprintf(
-		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING id, workspace_id, type, name, status, preferred_model, avatar, created_at, updated_at",
-		strings.Join(sets, ", "), idx, idx+1,
+		"UPDATE agents SET %s WHERE id = $%d AND workspace_id = $%d RETURNING %s",
+		strings.Join(sets, ", "), idx, idx+1, returning,
 	)
 	args = append(args, id, workspaceID)
 
@@ -361,7 +379,8 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 	var agentType, status string
 	err := s.pool.QueryRow(ctx, query, args...).Scan(
 		&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
-		&a.PreferredModel, &a.Avatar, &a.CreatedAt, &a.UpdatedAt,
+		&a.PreferredModel, &a.SystemPromptTemplate, &a.ToolManifest, &a.Capabilities,
+		&a.Avatar, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -372,6 +391,22 @@ func (s *PostgresStore) UpdateAgent(ctx context.Context, id string, workspaceID 
 	a.Type = models.AgentType(agentType)
 	a.Status = models.AgentStatus(status)
 	return &a, nil
+}
+
+// UpsertManifest merges code-level agent defaults into the agents table.
+// Only overwrites fields that are still at their default (empty) value,
+// preserving any workspace-level user customization.
+func (s *PostgresStore) UpsertManifest(ctx context.Context, workspaceID string, req models.UpsertManifestReq) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE agents
+		SET system_prompt_template = CASE WHEN system_prompt_template = '' THEN $3 ELSE system_prompt_template END,
+		    tool_manifest          = CASE WHEN tool_manifest = '[]'::jsonb  THEN $4 ELSE tool_manifest END,
+		    capabilities           = CASE WHEN capabilities  = '{}'::jsonb  THEN $5 ELSE capabilities END,
+		    updated_at = NOW()
+		WHERE workspace_id = $1 AND type = $2`,
+		workspaceID, req.AgentType, req.SystemPrompt, req.Tools, req.Capabilities,
+	)
+	return err
 }
 
 // =========================================================================

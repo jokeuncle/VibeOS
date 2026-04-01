@@ -413,6 +413,20 @@ func (s *Service) UpdateAgent(ctx context.Context, wsID, agentID string, req mod
 	return agent, nil
 }
 
+// UpsertManifest applies code-level agent defaults to all workspaces.
+func (s *Service) UpsertManifest(ctx context.Context, req models.UpsertManifestReq) error {
+	workspaces, err := s.store.ListWorkspaces(ctx)
+	if err != nil {
+		return err
+	}
+	for _, ws := range workspaces {
+		if err := s.store.UpsertManifest(ctx, ws.ID, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Feedback & trust operations
 // ---------------------------------------------------------------------------

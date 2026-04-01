@@ -8,6 +8,7 @@ import ElementTree from './ElementTree'
 import GraphCanvas from './GraphCanvas'
 import NodeConfigPanel from './NodeConfigPanel'
 import GraphToolbar from './GraphToolbar'
+import ResizableSidebar from '../ui/ResizableSidebar'
 
 import '@xyflow/react/dist/style.css'
 
@@ -54,22 +55,32 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
           </div>
         )}
 
-        {/* 3-panel layout */}
+        {/* 3-panel layout — sidebars resizable (width persisted in localStorage) */}
         <div className="flex flex-1 min-h-0">
-          {/* Left: Element Tree */}
-          <div className="w-56 shrink-0 border-r border-border-subtle overflow-y-auto bg-surface-1/30 pb-16">
+          <ResizableSidebar
+            side="left"
+            defaultWidth={264}
+            minWidth={220}
+            maxWidth={440}
+            storageKey="vibeos.controlCenter.elementsWidth"
+            contentClassName="pb-16"
+          >
             <ElementTree />
-          </div>
+          </ResizableSidebar>
 
-          {/* Center: Graph Canvas */}
           <div className="flex-1 min-w-0 relative">
             <GraphCanvas />
           </div>
 
-          {/* Right: Config Panel */}
-          <div className="w-64 shrink-0 border-l border-border-subtle overflow-y-auto bg-surface-1/30">
+          <ResizableSidebar
+            side="right"
+            defaultWidth={300}
+            minWidth={240}
+            maxWidth={480}
+            storageKey="vibeos.controlCenter.configWidth"
+          >
             <NodeConfigPanel />
-          </div>
+          </ResizableSidebar>
         </div>
       </div>
     </ReactFlowProvider>

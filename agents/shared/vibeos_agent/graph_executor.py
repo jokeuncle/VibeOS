@@ -457,7 +457,7 @@ def _build_agent_task(
     task_desc = node_config.get("task_description", "")
     user_msg = state.get("user_message", task_desc)
 
-    return {
+    payload: dict[str, Any] = {
         "task_id": f"graph-{node_def.id}-{uuid.uuid4().hex[:8]}",
         "workspace_id": workspace_id,
         "intent": f"execute_{node_def.capability_ref}" if node_def.capability_ref else node_def.id,
@@ -471,8 +471,17 @@ def _build_agent_task(
             "task_description": task_desc,
             **{k: v for k, v in state.items() if not k.startswith("_") and k != "workspace_id"},
         },
-        "preferred_model": node_config.get("model"),
+        "preferred_model": node_config.get("model") or state.get("preferred_model"),
     }
+    if state.get("agent_type"):
+        payload["agent_type"] = state["agent_type"]
+    if state.get("system_prompt"):
+        payload["system_prompt"] = state["system_prompt"]
+    if state.get("enabled_tools"):
+        payload["enabled_tools"] = state["enabled_tools"]
+    if state.get("capability"):
+        payload["capability"] = state["capability"]
+    return payload
 
 
 def _resolve_type(type_str: str) -> type:

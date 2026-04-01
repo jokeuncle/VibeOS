@@ -54,3 +54,24 @@ func (h *AgentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, models.APIResponse[*models.Agent]{Data: agent})
 }
+
+// UpsertManifest merges code-level agent defaults (system prompt, tools,
+// capabilities) into every workspace's agent row of the matching type.
+func (h *AgentHandler) UpsertManifest(w http.ResponseWriter, r *http.Request) {
+	var req models.UpsertManifestReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.AgentType == "" {
+		writeError(w, http.StatusBadRequest, "agentType is required")
+		return
+	}
+
+	if err := h.svc.UpsertManifest(r.Context(), req); err != nil {
+		h.log.Error("upsert manifest failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, models.APIResponse[string]{Data: "ok"})
+}

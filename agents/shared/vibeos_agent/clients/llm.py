@@ -26,6 +26,9 @@ class LLMGatewayClient:
         temperature: float = 0.7,
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
+        workspace_id: str | None = None,
+        agent_type: str | None = None,
+        capability: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "messages": messages,
@@ -37,6 +40,12 @@ class LLMGatewayClient:
             body["tools"] = tools
         if tool_choice is not None:
             body["tool_choice"] = tool_choice
+        if workspace_id:
+            body["workspace_id"] = workspace_id
+        if agent_type:
+            body["agent_type"] = agent_type
+        if capability:
+            body["capability"] = capability
         resp = await self._http.post("/api/chat/completions", json=body)
         resp.raise_for_status()
         return resp.json()
@@ -48,6 +57,9 @@ class LLMGatewayClient:
         model: str | None = None,
         temperature: float = 0.7,
         tools: list[dict[str, Any]] | None = None,
+        workspace_id: str | None = None,
+        agent_type: str | None = None,
+        capability: dict[str, Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield SSE chunks from the LLM gateway streaming endpoint.
 
@@ -63,6 +75,12 @@ class LLMGatewayClient:
             body["model"] = model
         if tools:
             body["tools"] = tools
+        if workspace_id:
+            body["workspace_id"] = workspace_id
+        if agent_type:
+            body["agent_type"] = agent_type
+        if capability:
+            body["capability"] = capability
         async with self._http.stream(
             "POST", "/api/chat/completions", json=body
         ) as resp:

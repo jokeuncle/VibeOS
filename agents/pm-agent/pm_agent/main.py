@@ -51,6 +51,21 @@ from .session import SessionManager
 from .stream import yield_text_as_deltas
 from .workflow import WorkflowEngine
 
+
+async def _resolve_nlp_agent_config(
+    ws_client: WorkspaceClient, workspace_id: str, agent_type: str,
+) -> dict[str, Any]:
+    """Thin wrapper used by NLP dispatch paths to load agent descriptor."""
+    try:
+        agents = await ws_client.list_agents(workspace_id)
+        for ag in agents:
+            if ag.get("type") == agent_type:
+                return ag
+    except Exception:
+        pass
+    return {}
+
+
 AGENT_LABELS: dict[str, dict[str, str]] = {
     "pm": {"zh": "项目管理 Agent", "en": "PM Agent"},
     "requirement": {"zh": "需求 Agent", "en": "Req Agent"},
@@ -274,7 +289,13 @@ async def handle_nlp(req: NLPRequest) -> NLPResponse:
             return NLPResponse(intent=parsed.intent, summary=result.get("summary", parsed.summary), target_agent=parsed.target_agent.value, result=result, slots=parsed.slots)
 
         enriched_ctx = await enrich_context_with_gitlab(req.workspace_id, req.context, ws_client)
-        task = AgentTask(task_id=uuid.uuid4().hex, workspace_id=req.workspace_id, intent=parsed.intent, description=parsed.summary, user_message=req.message, context=enriched_ctx)
+        agent_cfg = await _resolve_nlp_agent_config(ws_client, req.workspace_id, parsed.target_agent.value)
+        task = AgentTask(
+            task_id=uuid.uuid4().hex, workspace_id=req.workspace_id,
+            intent=parsed.intent, description=parsed.summary,
+            user_message=req.message, context=enriched_ctx,
+            **WorkflowEngine._descriptor_kwargs(agent_cfg),
+        )
         result = await dispatcher.dispatch(parsed.target_agent, task)
         return NLPResponse(intent=parsed.intent, summary=parsed.summary, target_agent=parsed.target_agent.value, result=result, slots=parsed.slots)
     except Exception:
@@ -485,10 +506,12 @@ async def _nlp_dispatch_path(sid, sm, parsed, req, ws_client, dispatcher):
     yield sm.timeline(sid, "dispatch", f"分发到 {parsed.target_agent.value} Agent", "running")
 
     enriched_ctx = await enrich_context_with_gitlab(req.workspace_id, req.context, ws_client)
+    agent_cfg = await _resolve_nlp_agent_config(ws_client, req.workspace_id, parsed.target_agent.value)
     task = AgentTask(
         task_id=uuid.uuid4().hex, workspace_id=req.workspace_id,
         intent=parsed.intent, description=parsed.summary,
         user_message=req.message, context=enriched_ctx,
+        **WorkflowEngine._descriptor_kwargs(agent_cfg),
     )
 
     has_result = False

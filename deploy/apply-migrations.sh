@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply all pending migrations in order (001 → 015).
+# Apply all pending migrations in order (001 → 016).
 # Safe to re-run: all DDL uses IF NOT EXISTS / ALTER ... ADD COLUMN IF NOT EXISTS.
 set -euo pipefail
 
@@ -20,6 +20,7 @@ MIGRATIONS=(
   "011_extensibility.sql"
   "014_pipeline_graph_id.sql"
   "015_registry_seed.sql"
+  "016_agent_descriptor.sql"
 )
 
 run_psql() {
