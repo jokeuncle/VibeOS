@@ -201,7 +201,10 @@ const workspace = {
   'dashboard.inProgress': '进行中',
   'dashboard.completed': '已完成',
   'dashboard.totalTasks': '总任务数',
-  'dashboard.requirementHealth': '需求健康度',
+  'dashboard.overallProgress': '整体进度',
+  'dashboard.requirementsLabel': '需求',
+  'dashboard.noRequirements': '暂无需求。可在「需求」视图中添加。',
+  'dashboard.tasksEmpty': '还没有阶段任务。运行流水线或添加工作后会出现任务。',
 
   'homeDash.totalWorkspaces': '工作空间',
   'homeDash.totalTasks': '总任务',

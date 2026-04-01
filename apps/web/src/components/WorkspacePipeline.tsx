@@ -117,9 +117,11 @@ function PhaseNode({ phase, isLast }: { phase: PhaseView; isLast: boolean }) {
       >
         <div className={`w-2 h-2 rounded-full ${phase.enabled ? phase.dotColor : 'bg-text-tertiary/40'}`} />
         <span className="text-[10px] font-semibold whitespace-nowrap">{t(phase.labelKey)}</span>
-        {phase.requireApproval && phase.enabled && (
-          <Lock className="w-2.5 h-2.5 opacity-70" />
-        )}
+        <div className="h-2.5 flex items-center justify-center shrink-0" aria-hidden>
+          {phase.requireApproval && phase.enabled ? (
+            <Lock className="w-2.5 h-2.5 opacity-70" />
+          ) : null}
+        </div>
       </div>
       {!isLast && (
         <ArrowRight className="w-3.5 h-3.5 text-text-tertiary/40 shrink-0 mx-0.5" />

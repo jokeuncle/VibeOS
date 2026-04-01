@@ -201,7 +201,10 @@ const workspace = {
   'dashboard.inProgress': 'In Progress',
   'dashboard.completed': 'Completed',
   'dashboard.totalTasks': 'Total Tasks',
-  'dashboard.requirementHealth': 'Requirement Health',
+  'dashboard.overallProgress': 'Overall progress',
+  'dashboard.requirementsLabel': 'Requirements',
+  'dashboard.noRequirements': 'No requirements yet. Add them from the Requirements view.',
+  'dashboard.tasksEmpty': 'No phase tasks yet. Tasks appear as you run the pipeline or add work.',
 
   'homeDash.totalWorkspaces': 'Workspaces',
   'homeDash.totalTasks': 'Total Tasks',

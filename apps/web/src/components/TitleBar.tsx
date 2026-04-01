@@ -1,17 +1,33 @@
 import { Settings, Languages, ChevronRight, Home } from 'lucide-react'
 import { motion } from 'framer-motion'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useAuthStore } from '../stores/auth'
 import { useUIStore } from '../stores/ui'
 import { useI18nStore, useT } from '../i18n'
 import NotificationPanel from './NotificationPanel'
 import type { TranslationKey } from '../i18n/en'
 import { preventMouseDownFocus } from '../lib/preventMouseFocus'
 
+function userAvatarLabel(user: { name: string; email: string } | null): string {
+  if (!user) return 'U'
+  const n = user.name?.trim()
+  if (n) {
+    if (/[\u4e00-\u9fff]/.test(n)) return n[0]
+    const parts = n.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    return n.slice(0, 2).toUpperCase()
+  }
+  const e = user.email?.trim()
+  return e ? e[0].toUpperCase() : 'U'
+}
+
 export default function TitleBar() {
   const t = useT()
   const { activeWorkspaceId, activePhaseId, workspaces, setActiveWorkspace, setActivePhase } = useWorkspaceStore()
   const { setSettingsOpen } = useUIStore()
   const { locale, toggleLocale } = useI18nStore()
+  const user = useAuthStore((s) => s.user)
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
   const phase = workspace?.phases.find((p) => p.id === activePhaseId)
 
@@ -96,9 +112,46 @@ export default function TitleBar() {
         >
           <Settings className="w-4 h-4" />
         </button>
-        <div className="ml-2 w-7 h-7 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-xs font-semibold text-white">
-          U
-        </div>
+        <Tooltip.Provider delayDuration={200}>
+          {user ? (
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <button
+                  type="button"
+                  onMouseDown={preventMouseDownFocus}
+                  aria-label={`${user.name?.trim() || user.email}, ${user.email}`}
+                  className="ml-2 w-7 h-7 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-xs font-semibold text-white shrink-0 outline-none cursor-default focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
+                >
+                  {userAvatarLabel(user)}
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={8}
+                  className="z-[400] max-w-[min(280px,calc(100vw-2rem))] rounded-lg border border-border-default bg-surface-3 px-3 py-2.5 shadow-lg select-none"
+                >
+                  <div className="flex flex-col gap-1 text-left">
+                    {user.name?.trim() ? (
+                      <span className="text-xs font-semibold text-text-primary leading-tight">
+                        {user.name.trim()}
+                      </span>
+                    ) : null}
+                    <span className="text-[11px] font-mono text-text-secondary leading-snug break-all">
+                      {user.email}
+                    </span>
+                  </div>
+                  <Tooltip.Arrow className="fill-surface-3" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          ) : (
+            <div className="ml-2 w-7 h-7 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-xs font-semibold text-white shrink-0">
+              {userAvatarLabel(null)}
+            </div>
+          )}
+        </Tooltip.Provider>
       </div>
     </header>
   )

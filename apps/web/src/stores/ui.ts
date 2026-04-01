@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { ConversationContext } from '../types'
 import { resolveActiveContext, type NlpContextDescriptor } from '../lib/nlpContext'
 
@@ -152,7 +153,28 @@ interface UIState {
   closeTopmostOverlay: () => boolean
 }
 
-export const useUIStore = create<UIState>((set, get) => ({
+const PERSISTED_VIEW_MODES: UIState['viewMode'][] = [
+  'dashboard',
+  'requirements',
+  'pipeline',
+  'agentTeam',
+  'extensions',
+  'controlCenter',
+  'context',
+  'execution',
+  'budget',
+  'settings',
+]
+
+function sanitizeViewMode(raw: unknown): UIState['viewMode'] {
+  return typeof raw === 'string' && PERSISTED_VIEW_MODES.includes(raw as UIState['viewMode'])
+    ? (raw as UIState['viewMode'])
+    : 'requirements'
+}
+
+export const useUIStore = create<UIState>()(
+  persist(
+    (set, get) => ({
   toasts: [],
   addToast: (toast) => {
     const id = `toast-${Date.now()}`
@@ -304,4 +326,34 @@ export const useUIStore = create<UIState>((set, get) => ({
     if (s.notificationsOpen) { set({ notificationsOpen: false }); return true }
     return false
   },
-}))
+}),
+    {
+      name: 'vibeos-ui',
+      partialize: (state) => ({
+        viewMode: state.viewMode,
+        reqSubView: state.reqSubView,
+        pipelineSubView: state.pipelineSubView,
+      }),
+      merge: (persisted, current) => {
+        const p =
+          persisted && typeof persisted === 'object'
+            ? (persisted as Partial<Pick<UIState, 'viewMode' | 'reqSubView' | 'pipelineSubView'>>)
+            : {}
+        const reqSub =
+          p.reqSubView === 'list' || p.reqSubView === 'kanban' || p.reqSubView === 'graph'
+            ? p.reqSubView
+            : current.reqSubView
+        const pipeSub =
+          p.pipelineSubView === 'config' || p.pipelineSubView === 'visual'
+            ? p.pipelineSubView
+            : current.pipelineSubView
+        return {
+          ...current,
+          viewMode: sanitizeViewMode(p.viewMode),
+          reqSubView: reqSub,
+          pipelineSubView: pipeSub,
+        }
+      },
+    },
+  ),
+)
