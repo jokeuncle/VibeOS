@@ -82,6 +82,9 @@ interface UIState {
   reqSubView: 'list' | 'kanban' | 'graph'
   setReqSubView: (sub: 'list' | 'kanban' | 'graph') => void
 
+  pipelineSubView: 'config' | 'visual'
+  setPipelineSubView: (sub: 'config' | 'visual') => void
+
   reqCreating: boolean
   setReqCreating: (v: boolean) => void
 
@@ -192,6 +195,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   reqSubView: 'list',
   setReqSubView: (sub) => set({ reqSubView: sub }),
+
+  pipelineSubView: 'config',
+  setPipelineSubView: (sub) => set({ pipelineSubView: sub }),
 
   reqCreating: false,
   setReqCreating: (v) => set({ reqCreating: v }),

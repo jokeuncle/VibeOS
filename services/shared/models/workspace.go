@@ -215,6 +215,7 @@ type PipelinePhaseConfig struct {
 	Enabled         bool      `json:"enabled" db:"enabled"`
 	RequireApproval bool      `json:"requireApproval" db:"require_approval"`
 	QualityGate     *string   `json:"qualityGate,omitempty" db:"quality_gate"`
+	GraphID         *string   `json:"graphId,omitempty" db:"graph_id"`
 	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
 }
 

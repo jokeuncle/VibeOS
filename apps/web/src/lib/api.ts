@@ -214,7 +214,7 @@ export const workspaceApi = {
   getPipeline: (wsId: string) =>
     request<{ data: PipelinePhaseConfig[] }>(`/api/workspaces/${wsId}/pipeline`).then(unwrap),
 
-  updatePipeline: (wsId: string, phases: { phaseKey: string; enabled: boolean; requireApproval: boolean; qualityGate?: string | null }[]) =>
+  updatePipeline: (wsId: string, phases: { phaseKey: string; enabled: boolean; requireApproval: boolean; qualityGate?: string | null; graphId?: string | null }[]) =>
     request<{ data: PipelinePhaseConfig[] }>(`/api/workspaces/${wsId}/pipeline`, {
       method: 'PATCH',
       body: JSON.stringify({ phases }),

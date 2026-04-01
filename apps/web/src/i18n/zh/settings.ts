@@ -84,6 +84,14 @@ const settings = {
   'registry.saved': '保存成功',
   'registry.deleted': '删除成功',
 
+  'pipeline.subView.config': '阶段配置',
+  'pipeline.subView.visual': '可视化编排',
+
+  'pipeline.graph.label': '执行图',
+  'pipeline.graph.default': '默认（Agent 派发）',
+  'pipeline.graph.desc': '为此阶段使用自定义 LangGraph 工作流替代默认的 Agent 派发。',
+  'pipeline.badge.graph': '图',
+
   'controlCenter.title': '控制中心',
   'controlCenter.desc': '可视化编排：组合意图、能力和任务模板为 LangGraph 工作流。',
   'controlCenter.elements': '要素',

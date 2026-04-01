@@ -174,6 +174,7 @@ type PipelinePhaseConfigReq struct {
 	Enabled         bool    `json:"enabled"`
 	RequireApproval bool    `json:"requireApproval"`
 	QualityGate     *string `json:"qualityGate,omitempty"`
+	GraphID         *string `json:"graphId,omitempty"`
 }
 
 // Batch pipeline update

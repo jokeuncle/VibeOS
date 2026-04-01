@@ -84,6 +84,14 @@ const settings = {
   'registry.saved': 'Saved successfully',
   'registry.deleted': 'Deleted successfully',
 
+  'pipeline.subView.config': 'Phase Config',
+  'pipeline.subView.visual': 'Visual Orchestration',
+
+  'pipeline.graph.label': 'Execution Graph',
+  'pipeline.graph.default': 'Default (Agent Dispatch)',
+  'pipeline.graph.desc': 'Override default agent dispatch with a custom LangGraph workflow for this phase.',
+  'pipeline.badge.graph': 'Graph',
+
   'controlCenter.title': 'Control Center',
   'controlCenter.desc': 'Visual orchestration hub: compose intents, capabilities, and task templates into LangGraph workflows.',
   'controlCenter.elements': 'Elements',

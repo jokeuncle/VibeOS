@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Sparkles, FileStack, LayoutGrid, GitBranch, ChevronLeft, ListChecks } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -19,7 +20,6 @@ import WorkspaceIntegrations from './WorkspaceIntegrations'
 import WorkspaceContext from './WorkspaceContext'
 import WorkspaceTraces from './WorkspaceTraces'
 import WorkspaceBudget from './WorkspaceBudget'
-import ControlCenter from './ControlCenter/ControlCenter'
 
 type ViewMode =
   | 'dashboard'
@@ -47,8 +47,16 @@ const REQ_SUB_VIEWS: { key: 'list' | 'kanban' | 'graph'; icon: typeof FileStack;
 function ViewContent() {
   const { activeRequirementId } = useWorkspaceStore()
   const workspace = useWorkspaceStore(s => s.workspaces.find(w => w.id === s.activeWorkspaceId))
-  const { viewMode, reqSubView } = useUIStore()
+  const { viewMode, reqSubView, setViewMode, setPipelineSubView } = useUIStore()
   const currentMode = (viewMode as ViewMode) || 'requirements'
+
+  // Redirect legacy controlCenter → pipeline visual mode
+  useEffect(() => {
+    if (currentMode === 'controlCenter') {
+      setPipelineSubView('visual')
+      setViewMode('pipeline')
+    }
+  }, [currentMode, setViewMode, setPipelineSubView])
 
   if (!workspace) return null
 
@@ -63,7 +71,7 @@ function ViewContent() {
     return <RequirementList />
   }
 
-  if (currentMode === 'pipeline') return <WorkspacePipeline />
+  if (currentMode === 'pipeline' || currentMode === 'controlCenter') return <WorkspacePipeline />
   if (currentMode === 'agentTeam') return <WorkspaceAgentTeam />
   if (currentMode === 'extensions' || currentMode === 'integrations') return <WorkspaceIntegrations />
   if (currentMode === 'context') return <WorkspaceContext />
@@ -94,7 +102,6 @@ export default function WorkspaceView() {
   const inReqDetail = currentViewMode === 'requirements' && !!activeRequirementId
   const showReqToolbar = currentViewMode === 'requirements' && !activeRequirementId
 
-  const isControlCenter = currentViewMode === 'controlCenter'
   const wideWorkspaceViews =
     currentViewMode === 'requirements' ||
     currentViewMode === 'knowledgeBase' ||
@@ -108,20 +115,7 @@ export default function WorkspaceView() {
     currentViewMode === 'execution' ||
     currentViewMode === 'traces' ||
     currentViewMode === 'budget'
-  const maxW = isControlCenter ? 'max-w-none' : wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
-
-  if (isControlCenter) {
-    return (
-      <motion.main
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="flex-1 min-h-0 flex flex-col overflow-hidden"
-      >
-        <ControlCenter />
-      </motion.main>
-    )
-  }
+  const maxW = wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
 
   return (
     <motion.main

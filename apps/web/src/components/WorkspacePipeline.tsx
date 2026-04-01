@@ -4,14 +4,18 @@ import {
   GitBranch, ChevronRight, ToggleLeft, ToggleRight,
   ShieldCheck, Zap, AlertTriangle, CheckCircle2,
   ArrowRight, Settings2, Lock, Unlock, RefreshCw,
+  Workflow,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
-import { workspaceApi } from '../lib/api'
+import { useUIStore } from '../stores/ui'
+import { workspaceApi, workspaceGraphApi } from '../lib/api'
+import type { WorkspaceGraph } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import type { PipelinePhaseKey, PipelinePhaseConfig } from '../types'
 import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import { PIPELINE_COMMANDS, type NlpContextDescriptor } from '../lib/nlpContext'
+import ControlCenter from './ControlCenter/ControlCenter'
 
 interface PhaseStaticMeta {
   key: PipelinePhaseKey
@@ -94,6 +98,7 @@ function mergePhases(meta: PhaseStaticMeta[], configs: PipelinePhaseConfig[]): P
       enabled: live?.enabled ?? true,
       requireApproval: live?.requireApproval ?? false,
       qualityGate: live?.qualityGate ?? null,
+      graphId: live?.graphId ?? null,
       updatedAt: live?.updatedAt ?? '',
     }
   })
@@ -163,6 +168,12 @@ function PhaseRow({
               {t('pipeline.badge.gate')}
             </span>
           )}
+          {phase.graphId && (
+            <span className="flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded-md">
+              <Workflow className="w-2 h-2" />
+              {t('pipeline.badge.graph')}
+            </span>
+          )}
         </div>
         <p className="text-[11px] text-text-tertiary mt-0.5 truncate">{t(phase.descKey)}</p>
       </div>
@@ -186,10 +197,12 @@ function PhaseRow({
 
 function PhaseDetail({
   phase,
+  graphs,
   onUpdate,
 }: {
   phase: PhaseView
-  onUpdate: (patch: Partial<Pick<PhaseView, 'requireApproval' | 'qualityGate'>>) => void
+  graphs: WorkspaceGraph[]
+  onUpdate: (patch: Partial<Pick<PhaseView, 'requireApproval' | 'qualityGate' | 'graphId'>>) => void
 }) {
   const t = useT()
   return (
@@ -237,6 +250,26 @@ function PhaseDetail({
 
       <div className="h-px bg-border-subtle" />
 
+      <div>
+        <div className="flex items-center gap-1.5 mb-1">
+          <Workflow className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="text-[12px] font-semibold text-text-primary">{t('pipeline.graph.label')}</span>
+        </div>
+        <p className="text-[11px] text-text-tertiary mb-2">{t('pipeline.graph.desc')}</p>
+        <select
+          value={phase.graphId ?? ''}
+          onChange={e => onUpdate({ graphId: e.target.value || null })}
+          className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-border-default text-[12px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors cursor-pointer"
+        >
+          <option value="">{t('pipeline.graph.default')}</option>
+          {graphs.map(g => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="h-px bg-border-subtle" />
+
       <div className="flex items-center gap-3">
         {phase.enabled
           ? <CheckCircle2 className="w-3.5 h-3.5 text-success" />
@@ -253,60 +286,49 @@ function PhaseDetail({
   )
 }
 
-export default function WorkspacePipeline() {
+const SUB_VIEWS = [
+  { key: 'config' as const, icon: Settings2, labelKey: 'pipeline.subView.config' as TranslationKey },
+  { key: 'visual' as const, icon: Workflow, labelKey: 'pipeline.subView.visual' as TranslationKey },
+]
+
+function PipelineConfigView() {
   const t = useT()
   const { activeWorkspaceId } = useWorkspaceStore()
   const [phases, setPhases] = useState<PhaseView[]>(() => mergePhases(PHASE_META, []))
   const [selectedPhase, setSelectedPhase] = useState<PipelinePhaseKey | null>(null)
-
-  const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {
-    id: 'view:pipeline',
-    type: 'pipeline',
-    priority: 20,
-    label: t('sidebar.pipeline'),
-    agentType: 'pm',
-    agentLabel: t('agent.name.pm'),
-    contextPayload: { view: 'pipeline' },
-    commands: PIPELINE_COMMANDS,
-    placeholderKey: 'command.placeholderNLP',
-    intentHints: ['deploy', 'trigger_build', 'view_build_log', 'rollback'],
-  } : null
-  useRegisterNlpContext(nlpDesc)
+  const [graphs, setGraphs] = useState<WorkspaceGraph[]>([])
   const [saving, setSaving] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Ref always reflects the latest workspace to guard against stale responses
   const activeWsRef = useRef(activeWorkspaceId)
   useEffect(() => { activeWsRef.current = activeWorkspaceId }, [activeWorkspaceId])
 
-  // Load configs from backend on mount
   const loadPipeline = useCallback(async () => {
     if (!activeWorkspaceId) return
     const wsId = activeWorkspaceId
     try {
-      const configs = await workspaceApi.getPipeline(wsId)
+      const [configs, graphList] = await Promise.all([
+        workspaceApi.getPipeline(wsId),
+        workspaceGraphApi.list(wsId).catch(() => [] as WorkspaceGraph[]),
+      ])
       if (activeWsRef.current !== wsId) return
       setPhases(mergePhases(PHASE_META, configs))
+      setGraphs(graphList)
     } catch {
-      // fallback to defaults already set
+      // fallback to defaults
     }
   }, [activeWorkspaceId])
 
   useEffect(() => {
-    // Cancel any pending save from the previous workspace before loading new data
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSelectedPhase(null)
     loadPipeline()
   }, [loadPipeline])
 
-  // Cleanup debounce timer on unmount
   useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-    }
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
   }, [])
 
-  // Auto-save with debounce
   const savePhases = useCallback(async (updated: PhaseView[]) => {
     if (!activeWorkspaceId) return
     const wsId = activeWorkspaceId
@@ -318,10 +340,11 @@ export default function WorkspacePipeline() {
           enabled: p.enabled,
           requireApproval: p.requireApproval,
           qualityGate: p.qualityGate ?? null,
+          graphId: p.graphId ?? null,
         }))
       )
     } catch {
-      // ignore – state stays as is
+      // ignore
     } finally {
       if (activeWsRef.current === wsId) setSaving(false)
     }
@@ -343,27 +366,13 @@ export default function WorkspacePipeline() {
   const activePhases = phases.filter(p => p.enabled)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-6"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <GitBranch className="w-4 h-4 text-accent" />
-            <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('pipeline.title')}</h1>
-          </div>
-          <p className="text-[12px] text-text-tertiary">{t('pipeline.desc')}</p>
+    <div className="space-y-6">
+      {saving && (
+        <div className="flex items-center justify-end gap-1 text-[11px] text-text-tertiary">
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          {t('common.saving')}
         </div>
-        {saving && (
-          <div className="flex items-center gap-1 text-[11px] text-text-tertiary">
-            <RefreshCw className="w-3 h-3 animate-spin" />
-            {t('common.saving')}
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="rounded-xl border border-border-subtle bg-surface-1/30 p-5">
         <div className="flex items-center gap-1 mb-3">
@@ -413,6 +422,7 @@ export default function WorkspacePipeline() {
                   >
                     <PhaseDetail
                       phase={phase}
+                      graphs={graphs}
                       onUpdate={patch => updatePhase(phase.key, patch)}
                     />
                   </motion.div>
@@ -427,6 +437,87 @@ export default function WorkspacePipeline() {
         <ShieldCheck className="w-3.5 h-3.5 text-accent mt-0.5 shrink-0" />
         <p className="text-[11px] text-text-tertiary leading-relaxed">{t('pipeline.infoNote')}</p>
       </div>
+    </div>
+  )
+}
+
+function SubViewTabs({ current, onChange }: { current: 'config' | 'visual'; onChange: (v: 'config' | 'visual') => void }) {
+  const t = useT()
+  return (
+    <div className="flex items-center gap-px p-0.5 rounded-md bg-surface-2 border border-border-subtle">
+      {SUB_VIEWS.map(({ key, icon: Icon, labelKey }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium transition-all cursor-pointer ${
+            current === key
+              ? 'bg-surface-4 text-text-primary'
+              : 'text-text-tertiary hover:text-text-secondary'
+          }`}
+        >
+          <Icon className="w-3 h-3 shrink-0" />
+          <span>{t(labelKey)}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export default function WorkspacePipeline() {
+  const t = useT()
+  const { activeWorkspaceId } = useWorkspaceStore()
+  const { pipelineSubView, setPipelineSubView } = useUIStore()
+
+  const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {
+    id: 'view:pipeline',
+    type: 'pipeline',
+    priority: 20,
+    label: t('sidebar.pipeline'),
+    agentType: 'pm',
+    agentLabel: t('agent.name.pm'),
+    contextPayload: { view: 'pipeline' },
+    commands: PIPELINE_COMMANDS,
+    placeholderKey: 'command.placeholderNLP',
+    intentHints: ['deploy', 'trigger_build', 'view_build_log', 'rollback'],
+  } : null
+  useRegisterNlpContext(nlpDesc)
+
+  if (pipelineSubView === 'visual') {
+    return (
+      <div className="flex flex-col -mx-8 -my-6 min-h-[calc(100vh-4rem)]">
+        <div className="shrink-0 px-5 py-3 border-b border-border-subtle flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-accent" />
+            <h1 className="text-sm font-semibold text-text-primary">{t('pipeline.title')}</h1>
+          </div>
+          <SubViewTabs current={pipelineSubView} onChange={setPipelineSubView} />
+        </div>
+        <div className="flex-1 min-h-0">
+          <ControlCenter />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-6"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <GitBranch className="w-4 h-4 text-accent" />
+            <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('pipeline.title')}</h1>
+          </div>
+          <p className="text-[12px] text-text-tertiary">{t('pipeline.desc')}</p>
+        </div>
+        <SubViewTabs current={pipelineSubView} onChange={setPipelineSubView} />
+      </div>
+
+      <PipelineConfigView />
     </motion.div>
   )
 }

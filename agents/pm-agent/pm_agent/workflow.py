@@ -247,14 +247,49 @@ class WorkflowEngine:
             _logger.debug("Failed to fetch workspace graph: %s", exc)
         return None
 
+    async def _fetch_graph_by_id(self, workspace_id: str, graph_id: str) -> dict[str, Any] | None:
+        try:
+            resp = await self.ws_client._http.get(f"/api/workspaces/{workspace_id}/graphs/{graph_id}")
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+            data = body.get("data")
+            if data and isinstance(data, dict) and data.get("graphDef"):
+                graph_def = data["graphDef"]
+                if isinstance(graph_def, dict) and graph_def.get("nodes"):
+                    return graph_def
+        except Exception as exc:
+            _logger.debug("Failed to fetch graph %s: %s", graph_id, exc)
+        return None
+
+    async def _resolve_phase_graph(
+        self, workspace_id: str, phase_type: str,
+        pipeline_configs: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any] | None:
+        """Resolve graph for a phase: phase-specific graphId first, then workspace active fallback."""
+        if not self.graph_executor or not HAS_LANGGRAPH:
+            return None
+        configs = pipeline_configs or await self._resolve_pipeline_configs(workspace_id)
+        phase_cfg = next((c for c in configs if c.get("phaseKey") == phase_type), None)
+        graph_id = phase_cfg.get("graphId") if phase_cfg else None
+        if graph_id:
+            return await self._fetch_graph_by_id(workspace_id, graph_id)
+        return await self._fetch_workspace_graph(workspace_id)
+
     async def _execute_graph_for_phase(
         self, workspace_id: str, phase_type: str, graph_def: dict[str, Any],
-        sid: str, user_message: str = "",
+        sid: str, user_message: str = "", preferred_model: str | None = None,
     ) -> AsyncIterator[str]:
         if not self.graph_executor:
             yield self.sm.ev(sid, "phase", "skip", {"phase": phase_type, "reason": "GraphExecutor not available"})
             return
-        input_state = {"workspace_id": workspace_id, "phase_type": phase_type, "user_message": user_message}
+        input_state = {
+            "workspace_id": workspace_id,
+            "phase_type": phase_type,
+            "user_message": user_message,
+            "preferred_model": preferred_model or "default",
+            "agent_type": _agent_for_phase(phase_type).value,
+        }
         try:
             async for event in self.graph_executor.execute(graph_def, input_state):
                 evt_type = event.get("event", "")
@@ -409,7 +444,10 @@ class WorkflowEngine:
             finally:
                 self._active_runs.pop(workspace_id, None)
 
-    async def _run_phase_inner(self, workspace_id: str, phase_type: str, user_message: str = "") -> AsyncIterator[str]:
+    async def _run_phase_inner(
+        self, workspace_id: str, phase_type: str, user_message: str = "",
+        pipeline_configs: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[str]:
         sid = await self.sm.create(
             "workflow_phase", workspace_id, user_message=user_message,
             intent_type=f"execute_phase_{phase_type}", intent_summary=f"Phase: {phase_type}",
@@ -431,35 +469,58 @@ class WorkflowEngine:
             await self.sm.finish(sid, workspace_id, "cancelled")
             return
 
-        # Graph mode
-        if self.graph_executor and HAS_LANGGRAPH:
-            graph_def = await self._fetch_workspace_graph(workspace_id)
-            if graph_def:
-                await self.ws_gw.publish_log(workspace_id, "pm", f"Using workspace graph override for phase: {phase_type}")
-                try:
-                    await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
-                except Exception:
-                    pass
-                graph_tasks = 0
-                graph_errors = 0
-                async for evt in self._execute_graph_for_phase(workspace_id, phase_type, graph_def, sid, user_message):
-                    yield evt
-                    if "task:complete" in evt:
-                        graph_tasks += 1
-                    elif "task:error" in evt:
-                        graph_errors += 1
-                final_status = PhaseStatus.COMPLETED if graph_errors == 0 else PhaseStatus.IN_PROGRESS
-                try:
-                    await self.ws_client.update_phase(workspace_id, phase_id, status=final_status)
-                except Exception:
-                    pass
-                payload_done = {"phase": phase_type, "tasks_executed": graph_tasks, "tasks_total": graph_tasks + graph_errors, "tasks_failed": graph_errors, "source": "graph"}
-                yield self.sm.ev(sid, "phase", "complete", payload_done)
-                await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_done)
-                yield self.sm.session_complete(sid)
-                await self.sm.finish(sid, workspace_id)
-                return
+        # Resolve agent config + governance gate BEFORE choosing execution mode
+        agent_type = _agent_for_phase(phase_type)
+        agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
+        preferred_model = agent_cfg.get("preferredModel")
 
+        gate_task = AgentTask(
+            task_id=f"phase:{phase_type}", workspace_id=workspace_id,
+            intent=f"execute_{phase_type}", description=f"Phase: {phase_type}",
+            user_message=user_message,
+            context={"phase_type": phase_type},
+            preferred_model=preferred_model,
+        )
+        approved = await self._check_governance_gate(workspace_id, agent_type, gate_task, sid=sid)
+        if not approved:
+            payload_skip = {"phase": phase_type, "reason": "Governance gate rejected or timed out"}
+            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
+            yield self.sm.session_complete(sid, "cancelled")
+            await self.sm.finish(sid, workspace_id, "cancelled")
+            return
+
+        # Graph mode (per-phase graphId → workspace active fallback)
+        if pipeline_configs is None:
+            pipeline_configs = await self._resolve_pipeline_configs(workspace_id)
+        graph_def = await self._resolve_phase_graph(workspace_id, phase_type, pipeline_configs)
+        if graph_def:
+            await self.ws_gw.publish_log(workspace_id, "pm", f"Using graph execution for phase: {phase_type}")
+            try:
+                await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
+            except Exception:
+                pass
+            graph_tasks = 0
+            graph_errors = 0
+            async for evt in self._execute_graph_for_phase(workspace_id, phase_type, graph_def, sid, user_message, preferred_model=preferred_model):
+                yield evt
+                if "task:complete" in evt:
+                    graph_tasks += 1
+                elif "task:error" in evt:
+                    graph_errors += 1
+            final_status = PhaseStatus.COMPLETED if graph_errors == 0 else PhaseStatus.IN_PROGRESS
+            try:
+                await self.ws_client.update_phase(workspace_id, phase_id, status=final_status)
+            except Exception:
+                pass
+            payload_done = {"phase": phase_type, "tasks_executed": graph_tasks, "tasks_total": graph_tasks + graph_errors, "tasks_failed": graph_errors, "source": "graph"}
+            yield self.sm.ev(sid, "phase", "complete", payload_done)
+            await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_done)
+            yield self.sm.session_complete(sid)
+            await self.sm.finish(sid, workspace_id)
+            return
+
+        # Default agent dispatch mode
         tasks = await self.ws_client.get_tasks_by_phase(workspace_id, phase_id)
         pending = [t for t in tasks if t.get("status") != "completed"]
         if not pending:
@@ -470,7 +531,6 @@ class WorkflowEngine:
             await self.sm.finish(sid, workspace_id, "cancelled")
             return
 
-        agent_type = _agent_for_phase(phase_type)
         try:
             await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
         except Exception:
@@ -504,24 +564,13 @@ class WorkflowEngine:
                     "gitlab_credential_id": primary.get("credentialId"),
                 }
 
-            agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
             agent_task = AgentTask(
                 task_id=task["id"], workspace_id=workspace_id,
                 intent=f"execute_{phase_type}", description=task_title,
                 user_message=user_message or task.get("description", ""),
                 context={"task_title": task_title, "task_description": task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
-                preferred_model=agent_cfg.get("preferredModel"),
+                preferred_model=preferred_model,
             )
-
-            approved = await self._check_governance_gate(
-                workspace_id, agent_type, agent_task, sid=sid,
-            )
-            if not approved:
-                tasks_failed += 1
-                payload_err = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "error": "Approval rejected or timed out"}
-                yield self.sm.ev(sid, "task", "error", payload_err)
-                await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
-                continue
 
             try:
                 result = await self.dispatcher.dispatch(agent_type, agent_task)
@@ -601,17 +650,16 @@ class WorkflowEngine:
         return []
 
     def _phase_order_from_configs(self, configs: list[dict[str, Any]]) -> list[str]:
-        """Derive phase execution order from pipeline configs."""
+        """Derive phase execution order from pipeline configs (SDLC-sequential, not alphabetical)."""
         if configs:
-            phases: list[str] = []
+            enabled: set[str] = set()
             for cfg in configs:
                 key = cfg.get("phaseKey", "")
                 if not cfg.get("enabled", True):
                     continue
-                phase_type = PIPELINE_KEY_TO_PHASE.get(key, key)
-                phases.append(phase_type)
-            if phases:
-                return phases
+                enabled.add(PIPELINE_KEY_TO_PHASE.get(key, key))
+            if enabled:
+                return [p for p in DEFAULT_PHASE_ORDER if p in enabled]
         return list(DEFAULT_PHASE_ORDER)
 
     async def _check_quality_gate(
@@ -706,7 +754,7 @@ class WorkflowEngine:
         has_error = False
         for phase_type in phase_order[start_idx:]:
             failed_task_id: str | None = None
-            async for event_str in self._run_phase_inner(workspace_id, phase_type, user_message):
+            async for event_str in self._run_phase_inner(workspace_id, phase_type, user_message, pipeline_configs=pipeline_configs):
                 yield event_str
                 if "task:error" in event_str:
                     import json as _json

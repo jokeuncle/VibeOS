@@ -132,6 +132,7 @@ export interface PipelinePhaseConfig {
   enabled: boolean
   requireApproval: boolean
   qualityGate?: string | null
+  graphId?: string | null
   updatedAt: string
 }
 

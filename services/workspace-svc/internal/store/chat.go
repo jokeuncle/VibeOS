@@ -487,7 +487,7 @@ func strPtr(s string) *string { return &s }
 
 func (s *PostgresStore) GetPipelineConfigs(ctx context.Context, workspaceID string) ([]models.PipelinePhaseConfig, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT workspace_id, phase_key, enabled, require_approval, quality_gate, updated_at
+		`SELECT workspace_id, phase_key, enabled, require_approval, quality_gate, graph_id, updated_at
 		 FROM workspace_pipeline_configs WHERE workspace_id = $1 ORDER BY phase_key`, workspaceID)
 	if err != nil {
 		return nil, err
@@ -496,7 +496,7 @@ func (s *PostgresStore) GetPipelineConfigs(ctx context.Context, workspaceID stri
 	var out []models.PipelinePhaseConfig
 	for rows.Next() {
 		var c models.PipelinePhaseConfig
-		if err := rows.Scan(&c.WorkspaceID, &c.PhaseKey, &c.Enabled, &c.RequireApproval, &c.QualityGate, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.WorkspaceID, &c.PhaseKey, &c.Enabled, &c.RequireApproval, &c.QualityGate, &c.GraphID, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -526,14 +526,15 @@ func (s *PostgresStore) UpsertPipelineConfigs(ctx context.Context, workspaceID s
 
 	for _, p := range phases {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO workspace_pipeline_configs (workspace_id, phase_key, enabled, require_approval, quality_gate, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, NOW())
+			`INSERT INTO workspace_pipeline_configs (workspace_id, phase_key, enabled, require_approval, quality_gate, graph_id, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, NOW())
 			 ON CONFLICT (workspace_id, phase_key) DO UPDATE
 			   SET enabled          = EXCLUDED.enabled,
 			       require_approval = EXCLUDED.require_approval,
 			       quality_gate     = EXCLUDED.quality_gate,
+			       graph_id         = EXCLUDED.graph_id,
 			       updated_at       = NOW()`,
-			workspaceID, p.PhaseKey, p.Enabled, p.RequireApproval, p.QualityGate,
+			workspaceID, p.PhaseKey, p.Enabled, p.RequireApproval, p.QualityGate, p.GraphID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("upsert pipeline phase %s: %w", p.PhaseKey, err)
