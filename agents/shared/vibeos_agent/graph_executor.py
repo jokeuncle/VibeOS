@@ -135,6 +135,7 @@ class GraphExecutor:
         registry: RegistryClient,
         llm: Any | None = None,
         tool_manager: Any | None = None,
+        endpoint_overrides: dict[str, str] | None = None,
     ) -> None:
         if not HAS_LANGGRAPH:
             raise ImportError(
@@ -144,6 +145,7 @@ class GraphExecutor:
         self._registry = registry
         self._llm = llm
         self._tool_manager = tool_manager
+        self._endpoint_overrides = endpoint_overrides or {}
         self._capability_cache: dict[str, dict[str, Any]] = {}
 
     async def _resolve_capability(self, ref: str) -> dict[str, Any] | None:
@@ -155,10 +157,24 @@ class GraphExecutor:
             self._capability_cache[key] = c
         return self._capability_cache.get(ref)
 
+    _INTERNAL_FIELDS: dict[str, tuple[type, Any]] = {
+        "_last_node": (str, ""),
+        "_error": (str, ""),
+        "_result": (Any, None),
+        "_summary": (str, ""),
+        "_skill_prompt": (str, ""),
+        "_awaiting_human": (bool, False),
+        "llm_output": (str, ""),
+    }
+
     def _build_state_type(self, schema: dict[str, StateFieldDef]) -> type:
         """Build a TypedDict-like class with Annotated reducer fields."""
         annotations: dict[str, Any] = {}
         defaults: dict[str, Any] = {}
+
+        for name, (ftype, fdefault) in self._INTERNAL_FIELDS.items():
+            annotations[name] = ftype
+            defaults[name] = fdefault
 
         for name, sfd in schema.items():
             base_type = _resolve_type(sfd.type)
@@ -198,7 +214,10 @@ class GraphExecutor:
                 return {"_last_node": node_def.id, "_error": f"capability {cap_ref} not found"}
 
             provider = cap.get("provider", "")
-            is_mcp = provider == "mcp" or provider.startswith("mcp:") or cap.get("sourceType") == "mcp"
+            source_type = cap.get("sourceType", "")
+            is_mcp = provider == "mcp" or provider.startswith("mcp:") or source_type == "mcp"
+            is_skill = source_type == "skill"
+
             if is_mcp and self._tool_manager:
                 full_name = cap.get("name", cap_ref)
                 parts = full_name.split(".")
@@ -214,7 +233,15 @@ class GraphExecutor:
                 except Exception as exc:
                     return {"_last_node": node_def.id, "_error": f"MCP tool {tool_name}: {exc}"}
 
+            if is_skill:
+                return await _execute_skill(node_def, cap, state, self._tool_manager)
+
             endpoint = cap.get("endpoint", "")
+            if self._endpoint_overrides:
+                agent_key = cap.get("provider", "").split(".")[0] if cap.get("provider") else ""
+                override_base = self._endpoint_overrides.get(agent_key, "")
+                if override_base:
+                    endpoint = f"{override_base}/api/execute"
             if not endpoint:
                 logger.warning("Capability %s has no endpoint", cap_ref)
                 return {"_last_node": node_def.id, "_error": f"capability {cap_ref} has no endpoint"}
@@ -253,6 +280,10 @@ class GraphExecutor:
             user_msg = prompt_template or state.get("user_message", "")
             if not user_msg:
                 user_msg = str(state.get("_summary", "Continue processing."))
+
+            upstream = _get_upstream_context(state)
+            if upstream and str(upstream) not in user_msg:
+                user_msg = f"{user_msg}\n\nContext from previous step:\n{str(upstream)[:2000]}"
 
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -459,20 +490,28 @@ def _build_agent_task(
     task_desc = node_config.get("task_description", "")
     user_msg = state.get("user_message", task_desc)
 
+    upstream = _get_upstream_context(state)
+    if upstream and str(upstream) not in user_msg:
+        user_msg = f"{user_msg}\n\n--- Previous step output ---\n{str(upstream)[:2000]}"
+
+    context: dict[str, Any] = {
+        "source": "graph_executor",
+        "node_id": node_def.id,
+        "node_type": node_def.type,
+        "task_title": task_title,
+        "task_description": task_desc,
+        **{k: v for k, v in state.items() if not k.startswith("_") and k != "workspace_id"},
+    }
+    if upstream:
+        context["upstream_result"] = upstream
+
     payload: dict[str, Any] = {
         "task_id": f"graph-{node_def.id}-{uuid.uuid4().hex[:8]}",
         "workspace_id": workspace_id,
         "intent": f"execute_{node_def.capability_ref}" if node_def.capability_ref else node_def.id,
         "description": task_title,
         "user_message": user_msg,
-        "context": {
-            "source": "graph_executor",
-            "node_id": node_def.id,
-            "node_type": node_def.type,
-            "task_title": task_title,
-            "task_description": task_desc,
-            **{k: v for k, v in state.items() if not k.startswith("_") and k != "workspace_id"},
-        },
+        "context": context,
         "preferred_model": node_config.get("model") or state.get("preferred_model"),
     }
     if state.get("agent_type"):
@@ -484,6 +523,46 @@ def _build_agent_task(
     if state.get("capability"):
         payload["capability"] = state["capability"]
     return payload
+
+
+def _get_upstream_context(state: dict[str, Any]) -> str:
+    """Extract the best available upstream output from graph state."""
+    result = state.get("_result")
+    summary = state.get("_summary", "")
+    llm_out = state.get("llm_output", "")
+    skill_prompt = state.get("_skill_prompt", "")
+    best = summary or llm_out or skill_prompt or (str(result)[:4000] if result else "")
+    return best
+
+
+async def _execute_skill(
+    node_def: GraphNodeDef,
+    cap: dict[str, Any],
+    state: dict[str, Any],
+    tool_manager: Any | None,
+) -> dict[str, Any]:
+    """Execute a skill capability: inject prompt fragments and optionally run tools."""
+    skill_cfg = cap.get("skillConfig") or cap.get("skill_config") or {}
+    fragments = skill_cfg.get("prompt_fragments", skill_cfg.get("promptFragments", []))
+    tools = skill_cfg.get("tools", [])
+
+    output: dict[str, Any] = {"_last_node": node_def.id}
+    combined = "\n\n".join(f for f in fragments if f)
+    if combined:
+        output["_skill_prompt"] = combined
+        output["_result"] = combined
+
+    if tools and tool_manager:
+        for tool_name in tools:
+            try:
+                result = await tool_manager.execute(tool_name, {})
+                output["_result"] = result.output if hasattr(result, "output") else str(result)
+                break
+            except Exception:
+                logger.debug("Skill tool %s not executable, skipping", tool_name)
+                continue
+
+    return output
 
 
 def _resolve_type(type_str: str) -> type:

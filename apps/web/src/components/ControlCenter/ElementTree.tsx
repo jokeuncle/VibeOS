@@ -9,6 +9,7 @@ import { useT } from '../../i18n'
 interface DragItem {
   id: string
   name: string
+  registryName: string
   meta: string
   dragType: string
 }
@@ -32,10 +33,10 @@ const DRAG_TYPE_CFG: Record<string, { icon: typeof Zap; dot: string }> = {
 }
 
 const NODE_TYPES: DragItem[] = [
-  { id: 'condition',     name: 'Condition',  meta: '', dragType: 'condition'     },
-  { id: 'human_in_loop', name: 'Human Gate', meta: '', dragType: 'human_in_loop' },
-  { id: 'llm_call',      name: 'LLM Call',   meta: '', dragType: 'llm_call'      },
-  { id: 'subgraph',      name: 'Subgraph',   meta: '', dragType: 'subgraph'      },
+  { id: 'condition',     name: 'Condition',  registryName: '', meta: '', dragType: 'condition'     },
+  { id: 'human_in_loop', name: 'Human Gate', registryName: '', meta: '', dragType: 'human_in_loop' },
+  { id: 'llm_call',      name: 'LLM Call',   registryName: '', meta: '', dragType: 'llm_call'      },
+  { id: 'subgraph',      name: 'Subgraph',   registryName: '', meta: '', dragType: 'subgraph'      },
 ]
 
 export default function ElementTree() {
@@ -97,6 +98,7 @@ export default function ElementTree() {
   const capToItem = (c: RegistryCapability): DragItem => ({
     id: `${c.name}::${c.provider}`,
     name: getCapabilityName(c),
+    registryName: c.name,
     meta: c.provider,
     dragType: 'capability',
   })
@@ -107,7 +109,7 @@ export default function ElementTree() {
       label: t('registry.tab.intents'),
       icon: Zap,
       iconColor: 'text-amber-400',
-      items: intents.map((i) => ({ id: i.name, name: i.labelZh || i.labelEn || i.name, meta: i.name, dragType: 'intent' })),
+      items: intents.map((i) => ({ id: i.name, name: i.labelZh || i.labelEn || i.name, registryName: i.name, meta: i.name, dragType: 'intent' })),
     },
     {
       key: 'capabilities',
@@ -118,14 +120,14 @@ export default function ElementTree() {
     },
     ...(capsBySource.mcp.length > 0 ? [{
       key: 'mcpTools',
-      label: 'MCP Tools',
+      label: t('controlCenter.mcpTools'),
       icon: Wrench,
       iconColor: 'text-emerald-400',
       items: capsBySource.mcp.map(capToItem),
     }] : []),
     ...(capsBySource.skill.length > 0 ? [{
       key: 'skillCaps',
-      label: 'Skills',
+      label: t('controlCenter.skillCaps'),
       icon: Sparkles,
       iconColor: 'text-rose-400',
       items: capsBySource.skill.map(capToItem),
@@ -144,7 +146,9 @@ export default function ElementTree() {
   }
 
   function onDragStart(e: React.DragEvent, item: DragItem) {
-    e.dataTransfer.setData('application/controlcenter', JSON.stringify({ dragType: item.dragType, id: item.id, name: item.name }))
+    e.dataTransfer.setData('application/controlcenter', JSON.stringify({
+      dragType: item.dragType, id: item.id, name: item.name, registryName: item.registryName,
+    }))
     e.dataTransfer.effectAllowed = 'move'
   }
 

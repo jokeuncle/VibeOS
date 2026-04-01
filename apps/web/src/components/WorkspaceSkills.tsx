@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, Plus, Trash2, RefreshCw } from 'lucide-react'
-import { extApi, type SkillEntry } from '../lib/api'
+import { extApi, registryApi, type SkillEntry } from '../lib/api'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 
@@ -12,11 +12,17 @@ export default function WorkspaceSkills() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
 
+  const triggerSync = useCallback(async () => {
+    if (!workspaceId) return
+    try { await registryApi.syncCapabilities(workspaceId, ['skill']) } catch { /* ignore */ }
+  }, [workspaceId])
+
   const load = useCallback(async () => {
     setLoading(true)
     try { setSkills(await extApi.listSkills(workspaceId)) } catch { /* ignore */ }
     setLoading(false)
-  }, [workspaceId])
+    await triggerSync()
+  }, [workspaceId, triggerSync])
 
   useEffect(() => { load() }, [load])
 
@@ -24,6 +30,7 @@ export default function WorkspaceSkills() {
     try {
       await extApi.deleteSkill(id)
       setSkills(prev => prev.filter(s => s.id !== id))
+      await triggerSync()
     } catch { /* ignore */ }
   }
 
@@ -47,7 +54,7 @@ export default function WorkspaceSkills() {
       <AnimatePresence>
         {showAdd && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <AddSkillForm workspaceId={workspaceId} onCreated={s => { setSkills(prev => [...prev, s]); setShowAdd(false) }} onCancel={() => setShowAdd(false)} />
+            <AddSkillForm workspaceId={workspaceId} onCreated={s => { setSkills(prev => [...prev, s]); setShowAdd(false); triggerSync() }} onCancel={() => setShowAdd(false)} />
           </motion.div>
         )}
       </AnimatePresence>

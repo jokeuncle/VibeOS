@@ -1006,6 +1006,12 @@ export const registryApi = {
       '/api/graph/validate',
       { method: 'POST', body: JSON.stringify({ graphDef }) },
     ).then(unwrap),
+
+  syncCapabilities: (workspaceId: string, sourceTypes: string[] = ['mcp', 'skill']) =>
+    request<{ data: Record<string, { name: string; provider: string }[]> }>(
+      '/api/capabilities/sync',
+      { method: 'POST', body: JSON.stringify({ workspace_id: workspaceId, source_types: sourceTypes }) },
+    ).then(unwrap),
 }
 
 // ---------------------------------------------------------------------------

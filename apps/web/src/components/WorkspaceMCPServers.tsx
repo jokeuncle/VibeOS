@@ -4,7 +4,7 @@ import {
   Plug2, Plus, Trash2, ToggleLeft, ToggleRight,
   Terminal, Globe, Zap, RefreshCw, ChevronDown, ChevronUp,
 } from 'lucide-react'
-import { extApi, type MCPServerEntry } from '../lib/api'
+import { extApi, registryApi, type MCPServerEntry } from '../lib/api'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
@@ -25,6 +25,11 @@ export default function WorkspaceMCPServers() {
   const [showAdd, setShowAdd] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
 
+  const triggerSync = useCallback(async () => {
+    if (!workspaceId) return
+    try { await registryApi.syncCapabilities(workspaceId, ['mcp']) } catch { /* ignore */ }
+  }, [workspaceId])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -32,7 +37,8 @@ export default function WorkspaceMCPServers() {
       setServers(data)
     } catch { /* ignore */ }
     setLoading(false)
-  }, [workspaceId])
+    await triggerSync()
+  }, [workspaceId, triggerSync])
 
   useEffect(() => { load() }, [load])
 
@@ -40,6 +46,7 @@ export default function WorkspaceMCPServers() {
     try {
       const updated = await extApi.updateMCPServer(srv.id, { enabled: !srv.enabled })
       setServers(prev => prev.map(s => s.id === updated.id ? updated : s))
+      await triggerSync()
     } catch { /* ignore */ }
   }
 
@@ -47,6 +54,7 @@ export default function WorkspaceMCPServers() {
     try {
       await extApi.deleteMCPServer(id)
       setServers(prev => prev.filter(s => s.id !== id))
+      await triggerSync()
     } catch { /* ignore */ }
   }
 
@@ -85,7 +93,7 @@ export default function WorkspaceMCPServers() {
           >
             <AddServerForm
               workspaceId={workspaceId}
-              onCreated={(s) => { setServers(prev => [...prev, s]); setShowAdd(false) }}
+              onCreated={(s) => { setServers(prev => [...prev, s]); setShowAdd(false); triggerSync() }}
               onCancel={() => setShowAdd(false)}
             />
           </motion.div>

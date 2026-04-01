@@ -125,6 +125,8 @@ const settings = {
     'Drag elements from the left panel to start building your workflow graph.',
   'controlCenter.publishTemplate': 'Publish as Template',
   'controlCenter.published': 'Published as global template',
+  'controlCenter.mcpTools': 'MCP Tools',
+  'controlCenter.skillCaps': 'Skills',
 
   // Capability names - PM
   'capability.pm.create_task': 'Create Task',

@@ -58,8 +58,8 @@ export default function GraphCanvas() {
       const raw = e.dataTransfer.getData('application/controlcenter')
       if (!raw) return
 
-      const { dragType, id, name } = JSON.parse(raw) as {
-        dragType: string; id: string; name: string
+      const { dragType, id, name, registryName } = JSON.parse(raw) as {
+        dragType: string; id: string; name: string; registryName?: string
       }
 
       const reactFlowBounds = (e.target as HTMLElement).closest('.react-flow')?.getBoundingClientRect()
@@ -81,7 +81,7 @@ export default function GraphCanvas() {
         data: {
           label: name,
           nodeType,
-          capabilityRef: dragType === 'capability' ? name : '',
+          capabilityRef: dragType === 'capability' ? (registryName || name) : '',
           config: {},
         },
       }

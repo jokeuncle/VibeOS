@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging as _logging
 import random
+import time as _time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,8 +42,9 @@ from vibeos_agent import (
     WorkspaceClient,
     load_manifest_from_yaml,
 )
-from vibeos_agent.mcp_discovery import check_mcp_health
-from vibeos_agent.tools.mcp_provider import MCPToolProvider
+from vibeos_agent.mcp_discovery import check_mcp_health, discover_and_register_mcp_tools
+from vibeos_agent.skills import Skill, SkillRegistry, SkillToolProvider
+from vibeos_agent.tools.mcp_provider import MCPServerConfig, MCPToolProvider
 from vibeos_agent.tools.provider import ToolManager
 
 from .context import enrich_context_with_gitlab
@@ -120,8 +122,10 @@ async def lifespan(app: FastAPI):
     app.state.tool_manager = tool_manager
 
     if HAS_LANGGRAPH:
+        from .dispatch import AGENT_ENDPOINTS
         app.state.graph_executor = GraphExecutor(
             app.state.registry, llm=app.state.llm, tool_manager=tool_manager,
+            endpoint_overrides=AGENT_ENDPOINTS,
         )
     else:
         app.state.graph_executor = None
@@ -144,17 +148,19 @@ async def lifespan(app: FastAPI):
 
     await load_intents_from_registry(app.state.registry)
 
-    async def _mcp_health_loop() -> None:
-        """Periodically probe MCP server health across known workspaces."""
+    async def _capability_sync_loop() -> None:
+        """Periodically discover MCP tools and check health for loaded workspaces."""
         while True:
             await asyncio.sleep(60)
-            for ws_id in list(app.state.workflow._mcp_loaded_workspaces):
+            loaded_ws = set(app.state.workflow._mcp_loaded_workspaces) | set(_provider_loaded.keys())
+            for ws_id in loaded_ws:
                 try:
+                    await discover_and_register_mcp_tools(app.state.ws_client, app.state.registry, ws_id)
                     await check_mcp_health(app.state.ws_client, app.state.registry, ws_id)
                 except Exception:
-                    _log.debug("MCP health loop error for ws=%s", ws_id, exc_info=True)
+                    _log.debug("Capability sync loop error for ws=%s", ws_id, exc_info=True)
 
-    health_task = asyncio.create_task(_mcp_health_loop())
+    health_task = asyncio.create_task(_capability_sync_loop())
 
     yield
 
@@ -751,6 +757,94 @@ async def handle_run_requirement(req: RunRequirementRequest) -> StreamingRespons
 # Graph execution routes
 # ---------------------------------------------------------------------------
 
+_provider_loaded: dict[str, float] = {}
+_PROVIDER_TTL = 300  # 5 minutes
+
+async def _load_mcp_providers(ws_client: WorkspaceClient, tool_manager: ToolManager, workspace_id: str) -> None:
+    """Register MCPToolProviders into ToolManager (lazy, with TTL expiry)."""
+    ts = _provider_loaded.get(workspace_id)
+    if ts is not None and (_time.monotonic() - ts) < _PROVIDER_TTL:
+        return
+    try:
+        tool_manager.remove_providers(f"mcp:{workspace_id}")
+        servers = await ws_client.list_mcp_servers(workspace_id)
+        for srv in servers:
+            try:
+                cfg = MCPServerConfig.from_db_row(srv)
+            except Exception:
+                continue
+            if cfg.enabled:
+                prov = MCPToolProvider(cfg)
+                prov.provider_key = f"mcp:{workspace_id}:{cfg.name}"
+                tool_manager.register_provider(prov)
+        _provider_loaded[workspace_id] = _time.monotonic()
+    except Exception:
+        _provider_loaded.pop(workspace_id, None)
+        _log.warning("Failed to load MCP providers for ws=%s", workspace_id, exc_info=True)
+
+
+async def _sync_skills(
+    ws_client: WorkspaceClient, registry: RegistryClient, tool_manager: ToolManager, workspace_id: str,
+) -> list[dict[str, str]]:
+    """Sync workspace skills into capability_registry and ToolManager."""
+    result: list[dict[str, str]] = []
+    try:
+        db_skills = await ws_client.list_skills(workspace_id)
+    except Exception:
+        _log.debug("Cannot list skills for ws=%s", workspace_id, exc_info=True)
+        return result
+
+    from vibeos_agent.registry import CapabilityDef
+    tool_manager.remove_providers(f"skill:{workspace_id}")
+    skill_registry = SkillRegistry()
+    for row in db_skills:
+        sk = Skill.from_db_config(row.get("config", {}), id=row.get("id", ""), name=row.get("name", ""))
+        skill_registry.register(sk)
+        cap = CapabilityDef(
+            name=f"skill.{sk.name}",
+            provider=f"skill:{workspace_id}",
+            description=sk.description or sk.name,
+            source_type="skill",
+            workspace_id=workspace_id,
+            skill_config=row.get("config", {}),
+            source="skill",
+        )
+        try:
+            await registry.upsert_capability(cap)
+            result.append({"name": cap.name, "provider": cap.provider})
+        except Exception:
+            _log.debug("Failed to register skill cap %s", cap.name, exc_info=True)
+
+    skill_prov = SkillToolProvider(skill_registry)
+    skill_prov.provider_key = f"skill:{workspace_id}"
+    tool_manager.register_provider(skill_prov)
+    return result
+
+
+class CapSyncRequest(BaseModel):
+    workspace_id: str
+    source_types: list[str] = ["mcp", "skill"]
+
+
+@app.post("/api/capabilities/sync")
+async def handle_cap_sync(req: CapSyncRequest) -> dict[str, Any]:
+    """Discover/sync capabilities for a workspace (MCP tools, skills)."""
+    ws_client: WorkspaceClient = app.state.ws_client
+    registry: RegistryClient = app.state.registry
+    tool_manager: ToolManager = app.state.tool_manager
+    results: dict[str, Any] = {}
+
+    if "mcp" in req.source_types:
+        _provider_loaded.pop(req.workspace_id, None)
+        defs = await discover_and_register_mcp_tools(ws_client, registry, req.workspace_id)
+        results["mcp"] = [{"name": d.name, "provider": d.provider} for d in defs]
+
+    if "skill" in req.source_types:
+        results["skill"] = await _sync_skills(ws_client, registry, tool_manager, req.workspace_id)
+
+    return {"data": results}
+
+
 @app.post("/api/graph/execute")
 async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
     executor: GraphExecutor | None = app.state.graph_executor
@@ -764,10 +858,7 @@ async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
         yield sm.session_start(sid, "graph", req.workspace_id or "__graph__")
 
         if req.workspace_id:
-            try:
-                await workflow._ensure_mcp_providers(req.workspace_id)
-            except Exception:
-                pass
+            await _load_mcp_providers(ws_client, app.state.tool_manager, req.workspace_id)
 
         if not executor:
             yield sm.session_error(sid, "LangGraph not available")

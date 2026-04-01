@@ -124,6 +124,8 @@ const settings = {
   'controlCenter.canvasEmpty.desc': '从左侧要素面板拖入节点，开始编排工作流图。',
   'controlCenter.publishTemplate': '发布为模板',
   'controlCenter.published': '已发布为全局模板',
+  'controlCenter.mcpTools': 'MCP 工具',
+  'controlCenter.skillCaps': '技能',
 
   // Capability names - PM
   'capability.pm.create_task': '创建任务',

@@ -115,6 +115,14 @@ class ToolManager:
     def register_provider(self, provider: ToolProvider) -> None:
         self._providers.append(provider)
 
+    def remove_providers(self, key_prefix: str) -> None:
+        """Remove all providers whose provider_key starts with *key_prefix*."""
+        self._providers = [p for p in self._providers if not p.provider_key.startswith(key_prefix)]
+        self._tool_index = {
+            k: v for k, v in self._tool_index.items()
+            if not v.provider_key.startswith(key_prefix)
+        }
+
     async def refresh_index(self) -> None:
         """Rebuild the name -> provider lookup from all providers."""
         self._tool_index.clear()
