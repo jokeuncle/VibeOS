@@ -866,15 +866,21 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
     # Global registry: self-registration & heartbeat
     # ------------------------------------------------------------------
 
+    _HOSTNAME_OVERRIDES: dict[str, str] = {
+        "development": "dev-agent",
+        "testing": "test-agent",
+    }
+
     def _build_capability_defs(self) -> list[CapabilityDef]:
         """Derive capability definitions from class-level capabilities + registered tools."""
         import os
         from .config import config as _cfg
 
         agent_key = _enum_val(self.agent_type)
+        hostname = self._HOSTNAME_OVERRIDES.get(agent_key, f"{agent_key}-agent")
         agent_base_url = os.getenv(
             "AGENT_BASE_URL",
-            f"http://{agent_key}-agent:{_cfg.port}",
+            f"http://{hostname}:{_cfg.port}",
         )
         execute_endpoint = f"{agent_base_url}/api/execute"
         defs: list[CapabilityDef] = []

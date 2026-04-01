@@ -3,6 +3,11 @@
 -- is populated even when PM agent is not running.
 -- Uses ON CONFLICT DO NOTHING to avoid overwriting runtime data.
 
+-- task_template_registry lacks a unique constraint needed for idempotent seeds.
+-- Add one on (intent_pattern, context) so re-runs don't create duplicates.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_template_unique
+  ON task_template_registry (intent_pattern, context);
+
 -- ===================================================================
 -- Default Intents
 -- ===================================================================
@@ -91,4 +96,4 @@ INSERT INTO task_template_registry (intent_pattern, context, handler_type, handl
   ('analyze_requirements','workspace', 'agent', 'requirement',  'atomic', '{requirement.analyze}',    'system'),
   ('setup_monitoring',    'workspace', 'agent', 'monitoring',   'atomic', '{monitoring.setup}',       'system'),
   ('design_observability','workspace', 'agent', 'monitoring',   'atomic', '{monitoring.observability}','system')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (intent_pattern, context) DO NOTHING;
