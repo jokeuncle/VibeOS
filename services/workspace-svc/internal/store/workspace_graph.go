@@ -61,15 +61,15 @@ func (s *PostgresStore) GetActiveWorkspaceGraph(ctx context.Context, workspaceID
 func (s *PostgresStore) CreateWorkspaceGraph(ctx context.Context, workspaceID string, req models.CreateWorkspaceGraphReq) (*models.WorkspaceGraph, error) {
 	now := models.TimeNow()
 	graphDef := req.GraphDef
-	if graphDef == nil {
+	if len(graphDef) == 0 {
 		graphDef = []byte("{}")
 	}
 	stateSchema := req.StateSchema
-	if stateSchema == nil {
+	if len(stateSchema) == 0 {
 		stateSchema = []byte("{}")
 	}
 	cfg := req.Config
-	if cfg == nil {
+	if len(cfg) == 0 {
 		cfg = []byte(`{"checkpointer":"memory","recursion_limit":25}`)
 	}
 	isActive := false

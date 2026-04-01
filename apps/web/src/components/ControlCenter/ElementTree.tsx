@@ -115,7 +115,8 @@ export default function ElementTree() {
   async function handleCloneTemplate(tpl: RegistryTaskTemplate) {
     if (!workspaceId) return
     try {
-      await cloneTemplate(workspaceId, tpl.id, tpl.intentPattern)
+      const uniqueName = `${tpl.intentPattern} · ${crypto.randomUUID().slice(0, 8)}`
+      await cloneTemplate(workspaceId, tpl.id, uniqueName)
       addToast({ type: 'success', message: `Cloned "${tpl.intentPattern}"` })
     } catch {
       addToast({ type: 'error', message: 'Clone failed' })

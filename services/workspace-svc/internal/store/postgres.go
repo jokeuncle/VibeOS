@@ -137,6 +137,7 @@ type Store interface {
 	DeleteIntent(ctx context.Context, name string) error
 
 	ListTaskTemplates(ctx context.Context, enabledOnly bool) ([]models.TaskTemplateEntry, error)
+	GetTaskTemplate(ctx context.Context, id string) (*models.TaskTemplateEntry, error)
 	ResolveTaskTemplate(ctx context.Context, intentName, ctxScope string) (*models.TaskTemplateEntry, error)
 	UpsertTaskTemplate(ctx context.Context, req models.CreateTaskTemplateReq) (*models.TaskTemplateEntry, error)
 	DeleteTaskTemplate(ctx context.Context, id string) error

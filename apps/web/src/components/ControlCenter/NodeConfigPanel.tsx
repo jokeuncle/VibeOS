@@ -2,7 +2,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useGraphStore } from './useGraphStore'
 import type { StateField } from './useGraphStore'
 import { useT } from '../../i18n'
-import NativeSelect from '../ui/NativeSelect'
+import FormSelect from '../ui/FormSelect'
 
 const TYPE_OPTIONS = ['string', 'int', 'float', 'bool', 'list', 'dict', 'any']
 const REDUCER_OPTIONS = ['', 'append', 'replace', 'add_messages']
@@ -87,11 +87,12 @@ export default function NodeConfigPanel() {
           <div className="space-y-3">
             <div>
               <label className={LABEL_CLS}>{t('controlCenter.nodeType')}</label>
-              <NativeSelect
+              <FormSelect
                 size="sm"
                 value={selectedNode.data.nodeType}
                 options={NODE_TYPE_OPTIONS}
                 onChange={(v) => updateNodeData(selectedNode.id, { nodeType: v as never })}
+                fullWidth
               />
             </div>
 
@@ -203,14 +204,14 @@ export default function NodeConfigPanel() {
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
-                <NativeSelect
+                <FormSelect
                   size="sm"
                   value={field.type}
                   options={TYPE_OPTIONS.map((tp) => ({ value: tp, label: tp }))}
                   onChange={(v) => updateStateField(idx, { type: v })}
                   fullWidth
                 />
-                <NativeSelect
+                <FormSelect
                   size="sm"
                   value={field.reducer}
                   options={REDUCER_OPTIONS.map((r) => ({ value: r, label: r || 'no reducer' }))}

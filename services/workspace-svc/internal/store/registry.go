@@ -127,6 +127,16 @@ func (s *PostgresStore) ListTaskTemplates(ctx context.Context, enabledOnly bool)
 	return out, rows.Err()
 }
 
+func (s *PostgresStore) GetTaskTemplate(ctx context.Context, id string) (*models.TaskTemplateEntry, error) {
+	row := s.pool.QueryRow(ctx,
+		`SELECT id, intent_pattern, context, task_type, required_capabilities,
+		        params_mapping, handler_type, handler_ref, graph_def, state_schema,
+		        priority, enabled, source, created_at, updated_at
+		 FROM task_template_registry
+		 WHERE id = $1`, id)
+	return scanTaskTemplate(row)
+}
+
 func (s *PostgresStore) ResolveTaskTemplate(ctx context.Context, intentName, ctxScope string) (*models.TaskTemplateEntry, error) {
 	row := s.pool.QueryRow(ctx,
 		`SELECT id, intent_pattern, context, task_type, required_capabilities,

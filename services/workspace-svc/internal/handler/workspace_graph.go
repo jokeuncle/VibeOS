@@ -76,31 +76,40 @@ func (h *WorkspaceGraphHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clone from global template if sourceTemplateId is provided
+	// Clone from registry template or an existing workspace graph when sourceTemplateId is set
 	if req.SourceTemplateID != "" && req.GraphDef == nil {
-		tpl, err := h.store.GetWorkspaceGraph(r.Context(), req.SourceTemplateID)
-		if err != nil {
-			templates, tplErr := h.store.ListTaskTemplates(r.Context(), false)
-			if tplErr == nil {
-				for _, t := range templates {
-					if t.ID == req.SourceTemplateID {
-						req.GraphDef = t.GraphDef
-						req.StateSchema = t.StateSchema
-						break
-					}
-				}
+		regTpl, errReg := h.store.GetTaskTemplate(r.Context(), req.SourceTemplateID)
+		switch {
+		case errReg == nil:
+			req.GraphDef = regTpl.GraphDef
+			req.StateSchema = regTpl.StateSchema
+		case errors.Is(errReg, store.ErrNotFound):
+			wsTpl, errWS := h.store.GetWorkspaceGraph(r.Context(), req.SourceTemplateID)
+			if errWS == nil {
+				req.GraphDef = wsTpl.GraphDef
+				req.StateSchema = wsTpl.StateSchema
+			} else if !errors.Is(errWS, store.ErrNotFound) {
+				h.log.Error("get workspace graph for clone", "error", errWS)
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
 			}
-			if req.GraphDef == nil {
-				h.log.Warn("source template not found for clone", "id", req.SourceTemplateID, "error", err)
-			}
-		} else {
-			req.GraphDef = tpl.GraphDef
-			req.StateSchema = tpl.StateSchema
+		default:
+			h.log.Error("get task template for clone", "error", errReg)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if len(req.GraphDef) == 0 {
+			writeError(w, http.StatusBadRequest, "source template not found or has no graph definition")
+			return
 		}
 	}
 
 	g, err := h.store.CreateWorkspaceGraph(r.Context(), wsID, req)
 	if err != nil {
+		if store.IsUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "a graph with this name already exists in this workspace")
+			return
+		}
 		h.log.Error("create workspace graph", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
