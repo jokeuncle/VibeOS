@@ -79,7 +79,6 @@ function AgentCard({
   const t = useT()
   const addToast = useUIStore(s => s.addToast)
   const setViewMode = useUIStore(s => s.setViewMode)
-  const setPipelineSubView = useUIStore(s => s.setPipelineSubView)
   const [expanded, setExpanded] = useState(false)
   const liveStatus: AgentStatus = live?.status ?? 'idle'
   const agentId = live?.id
@@ -207,7 +206,6 @@ function AgentCard({
   }
 
   function handleEditGraph() {
-    setPipelineSubView('visual')
     setViewMode('pipeline')
   }
 

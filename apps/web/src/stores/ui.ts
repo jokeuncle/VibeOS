@@ -83,9 +83,6 @@ interface UIState {
   reqSubView: 'list' | 'kanban' | 'graph'
   setReqSubView: (sub: 'list' | 'kanban' | 'graph') => void
 
-  pipelineSubView: 'config' | 'visual'
-  setPipelineSubView: (sub: 'config' | 'visual') => void
-
   reqCreating: boolean
   setReqCreating: (v: boolean) => void
 
@@ -218,9 +215,6 @@ export const useUIStore = create<UIState>()(
   reqSubView: 'list',
   setReqSubView: (sub) => set({ reqSubView: sub }),
 
-  pipelineSubView: 'config',
-  setPipelineSubView: (sub) => set({ pipelineSubView: sub }),
-
   reqCreating: false,
   setReqCreating: (v) => set({ reqCreating: v }),
 
@@ -332,26 +326,20 @@ export const useUIStore = create<UIState>()(
       partialize: (state) => ({
         viewMode: state.viewMode,
         reqSubView: state.reqSubView,
-        pipelineSubView: state.pipelineSubView,
       }),
       merge: (persisted, current) => {
         const p =
           persisted && typeof persisted === 'object'
-            ? (persisted as Partial<Pick<UIState, 'viewMode' | 'reqSubView' | 'pipelineSubView'>>)
+            ? (persisted as Partial<Pick<UIState, 'viewMode' | 'reqSubView'>>)
             : {}
         const reqSub =
           p.reqSubView === 'list' || p.reqSubView === 'kanban' || p.reqSubView === 'graph'
             ? p.reqSubView
             : current.reqSubView
-        const pipeSub =
-          p.pipelineSubView === 'config' || p.pipelineSubView === 'visual'
-            ? p.pipelineSubView
-            : current.pipelineSubView
         return {
           ...current,
           viewMode: sanitizeViewMode(p.viewMode),
           reqSubView: reqSub,
-          pipelineSubView: pipeSub,
         }
       },
     },

@@ -47,16 +47,14 @@ const REQ_SUB_VIEWS: { key: 'list' | 'kanban' | 'graph'; icon: typeof FileStack;
 function ViewContent() {
   const { activeRequirementId } = useWorkspaceStore()
   const workspace = useWorkspaceStore(s => s.workspaces.find(w => w.id === s.activeWorkspaceId))
-  const { viewMode, reqSubView, setViewMode, setPipelineSubView } = useUIStore()
+  const { viewMode, reqSubView, setViewMode } = useUIStore()
   const currentMode = (viewMode as ViewMode) || 'requirements'
 
-  // Redirect legacy controlCenter → pipeline visual mode
   useEffect(() => {
     if (currentMode === 'controlCenter') {
-      setPipelineSubView('visual')
       setViewMode('pipeline')
     }
-  }, [currentMode, setViewMode, setPipelineSubView])
+  }, [currentMode, setViewMode])
 
   if (!workspace) return null
 
