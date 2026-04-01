@@ -127,6 +127,8 @@ const settings = {
   'controlCenter.published': 'Published as global template',
   'controlCenter.mcpTools': 'MCP Tools',
   'controlCenter.skillCaps': 'Skills',
+  'controlCenter.agenticSystemPrompt': 'System Prompt',
+  'controlCenter.agenticMaxIter': 'Max Iterations',
 
   // Capability names - PM
   'capability.pm.create_task': 'Create Task',

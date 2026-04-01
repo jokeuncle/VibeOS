@@ -126,6 +126,8 @@ const settings = {
   'controlCenter.published': '已发布为全局模板',
   'controlCenter.mcpTools': 'MCP 工具',
   'controlCenter.skillCaps': '技能',
+  'controlCenter.agenticSystemPrompt': '系统提示词',
+  'controlCenter.agenticMaxIter': '最大迭代次数',
 
   // Capability names - PM
   'capability.pm.create_task': '创建任务',

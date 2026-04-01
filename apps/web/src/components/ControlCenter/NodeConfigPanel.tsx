@@ -119,6 +119,41 @@ export default function NodeConfigPanel() {
               </div>
             )}
 
+            {selectedNode.data.nodeType === 'agentic' && (
+              <>
+                <div>
+                  <label className={LABEL_CLS}>{t('controlCenter.agenticSystemPrompt')}</label>
+                  <textarea
+                    value={(selectedNode.data.config?.system_prompt as string) || ''}
+                    onChange={(e) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { ...selectedNode.data.config, system_prompt: e.target.value },
+                      })
+                    }
+                    placeholder="You are a helpful agent with access to tools."
+                    rows={3}
+                    className={INPUT_CLS + ' resize-none'}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL_CLS}>{t('controlCenter.agenticMaxIter')}</label>
+                  <NumberStepper
+                    size="sm"
+                    integer
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={(selectedNode.data.config?.max_iterations as number) ?? 10}
+                    onChange={(v) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { ...selectedNode.data.config, max_iterations: v ?? 10 },
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className={LABEL_CLS}>{t('controlCenter.timeout')}</label>
