@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GitBranch, ChevronRight, ToggleLeft, ToggleRight,
@@ -16,6 +16,7 @@ import type { PipelinePhaseKey, PipelinePhaseConfig } from '../types'
 import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import { PIPELINE_COMMANDS, type NlpContextDescriptor } from '../lib/nlpContext'
 import ControlCenter from './ControlCenter/ControlCenter'
+import GraphToolbar from './ControlCenter/GraphToolbar'
 
 interface PhaseStaticMeta {
   key: PipelinePhaseKey
@@ -482,42 +483,59 @@ export default function WorkspacePipeline() {
   } : null
   useRegisterNlpContext(nlpDesc)
 
-  if (pipelineSubView === 'visual') {
+  // 统一头部组件（可视化模式下右侧可挂载 GraphToolbar）
+  function PipelineHeader({ toolbar }: { toolbar?: ReactNode }) {
     return (
-      <div className="flex flex-col -mx-8 -my-6 min-h-[calc(100vh-4rem)]">
-        <div className="shrink-0 px-5 py-3 border-b border-border-subtle flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <GitBranch className="w-4 h-4 text-accent" />
-            <h1 className="text-sm font-semibold text-text-primary">{t('pipeline.title')}</h1>
-          </div>
-          <SubViewTabs current={pipelineSubView} onChange={setPipelineSubView} />
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-w-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <GitBranch className="w-4 h-4 text-accent" />
+          <h1 className="text-sm font-semibold text-text-primary">{t('pipeline.title')}</h1>
         </div>
-        <div className="flex-1 min-h-0">
-          <ControlCenter />
+        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 min-w-0 flex-1 sm:flex-none sm:justify-end mr-2 sm:mr-3">
+          {toolbar != null && (
+            <span className="inline-flex -translate-x-1">{toolbar}</span>
+          )}
+          <SubViewTabs current={pipelineSubView} onChange={setPipelineSubView} />
         </div>
       </div>
     )
   }
 
+  const headerClasses = 'shrink-0 px-5 py-3 border-b border-border-subtle'
+  const subViewMotion = {
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -8 },
+    transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const },
+  }
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-6"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <GitBranch className="w-4 h-4 text-accent" />
-            <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('pipeline.title')}</h1>
-          </div>
-          <p className="text-[12px] text-text-tertiary">{t('pipeline.desc')}</p>
-        </div>
-        <SubViewTabs current={pipelineSubView} onChange={setPipelineSubView} />
+    <div className="-mx-8 -my-6 flex flex-col min-h-[calc(100vh-4rem)]">
+      <div className={headerClasses}>
+        <PipelineHeader toolbar={pipelineSubView === 'visual' ? <GraphToolbar /> : undefined} />
       </div>
 
-      <PipelineConfigView />
-    </motion.div>
+      <div className="flex-1 min-h-0 relative">
+        <AnimatePresence mode="wait" initial={false}>
+          {pipelineSubView === 'visual' ? (
+            <motion.div
+              key="pipeline-visual"
+              {...subViewMotion}
+              className="absolute inset-0 flex flex-col min-h-0"
+            >
+              <ControlCenter hideHeader />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="pipeline-config"
+              {...subViewMotion}
+              className="absolute inset-0 overflow-y-auto px-8 py-6"
+            >
+              <PipelineConfigView />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
   )
 }

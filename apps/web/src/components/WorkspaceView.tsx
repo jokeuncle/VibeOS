@@ -115,7 +115,11 @@ export default function WorkspaceView() {
     currentViewMode === 'execution' ||
     currentViewMode === 'traces' ||
     currentViewMode === 'budget'
-  const maxW = wideWorkspaceViews ? 'max-w-5xl' : 'max-w-3xl'
+  const maxW = currentViewMode === 'pipeline'
+    ? 'max-w-none'
+    : wideWorkspaceViews
+      ? 'max-w-5xl'
+      : 'max-w-3xl'
 
   return (
     <motion.main

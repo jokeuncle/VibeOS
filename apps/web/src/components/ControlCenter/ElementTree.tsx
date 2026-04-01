@@ -1,44 +1,62 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, Zap, Box, Cpu, GitFork, Plus, Copy, FileStack } from 'lucide-react'
+import { ChevronRight, Zap, Box, Cpu, GitFork, Copy, FileStack, GripVertical, UserCheck, MessageSquare, Layers } from 'lucide-react'
 import { registryApi } from '../../lib/api'
 import type { RegistryIntent, RegistryCapability, RegistryTaskTemplate } from '../../lib/api'
 import { useGraphStore } from './useGraphStore'
 import { useUIStore } from '../../stores/ui'
 import { useT } from '../../i18n'
 
+interface DragItem {
+  id: string
+  name: string
+  meta: string
+  dragType: string
+}
+
 interface TreeSection {
   key: string
   label: string
   icon: typeof Zap
-  items: { id: string; name: string; meta: string; dragType: string }[]
+  iconColor: string
+  items: DragItem[]
 }
 
-const NODE_TYPES = [
-  { id: 'condition', name: 'Condition', dragType: 'condition' },
-  { id: 'human_in_loop', name: 'Human Gate', dragType: 'human_in_loop' },
-  { id: 'llm_call', name: 'LLM Call', dragType: 'llm_call' },
-  { id: 'subgraph', name: 'Subgraph', dragType: 'subgraph' },
+// type badge config shared with CustomNode colours
+const DRAG_TYPE_CFG: Record<string, { icon: typeof Zap; dot: string }> = {
+  intent:       { icon: Zap,          dot: 'bg-amber-400'  },
+  capability:   { icon: Cpu,          dot: 'bg-blue-400'   },
+  condition:    { icon: GitFork,      dot: 'bg-purple-400' },
+  human_in_loop:{ icon: UserCheck,    dot: 'bg-emerald-400'},
+  llm_call:     { icon: MessageSquare,dot: 'bg-cyan-400'   },
+  subgraph:     { icon: Layers,       dot: 'bg-rose-400'   },
+}
+
+const NODE_TYPES: DragItem[] = [
+  { id: 'condition',     name: 'Condition',  meta: '', dragType: 'condition'     },
+  { id: 'human_in_loop', name: 'Human Gate', meta: '', dragType: 'human_in_loop' },
+  { id: 'llm_call',      name: 'LLM Call',   meta: '', dragType: 'llm_call'      },
+  { id: 'subgraph',      name: 'Subgraph',   meta: '', dragType: 'subgraph'      },
 ]
 
 export default function ElementTree() {
   const t = useT()
   const addToast = useUIStore((s) => s.addToast)
-  const [intents, setIntents] = useState<RegistryIntent[]>([])
+  const [intents,      setIntents]      = useState<RegistryIntent[]>([])
   const [capabilities, setCapabilities] = useState<RegistryCapability[]>([])
-  const [templates, setTemplates] = useState<RegistryTaskTemplate[]>([])
+  const [templates,    setTemplates]    = useState<RegistryTaskTemplate[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     workspaceGraphs: true,
-    intents: true,
-    capabilities: true,
-    nodeTypes: true,
+    intents:         true,
+    capabilities:    true,
+    nodeTypes:       true,
     globalTemplates: false,
   })
 
-  const workspaceId = useGraphStore((s) => s.workspaceId)
+  const workspaceId     = useGraphStore((s) => s.workspaceId)
   const workspaceGraphs = useGraphStore((s) => s.workspaceGraphs)
-  const graphId = useGraphStore((s) => s.graphId)
+  const graphId         = useGraphStore((s) => s.graphId)
   const loadWorkspaceGraph = useGraphStore((s) => s.loadWorkspaceGraph)
-  const cloneTemplate = useGraphStore((s) => s.cloneTemplate)
+  const cloneTemplate      = useGraphStore((s) => s.cloneTemplate)
 
   useEffect(() => {
     registryApi.listIntents(false).then(setIntents).catch(() => {})
@@ -47,7 +65,7 @@ export default function ElementTree() {
   }, [])
 
   const graphTemplates = templates.filter(
-    (t) => t.handlerType === 'graph' || (t.graphDef && Object.keys(t.graphDef).length > 0),
+    (tpl) => tpl.handlerType === 'graph' || (tpl.graphDef && Object.keys(tpl.graphDef).length > 0),
   )
 
   const sections: TreeSection[] = [
@@ -55,34 +73,22 @@ export default function ElementTree() {
       key: 'intents',
       label: t('registry.tab.intents'),
       icon: Zap,
-      items: intents.map((i) => ({
-        id: i.name,
-        name: i.name,
-        meta: i.labelZh || i.labelEn || '',
-        dragType: 'intent',
-      })),
+      iconColor: 'text-amber-400',
+      items: intents.map((i) => ({ id: i.name, name: i.name, meta: i.labelZh || i.labelEn || '', dragType: 'intent' })),
     },
     {
       key: 'capabilities',
       label: t('registry.tab.capabilities'),
       icon: Cpu,
-      items: capabilities.map((c) => ({
-        id: `${c.name}::${c.provider}`,
-        name: c.name,
-        meta: c.provider,
-        dragType: 'capability',
-      })),
+      iconColor: 'text-blue-400',
+      items: capabilities.map((c) => ({ id: `${c.name}::${c.provider}`, name: c.name, meta: c.provider, dragType: 'capability' })),
     },
     {
       key: 'nodeTypes',
       label: t('controlCenter.nodeType'),
       icon: GitFork,
-      items: NODE_TYPES.map((n) => ({
-        id: n.id,
-        name: n.name,
-        meta: '',
-        dragType: n.dragType,
-      })),
+      iconColor: 'text-purple-400',
+      items: NODE_TYPES,
     },
   ]
 
@@ -90,12 +96,8 @@ export default function ElementTree() {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
-  function onDragStart(e: React.DragEvent, item: TreeSection['items'][0]) {
-    e.dataTransfer.setData('application/controlcenter', JSON.stringify({
-      dragType: item.dragType,
-      id: item.id,
-      name: item.name,
-    }))
+  function onDragStart(e: React.DragEvent, item: DragItem) {
+    e.dataTransfer.setData('application/controlcenter', JSON.stringify({ dragType: item.dragType, id: item.id, name: item.name }))
     e.dataTransfer.effectAllowed = 'move'
   }
 
@@ -115,127 +117,151 @@ export default function ElementTree() {
   }
 
   return (
-    <div className="py-2">
-      <div className="px-3 py-2">
+    <div className="py-2 select-none">
+      {/* header label */}
+      <div className="px-3 pb-1.5 pt-1">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-text-tertiary/70">
           {t('controlCenter.elements')}
         </span>
       </div>
 
-      {/* Workspace Graphs */}
+      {/* ── Workspace Graphs ── */}
       {workspaceId && (
-        <div>
-          <button
-            onClick={() => toggle('workspaceGraphs')}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-text-secondary hover:bg-surface-2 transition-colors cursor-pointer"
-          >
-            <ChevronRight className={`w-3 h-3 transition-transform ${expanded.workspaceGraphs ? 'rotate-90' : ''}`} />
-            <FileStack className="w-3.5 h-3.5 text-accent" />
-            <span className="flex-1 text-left">{t('controlCenter.workspaceGraphs')}</span>
-            <span className="text-[10px] text-text-tertiary tabular-nums">{workspaceGraphs.length}</span>
-          </button>
-          {expanded.workspaceGraphs && (
-            <div className="ml-5 mr-2">
-              {workspaceGraphs.length === 0 ? (
-                <p className="text-[10px] text-text-tertiary px-2 py-1">{t('controlCenter.noGraphs')}</p>
-              ) : (
-                workspaceGraphs.map((g) => (
-                  <button
-                    key={g.id}
-                    onClick={() => handleLoadGraph(g.id)}
-                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-left transition-colors cursor-pointer
-                      ${g.id === graphId ? 'bg-accent/10 text-accent font-medium' : 'text-text-secondary hover:bg-surface-3'}`}
-                  >
-                    <span className="truncate flex-1">{g.name}</span>
-                    {g.isActive && (
-                      <span className="text-[9px] text-accent bg-accent/10 px-1 rounded">active</span>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
+        <SectionHeader
+          label={t('controlCenter.workspaceGraphs')}
+          icon={FileStack}
+          iconColor="text-accent"
+          count={workspaceGraphs.length}
+          open={expanded.workspaceGraphs}
+          onToggle={() => toggle('workspaceGraphs')}
+        />
+      )}
+      {workspaceId && expanded.workspaceGraphs && (
+        <div className="ml-7 mr-2 mb-1">
+          {workspaceGraphs.length === 0 ? (
+            <p className="text-[10px] text-text-tertiary px-2 py-1 italic">{t('controlCenter.noGraphs')}</p>
+          ) : (
+            workspaceGraphs.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => handleLoadGraph(g.id)}
+                className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-[11px] text-left transition-colors cursor-pointer
+                  ${g.id === graphId
+                    ? 'bg-accent/10 text-accent font-medium'
+                    : 'text-text-secondary hover:bg-surface-3'
+                  }`}
+              >
+                <span className="truncate flex-1">{g.name}</span>
+                {g.isActive && (
+                  <span className="text-[9px] font-semibold text-accent bg-accent/10 border border-accent/20 px-1 py-0.5 rounded">active</span>
+                )}
+              </button>
+            ))
           )}
         </div>
       )}
 
-      {/* Draggable elements */}
+      {/* ── Draggable sections ── */}
       {sections.map((section) => (
         <div key={section.key}>
-          <button
-            onClick={() => toggle(section.key)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-text-secondary hover:bg-surface-2 transition-colors cursor-pointer"
-          >
-            <ChevronRight
-              className={`w-3 h-3 transition-transform ${expanded[section.key] ? 'rotate-90' : ''}`}
-            />
-            <section.icon className="w-3.5 h-3.5 text-text-tertiary" />
-            <span className="flex-1 text-left">{section.label}</span>
-            <span className="text-[10px] text-text-tertiary tabular-nums">{section.items.length}</span>
-          </button>
-
+          <SectionHeader
+            label={section.label}
+            icon={section.icon}
+            iconColor={section.iconColor}
+            count={section.items.length}
+            open={expanded[section.key]}
+            onToggle={() => toggle(section.key)}
+          />
           {expanded[section.key] && (
-            <div className="ml-5 mr-2">
+            <div className="ml-7 mr-2 mb-1">
               {section.items.length === 0 ? (
-                <p className="text-[10px] text-text-tertiary px-2 py-1">{t('registry.empty')}</p>
+                <p className="text-[10px] text-text-tertiary px-2 py-1 italic">{t('registry.empty')}</p>
               ) : (
-                section.items.map((item) => (
-                  <div
-                    key={item.id}
-                    draggable
-                    onDragStart={(e) => onDragStart(e, item)}
-                    className="flex items-center gap-2 px-2 py-1 rounded text-[11px] text-text-secondary hover:bg-surface-3 cursor-grab active:cursor-grabbing transition-colors"
-                  >
-                    <Plus className="w-3 h-3 text-text-tertiary shrink-0" />
-                    <span className="truncate flex-1">{item.name}</span>
-                    {item.meta && (
-                      <span className="text-[9px] text-text-tertiary truncate max-w-[60px]">{item.meta}</span>
-                    )}
-                  </div>
-                ))
+                section.items.map((item) => {
+                  const typeCfg = DRAG_TYPE_CFG[item.dragType]
+                  return (
+                    <div
+                      key={item.id}
+                      draggable
+                      onDragStart={(e) => onDragStart(e, item)}
+                      className="group flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] text-text-secondary hover:bg-surface-3 cursor-grab active:cursor-grabbing transition-colors"
+                    >
+                      {/* type dot */}
+                      {typeCfg && (
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeCfg.dot}`} />
+                      )}
+                      <span className="truncate flex-1">{item.name}</span>
+                      {item.meta && (
+                        <span className="text-[9px] text-text-tertiary truncate max-w-[56px] font-mono">{item.meta}</span>
+                      )}
+                      {/* drag handle hint */}
+                      <GripVertical className="w-3 h-3 text-text-tertiary/40 group-hover:text-text-tertiary/70 shrink-0 transition-colors" />
+                    </div>
+                  )
+                })
               )}
             </div>
           )}
         </div>
       ))}
 
-      {/* Global Templates (clonable) */}
-      <div>
-        <button
-          onClick={() => toggle('globalTemplates')}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-text-secondary hover:bg-surface-2 transition-colors cursor-pointer"
-        >
-          <ChevronRight className={`w-3 h-3 transition-transform ${expanded.globalTemplates ? 'rotate-90' : ''}`} />
-          <Box className="w-3.5 h-3.5 text-text-tertiary" />
-          <span className="flex-1 text-left">{t('controlCenter.globalTemplates')}</span>
-          <span className="text-[10px] text-text-tertiary tabular-nums">{graphTemplates.length}</span>
-        </button>
-
-        {expanded.globalTemplates && (
-          <div className="ml-5 mr-2">
-            {graphTemplates.length === 0 ? (
-              <p className="text-[10px] text-text-tertiary px-2 py-1">{t('registry.empty')}</p>
-            ) : (
-              graphTemplates.map((tpl) => (
-                <div
-                  key={tpl.id}
-                  className="flex items-center gap-2 px-2 py-1 rounded text-[11px] text-text-secondary hover:bg-surface-3 transition-colors"
-                >
-                  <span className="truncate flex-1">{tpl.intentPattern}</span>
-                  {workspaceId && (
-                    <button
-                      onClick={() => handleCloneTemplate(tpl)}
-                      className="p-0.5 rounded hover:bg-accent/10 text-text-tertiary hover:text-accent cursor-pointer"
-                      title="Clone to workspace"
-                    >
-                      <Copy className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+      {/* ── Global Templates ── */}
+      <SectionHeader
+        label={t('controlCenter.globalTemplates')}
+        icon={Box}
+        iconColor="text-text-tertiary"
+        count={graphTemplates.length}
+        open={expanded.globalTemplates}
+        onToggle={() => toggle('globalTemplates')}
+      />
+      {expanded.globalTemplates && (
+        <div className="ml-7 mr-2 mb-1">
+          {graphTemplates.length === 0 ? (
+            <p className="text-[10px] text-text-tertiary px-2 py-1 italic">{t('registry.empty')}</p>
+          ) : (
+            graphTemplates.map((tpl) => (
+              <div
+                key={tpl.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] text-text-secondary hover:bg-surface-3 transition-colors"
+              >
+                <span className="truncate flex-1">{tpl.intentPattern}</span>
+                {workspaceId && (
+                  <button
+                    onClick={() => handleCloneTemplate(tpl)}
+                    className="p-0.5 rounded hover:bg-accent/10 text-text-tertiary hover:text-accent cursor-pointer transition-colors"
+                    title="Clone to workspace"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
+  )
+}
+
+function SectionHeader({
+  label, icon: Icon, iconColor, count, open, onToggle,
+}: {
+  label: string
+  icon: typeof Zap
+  iconColor: string
+  count: number
+  open: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-text-secondary hover:bg-surface-2/60 transition-colors cursor-pointer group"
+    >
+      <ChevronRight className={`w-3 h-3 transition-transform text-text-tertiary/60 group-hover:text-text-tertiary ${open ? 'rotate-90' : ''}`} />
+      <Icon className={`w-3.5 h-3.5 shrink-0 ${iconColor}`} />
+      <span className="flex-1 text-left">{label}</span>
+      <span className="text-[10px] text-text-tertiary tabular-nums">{count}</span>
+    </button>
   )
 }
