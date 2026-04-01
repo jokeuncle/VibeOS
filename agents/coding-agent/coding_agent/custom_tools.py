@@ -53,30 +53,24 @@ class ProgressExecutor(ToolExecutor[ProgressAction, ProgressObservation]):
     def __call__(
         self, action: ProgressAction, conversation: Any = None,
     ) -> ProgressObservation:
-        import asyncio
-
-        async def _publish() -> None:
-            payload = {
-                "type": "agent:log",
-                "workspaceId": action.workspace_id,
-                "payload": {
-                    "agentType": "coding",
-                    "message": action.status,
-                    "detail": action.detail,
-                },
-            }
-            async with httpx.AsyncClient(timeout=5) as client:
-                await client.post(
+        payload = {
+            "type": "agent:log",
+            "workspaceId": action.workspace_id,
+            "payload": {
+                "agentType": "coding",
+                "message": action.status,
+                "detail": action.detail,
+            },
+        }
+        try:
+            with httpx.Client(timeout=5) as client:
+                client.post(
                     f"{_WS_GATEWAY_URL}/api/publish",
                     json=payload,
                     headers={"X-Internal-Token": _PUBLISH_SECRET},
                 )
-
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_publish())
-        except RuntimeError:
-            asyncio.run(_publish())
+        except Exception:
+            logger.debug("Failed to publish progress event", exc_info=True)
 
         return ProgressObservation()
 
@@ -121,29 +115,23 @@ class ArtifactExecutor(ToolExecutor[ArtifactAction, ArtifactObservation]):
     def __call__(
         self, action: ArtifactAction, conversation: Any = None,
     ) -> ArtifactObservation:
-        import asyncio
-
-        async def _save() -> str:
-            body = {
-                "agent_type": "coding",
-                "type": action.artifact_type,
-                "title": action.title,
-                "content": action.content,
-            }
-            async with httpx.AsyncClient(base_url=_WORKSPACE_SVC_URL, timeout=15) as client:
-                resp = await client.post(
+        body = {
+            "agent_type": "coding",
+            "type": action.artifact_type,
+            "title": action.title,
+            "content": action.content,
+        }
+        aid = ""
+        try:
+            with httpx.Client(base_url=_WORKSPACE_SVC_URL, timeout=15) as client:
+                resp = client.post(
                     f"/api/workspaces/{action.workspace_id}/artifacts",
                     json=body,
                 )
                 resp.raise_for_status()
-                return resp.json().get("data", {}).get("id", "")
-
-        try:
-            loop = asyncio.get_running_loop()
-            future = asyncio.ensure_future(_save())
-            aid = ""
-        except RuntimeError:
-            aid = asyncio.run(_save())
+                aid = resp.json().get("data", {}).get("id", "")
+        except Exception:
+            logger.debug("Failed to save artifact", exc_info=True)
 
         return ArtifactObservation(artifact_id=aid)
 

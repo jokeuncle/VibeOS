@@ -218,3 +218,4 @@ class WorkspaceManager:
         if ws.is_dir():
             shutil.rmtree(ws, ignore_errors=True)
             logger.info("Cleaned up workspace %s", session_id)
+        self._tokens.pop(session_id, None)

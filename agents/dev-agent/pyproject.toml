@@ -13,5 +13,8 @@ dependencies = [
     "uvicorn[standard]",
 ]
 
+[tool.uv.sources]
+vibeos-agent = { workspace = true }
+
 [tool.hatch.build.targets.wheel]
 packages = ["dev_agent"]

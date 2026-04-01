@@ -15,5 +15,8 @@ dependencies = [
     "openhands-tools",
 ]
 
+[tool.uv.sources]
+vibeos-agent = { workspace = true }
+
 [tool.hatch.build.targets.wheel]
 packages = ["coding_agent"]

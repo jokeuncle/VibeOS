@@ -94,7 +94,16 @@ Services use `module github.com/vibeos/<service>` with `replace github.com/vibeo
 
 ## Python Package Structure
 
-All Python packages use **hatchling** build system, **Python >= 3.12**. Domain agents depend on the `vibeos-agent` distribution from `agents/shared/`. Use `vibeos_agent.*` imports for shared code.
+All Python packages use **hatchling** build system, **Python >= 3.12**, managed as a **uv workspace** (root `pyproject.toml`).
+
+- `uv sync --all-packages` installs every workspace member into a single root `.venv`
+- Domain agents declare `vibeos-agent = { workspace = true }` in `[tool.uv.sources]`, resolving to `agents/shared/` locally
+- Use `vibeos_agent.*` imports for shared code
+- Inner package naming follows `{name}_agent` convention (e.g. `coding-agent/coding_agent/`, `architecture-agent/architecture_agent/`)
+
+### JS Workspace
+
+Frontend uses **pnpm** (`pnpm-workspace.yaml` → `apps/*`). Do **not** use npm or generate `package-lock.json`.
 
 ## File Rows Limit
 
