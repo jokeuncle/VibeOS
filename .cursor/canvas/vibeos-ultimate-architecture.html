@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VibeOS Ultimate Architecture</title>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11';
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    darkMode: true,
+    background: '#0a0c10',
+    primaryColor: '#1c2333',
+    primaryTextColor: '#e6edf3',
+    primaryBorderColor: '#30363d',
+    lineColor: '#58a6ff',
+    secondaryColor: '#1f2937',
+    tertiaryColor: '#161b22',
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: '12px',
+    noteBkgColor: '#1c1c2e',
+    noteTextColor: '#c9d1d9',
+    noteBorderColor: '#30363d',
+  },
+  flowchart: { htmlLabels: true, curve: 'basis', padding: 14, nodeSpacing: 30, rankSpacing: 45 },
+  sequence: { mirrorActors: false, actorFontSize: 12, messageFontSize: 11, noteMargin: 6, boxMargin: 4, width: 140 },
+});
+
+const tabs = document.querySelectorAll('.tab');
+const panels = document.querySelectorAll('.panel');
+
+async function render(panelId) {
+  const el = document.getElementById(panelId);
+  if (!el || el.dataset.rendered) return;
+  const code = el.querySelector('.mermaid-src');
+  if (!code) return;
+  const { svg } = await mermaid.render(`svg-${panelId}`, code.textContent.trim());
+  const target = el.querySelector('.mermaid-target');
+  target.innerHTML = svg;
+  const svgEl = target.querySelector('svg');
+  if (svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
+  el.dataset.rendered = '1';
+}
+
+function activate(tabId) {
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+  panels.forEach(p => {
+    const show = p.id === tabId;
+    p.classList.toggle('hidden', !show);
+    if (show) render(tabId);
+  });
+}
+
+tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.tab)));
+activate('arch');
+</script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',system-ui,sans-serif;background:#0a0c10;color:#e6edf3;min-height:100vh}
+  .header{padding:28px 40px 0;text-align:center}
+  .header h1{font-size:24px;font-weight:700;background:linear-gradient(135deg,#58a6ff,#bc8cff,#f778ba);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.5px}
+  .header p{margin-top:6px;color:#8b949e;font-size:12px}
+  .tabs{display:flex;justify-content:center;gap:3px;margin:20px auto 0;padding:3px;background:#161b22;border:1px solid #21262d;border-radius:10px;width:fit-content}
+  .tab{padding:7px 18px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;color:#8b949e;transition:all .2s;border:none;background:transparent;font-family:inherit}
+  .tab:hover{color:#c9d1d9;background:#1c2128}
+  .tab.active{background:#58a6ff18;color:#58a6ff;box-shadow:inset 0 0 0 1px #58a6ff30}
+  .content{padding:20px 28px 40px;max-width:1300px;margin:0 auto}
+  .panel{background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:24px;overflow-x:auto}
+  .panel.hidden{display:none}
+  .panel h2{font-size:14px;font-weight:600;margin-bottom:14px;color:#c9d1d9}
+  .mermaid-target{display:flex;justify-content:center}
+  .mermaid-src{display:none}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid #21262d}
+  .legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:#8b949e}
+  .legend-dot{width:9px;height:9px;border-radius:2px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>VibeOS · Ultimate Architecture</h1>
+  <p>AI-Native SDLC Platform — Five Closed Loops, One Execution Spine</p>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="arch">System Architecture</button>
+  <button class="tab" data-tab="data">Data Flow</button>
+  <button class="tab" data-tab="seq">Execution Sequence</button>
+  <button class="tab" data-tab="loops">Five Loops</button>
+</div>
+
+<div class="content">
+
+<!-- ====== TAB 1: System Architecture ====== -->
+<div class="panel" id="arch">
+  <h2>System Architecture — Layered Service Topology</h2>
+  <pre class="mermaid-src">
+graph LR
+  subgraph FE["Frontend :3000"]
+    NLP["CommandBar"]
+    Views["Dashboard · Req · Pipeline\nAgent Team · Execution\nExtensions · Budget"]
+    Store["Zustand Store"]
+    WSC["WS Client"]
+  end
+
+  subgraph GW["Gateway"]
+    WSGW["ws-gateway\n:8020"]
+    WSVC["workspace-svc\n:8010 · Postgres"]
+  end
+
+  subgraph ORCH["Orchestrator · pm-agent :8040"]
+    NLP_E["NLP Engine"]
+    WFE["WorkflowEngine"]
+    DISP["Dispatcher"]
+  end
+
+  subgraph AGENTS["Domain Agents"]
+    A1["req :8042"]
+    A2["arch :8041"]
+    A3["design :8043"]
+    A4["dev :8044"]
+    A5["test :8045"]
+    A6["cicd :8046"]
+    A7["mon :8047"]
+    A8["coding :8048"]
+  end
+
+  subgraph INTEL["Intelligence"]
+    LLM["llm-gateway :8030\nTrust · Redis"]
+    MEM["memory-svc :8050"]
+    RAG["rag-pipeline :8060"]
+    KG["knowledge-svc :8070"]
+  end
+
+  NLP --> NLP_E
+  Views --> WSVC
+  WSC <--> WSGW
+
+  NLP_E --> WFE
+  WFE -->|"pipeline config\nagent config"| WSVC
+  WFE -->|"autonomy check"| LLM
+  WFE --> DISP
+  DISP -->|"AgentTask\n+preferred_model"| AGENTS
+  WFE -->|"approval events"| WSGW
+
+  AGENTS -->|"chat(model)"| LLM
+  AGENTS -->|"trust outcome"| LLM
+  AGENTS -->|"context"| MEM
+  AGENTS -->|"search"| RAG
+  AGENTS -->|"patterns"| KG
+  AGENTS -->|"artifacts · tasks\nMCP · Skills"| WSVC
+  AGENTS -->|"status · logs"| WSGW
+
+  WSGW -->|"broadcast"| WSC
+  WSVC -->|"API"| Store
+  </pre>
+  <div class="mermaid-target"></div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Control/Data Flow</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#bc8cff"></div> Real-time Events</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Feedback Loops</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f778ba"></div> Trust / Governance</div>
+  </div>
+</div>
+
+<!-- ====== TAB 2: Data Flow ====== -->
+<div class="panel hidden" id="data">
+  <h2>Data Flow &amp; Source of Truth</h2>
+  <pre class="mermaid-src">
+graph TB
+  subgraph SOT["Source of Truth"]
+    direction LR
+    PG["Postgres · workspace-svc\nworkspaces · phases · tasks\nagents · pipeline_configs\nrequirements · artifacts\nfeedback · executions"]
+    RD["Redis · llm-gateway\ntrust_scores\nautonomy_levels"]
+    QD["Qdrant · rag-pipeline\ndocument vectors"]
+    M0["Mem0 · memory-svc\nproject · org · prefs"]
+    AG["AGE · knowledge-svc\npatterns · practices"]
+  end
+
+  subgraph WR["Write Paths"]
+    direction LR
+    W1["Agent → artifacts, tasks"]
+    W2["Feedback → trust(Redis)\n+ prefs(Mem0) + audit(PG)"]
+    W3["Config UI → pipeline_configs\n+ agents"]
+    W4["Distill → AGE patterns"]
+    W5["Auto-index → Qdrant"]
+  end
+
+  subgraph RD2["Read Paths"]
+    direction LR
+    R1["WorkflowEngine ←\npipeline + agents"]
+    R2["_build_enriched_prompt ←\nMemory + RAG + KG\n+ MCP + Skills + UserCtx"]
+    R3["Governance ← autonomy"]
+    R4["Quality Gate ← config"]
+  end
+
+  W1 --> PG
+  W2 --> RD
+  W2 --> M0
+  W2 --> PG
+  W3 --> PG
+  W4 --> AG
+  W5 --> QD
+
+  PG --> R1
+  M0 --> R2
+  QD --> R2
+  AG --> R2
+  PG --> R2
+  RD --> R3
+  PG --> R4
+  </pre>
+  <div class="mermaid-target"></div>
+</div>
+
+<!-- ====== TAB 3: Execution Sequence ====== -->
+<div class="panel hidden" id="seq">
+  <h2>Execution Lifecycle Sequence</h2>
+  <pre class="mermaid-src">
+sequenceDiagram
+  actor U as User
+  participant FE as Frontend
+  participant PM as pm-agent
+  participant WS as workspace-svc
+  participant LLM as llm-gateway
+  participant AG as Domain Agent
+  participant CTX as Memory+RAG+KG
+
+  U->>FE: 自然语言输入
+  FE->>PM: POST /api/nlp
+  PM->>PM: 意图分类
+  PM->>WS: 读取 pipeline config
+  WS-->>PM: phase_order + qualityGate
+
+  loop 每个 enabled phase
+    PM->>WS: 读取 agent config
+    WS-->>PM: preferredModel + status
+    PM->>LLM: check_autonomy
+    LLM-->>PM: autonomy_level
+
+    alt supervised
+      PM-->>FE: approval:required (WS)
+      U->>FE: 审批
+      FE->>PM: POST /workflow/approve
+    end
+
+    PM->>AG: dispatch(AgentTask)
+    AG->>CTX: 组装上下文
+    CTX-->>AG: memory + docs + patterns + extensions
+    AG->>LLM: chat(model=preferred)
+    LLM-->>AG: 响应
+    AG->>WS: 保存 artifacts + tasks
+    AG->>LLM: report_trust_outcome
+
+    PM->>PM: quality gate check
+    alt manual gate
+      PM-->>FE: approval:required
+      U->>FE: 通过
+    end
+  end
+
+  PM-->>FE: project:complete
+  </pre>
+  <div class="mermaid-target"></div>
+</div>
+
+<!-- ====== TAB 4: Five Loops ====== -->
+<div class="panel hidden" id="loops">
+  <h2>Five Closed Loops — One Execution Spine</h2>
+  <pre class="mermaid-src">
+graph TB
+  subgraph L1["🔄 Orchestration Loop"]
+    O1["User Intent"] --> O2["NLP → Phase Select"]
+    O2 --> O3["dispatch(model)"]
+    O3 --> O4["Execution"]
+    O4 --> O5["Artifacts + Tasks"]
+    O5 --> O6["Quality Gate"]
+    O6 -->|pass| O2
+    O6 -->|fail| O1
+  end
+
+  subgraph L2["🛡️ Governance Loop"]
+    G1["Execution"] --> G2["trust_outcome"]
+    G2 --> G3["Score → Autonomy"]
+    G3 --> G4["Gate"]
+    G4 -->|auto| G1
+    G4 -->|supervised| G5["Human Approval"] --> G1
+  end
+
+  subgraph L3["📚 Learning Loop"]
+    LE1["Output"] --> LE2["User Feedback"]
+    LE2 --> LE3["Memory + Prefs"]
+    LE3 --> LE4["Enriched Prompt"]
+    LE4 --> LE1
+  end
+
+  subgraph L4["🔌 Extensibility Loop"]
+    E1["Config UI"] --> E2["Persist"]
+    E2 --> E3["Load at Runtime"]
+    E3 --> E4["Inject in Prompt"]
+    E4 --> E5["Extended Exec"]
+  end
+
+  subgraph L5["📊 Observability Loop"]
+    OB1["Events"] --> OB2["ws-gateway"]
+    OB2 --> OB3["Execution View"]
+    OB3 --> OB4["Traces · Logs"]
+    OB4 --> OB5["Intervention"]
+    OB5 --> OB1
+  end
+
+  L2 -.->|gate| L1
+  L3 -.->|context| L1
+  L4 -.->|capabilities| L1
+  L1 -.->|events| L5
+  L1 -.->|outcome| L2
+  L1 -.->|artifacts| L3
+  LE2 -.->|trust| L2
+  </pre>
+  <div class="mermaid-target"></div>
+</div>
+
+</div>
+</body>
+</html>
