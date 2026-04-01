@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import re as _re
-import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
 from typing import Any
 
 from vibeos_agent import (
@@ -16,7 +13,6 @@ from vibeos_agent import (
     AgentType,
     BaseAgent,
     CapabilityContract,
-    Message,
     RichBlock,
     Task,
 )
@@ -65,83 +61,10 @@ and diagrams described in text.\
 """
 
 
-def _extract_json(text: str) -> dict[str, Any]:
-    """Extract a JSON object from LLM output that may contain trailing prose."""
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    m = _re.search(r"\{[\s\S]*\}", text)
-    if m:
-        candidate = m.group()
-        while candidate:
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                last_brace = candidate.rfind("}", 0, len(candidate) - 1)
-                if last_brace == -1:
-                    break
-                candidate = candidate[:last_brace + 1]
-    return {"summary": text, "wireframes": [], "tasks": []}
-
-
-TOOLS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "design_component",
-            "description": "Design a UI component with layout, states, and interactions",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {"type": "string"},
-                    "requirements": {"type": "string"},
-                    "platform": {
-                        "type": "string",
-                        "enum": ["web", "mobile", "desktop"],
-                    },
-                },
-                "required": ["component_name", "requirements"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_wireframe",
-            "description": "Create a text-based wireframe description for a screen or page",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "screen_name": {"type": "string"},
-                    "user_flow": {"type": "string"},
-                },
-                "required": ["screen_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "define_style_guide",
-            "description": "Define a style guide covering colors, typography, spacing, and branding",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "brand_description": {"type": "string"},
-                    "target_audience": {"type": "string"},
-                },
-                "required": ["brand_description"],
-            },
-        },
-    },
-]
-
-
 class DesignAgent(BaseAgent):
     agent_type = AgentType.DESIGN
     system_prompt = SYSTEM_PROMPT
-    tools = TOOLS
+    chat_prompt = CHAT_PROMPT
 
     def __init__(self) -> None:
         super().__init__()
@@ -182,7 +105,7 @@ class DesignAgent(BaseAgent):
             raw_reply = await self._call_llm_with_tools(prompt, workspace_id=task.workspace_id)
             await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
 
-            structured = _extract_json(raw_reply)
+            structured = self._extract_json(raw_reply)
 
             # Save design spec as artifact
             try:
@@ -287,86 +210,6 @@ class DesignAgent(BaseAgent):
             try:
                 await self.ws.publish_agent_status(
                     task.workspace_id, self.agent_type, AgentStatus.IDLE
-                )
-            except Exception:
-                pass
-
-    async def chat(
-        self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
-    ) -> AsyncIterator[Message]:
-        user_msg = Message(
-            id=uuid.uuid4().hex,
-            workspace_id=workspace_id,
-            agent_type=self.agent_type,
-            role="user",
-            content=message,
-            timestamp=datetime.now(timezone.utc),
-        )
-        await self.session.append(workspace_id, self.agent_type, user_msg)
-
-        try:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.RUNNING
-            )
-
-            reply_text = await self._call_llm(message, workspace_id=workspace_id)
-
-            reply_msg = self._make_message(workspace_id, reply_text)
-            await self.session.append(workspace_id, self.agent_type, reply_msg)
-
-            yield reply_msg
-        except Exception:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat failed"
-            )
-            raise
-        finally:
-            try:
-                await self.ws.publish_agent_status(
-                    workspace_id, self.agent_type, AgentStatus.IDLE
-                )
-            except Exception:
-                pass
-
-    async def chat_stream(
-        self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
-    ) -> AsyncIterator[str]:
-        """Stream chat response token-by-token."""
-        user_msg = Message(
-            id=uuid.uuid4().hex,
-            workspace_id=workspace_id,
-            agent_type=self.agent_type,
-            role="user",
-            content=message,
-            timestamp=datetime.now(timezone.utc),
-        )
-        await self.session.append(workspace_id, self.agent_type, user_msg)
-
-        try:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.RUNNING
-            )
-
-            full_reply = ""
-            async for delta in self._call_llm_stream(
-                message,
-                workspace_id=workspace_id,
-                system_prompt_override=CHAT_PROMPT,
-            ):
-                full_reply += delta
-                yield delta
-
-            reply_msg = self._make_message(workspace_id, full_reply)
-            await self.session.append(workspace_id, self.agent_type, reply_msg)
-        except Exception:
-            await self.ws.publish_agent_status(
-                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat stream failed"
-            )
-            raise
-        finally:
-            try:
-                await self.ws.publish_agent_status(
-                    workspace_id, self.agent_type, AgentStatus.IDLE
                 )
             except Exception:
                 pass

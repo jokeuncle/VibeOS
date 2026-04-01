@@ -6,6 +6,7 @@ import asyncio
 import contextvars
 import json
 import logging
+import re as _re
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
@@ -65,7 +66,7 @@ class BaseAgent(ABC):
     agent_type: AgentType
     capabilities: list[CapabilityContract] = []
     system_prompt: str = "You are a helpful AI agent."
-    tools: list[dict[str, Any]] = []
+    chat_prompt: str | None = None
 
     manifest: AgentManifest | None = None
 
@@ -104,7 +105,7 @@ class BaseAgent(ABC):
         self._tool_results_var.set(val)
 
     # ------------------------------------------------------------------
-    # Abstract interface
+    # Abstract / overridable interface
     # ------------------------------------------------------------------
 
     @abstractmethod
@@ -112,16 +113,114 @@ class BaseAgent(ABC):
         """Run a structured task and yield progress events."""
         ...
 
-    @abstractmethod
     async def chat(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
     ) -> AsyncIterator[Message]:
-        """Handle a free-form chat message and yield response messages."""
-        ...
+        """Handle a free-form chat message and yield response messages.
+
+        Default implementation: append user message to session, call LLM,
+        persist reply, publish status transitions. Subclasses can override.
+        """
+        from .models import AgentStatus
+
+        user_msg = self._make_user_message(workspace_id, message)
+        await self.session.append(workspace_id, self.agent_type, user_msg)
+
+        try:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.RUNNING
+            )
+            reply_text = await self._call_llm(message, workspace_id=workspace_id)
+            reply_msg = self._make_message(workspace_id, reply_text)
+            await self.session.append(workspace_id, self.agent_type, reply_msg)
+            yield reply_msg
+        except Exception:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat failed"
+            )
+            raise
+        finally:
+            try:
+                await self.ws.publish_agent_status(
+                    workspace_id, self.agent_type, AgentStatus.IDLE
+                )
+            except Exception:
+                logger.debug("Failed to reset agent status to IDLE", exc_info=True)
+
+    async def chat_stream(
+        self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None
+    ) -> AsyncIterator[str]:
+        """Stream chat response token-by-token as content deltas.
+
+        Default implementation uses ``chat_prompt`` (if set) as system prompt
+        override for conversational style. Subclasses can override.
+        """
+        from .models import AgentStatus
+
+        user_msg = self._make_user_message(workspace_id, message)
+        await self.session.append(workspace_id, self.agent_type, user_msg)
+
+        try:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.RUNNING
+            )
+            full_reply = ""
+            async for delta in self._call_llm_stream(
+                message,
+                workspace_id=workspace_id,
+                system_prompt_override=self.chat_prompt,
+            ):
+                full_reply += delta
+                yield delta
+
+            reply_msg = self._make_message(workspace_id, full_reply)
+            await self.session.append(workspace_id, self.agent_type, reply_msg)
+        except Exception:
+            await self.ws.publish_agent_status(
+                workspace_id, self.agent_type, AgentStatus.ERROR, detail="Chat stream failed"
+            )
+            raise
+        finally:
+            try:
+                await self.ws.publish_agent_status(
+                    workspace_id, self.agent_type, AgentStatus.IDLE
+                )
+            except Exception:
+                logger.debug("Failed to reset agent status to IDLE", exc_info=True)
 
     # ------------------------------------------------------------------
     # Helpers available to subclasses
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_json(text: str) -> dict[str, Any]:
+        """Extract a JSON object from LLM output that may contain prose."""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        m = _re.search(r"\{[\s\S]*\}", text)
+        if m:
+            candidate = m.group()
+            while candidate:
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    last_brace = candidate.rfind("}", 0, len(candidate) - 1)
+                    if last_brace == -1:
+                        break
+                    candidate = candidate[: last_brace + 1]
+        return {"summary": text}
+
+    def _make_user_message(self, workspace_id: str, content: str) -> Message:
+        return Message(
+            id=uuid.uuid4().hex,
+            workspace_id=workspace_id,
+            agent_type=self.agent_type,
+            role="user",
+            content=content,
+            timestamp=datetime.now(timezone.utc),
+        )
 
     async def _call_llm(
         self,
@@ -159,7 +258,7 @@ class BaseAgent(ABC):
                 agent_type=_enum_val(self.agent_type),
             )
         except Exception:
-            pass
+            logger.debug("Failed to persist memory after _call_llm", exc_info=True)
 
         return reply
 
@@ -208,20 +307,18 @@ class BaseAgent(ABC):
                 agent_type=_enum_val(self.agent_type),
             )
         except Exception:
-            pass
+            logger.debug("Failed to persist memory after _call_llm_stream", exc_info=True)
 
     def _get_tool_schemas(self) -> list[dict[str, Any]] | None:
-        """Return merged tool schemas from registry + class-level tools."""
-        schemas: list[dict[str, Any]] = []
+        """Return tool schemas from the registry (single source of truth).
+
+        Class-level ``self.tools`` schemas are intentionally excluded: tools
+        without a registered executor cause runtime errors when the LLM invokes
+        them.  All callable tools must be registered in ``self.tool_registry``.
+        """
         if self.tool_registry.has_tools:
-            schemas.extend(self.tool_registry.get_schemas())
-        if self.tools:
-            seen = {s.get("function", {}).get("name") for s in schemas}
-            for t in self.tools:
-                name = t.get("function", {}).get("name", "")
-                if name and name not in seen:
-                    schemas.append(t)
-        return schemas or None
+            return self.tool_registry.get_schemas()
+        return None
 
     async def _call_llm_with_tools(
         self,
@@ -282,7 +379,7 @@ class BaseAgent(ABC):
                         agent_type=_enum_val(self.agent_type),
                     )
                 except Exception:
-                    pass
+                    logger.debug("Failed to persist memory after tool loop", exc_info=True)
                 return reply
 
             messages.append(msg)
@@ -316,7 +413,7 @@ class BaseAgent(ABC):
                         level="info",
                     )
                 except Exception:
-                    pass
+                    logger.debug("Failed to publish tool log for %s", tool_name, exc_info=True)
 
                 tool_result = await self.tool_registry.execute(tool_name, parsed_args)
                 is_error = any(
@@ -460,7 +557,7 @@ class BaseAgent(ABC):
                             level="info",
                         )
                     except Exception:
-                        pass
+                        logger.debug("Failed to publish tool log for %s", tool_name, exc_info=True)
 
                     tool_result = await self.tool_registry.execute(tool_name, parsed_args)
                     is_error = any(
@@ -492,7 +589,7 @@ class BaseAgent(ABC):
                 agent_type=_enum_val(self.agent_type),
             )
         except Exception:
-            pass
+            logger.debug("Failed to persist memory after stream tool loop", exc_info=True)
 
     async def _build_enriched_prompt(
         self,
@@ -545,7 +642,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             if upstream:
                 sections.append(upstream)
         except Exception:
-            pass
+            logger.warning("Failed to fetch upstream artifacts for ws=%s", workspace_id, exc_info=True)
 
         try:
             memory_ctx = await self.memory.assemble_context(
@@ -556,7 +653,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                     f"## Context from past interactions and preferences\n{memory_ctx}"
                 )
         except Exception:
-            pass
+            logger.warning("Failed to assemble memory context for ws=%s", workspace_id, exc_info=True)
 
         try:
             rag_results = await self.rag.search(
@@ -568,7 +665,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 )
                 sections.append(f"## Relevant project documents\n{chunks}")
         except Exception:
-            pass
+            logger.warning("RAG search failed for ws=%s", workspace_id, exc_info=True)
 
         try:
             patterns = await self.knowledge.search(
@@ -581,7 +678,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 )
                 sections.append(f"## Organization best practices\n{pattern_text}")
         except Exception:
-            pass
+            logger.warning("Knowledge search failed for ws=%s", workspace_id, exc_info=True)
 
         return "\n\n".join(sections)
 
@@ -624,14 +721,14 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         if not upstream_phases:
             return ""
 
+        phase_to_agent = {v: k for k, v in AGENT_PHASE_MAP.items()}
+
         sections: list[str] = []
         for up_phase in upstream_phases:
-            phase_id = await self.workspace_svc.find_phase_by_type(workspace_id, up_phase)
-            if not phase_id:
-                continue
+            upstream_agent = phase_to_agent.get(up_phase, up_phase)
             try:
                 artifacts = await self.workspace_svc.list_artifacts(
-                    workspace_id, phase_id=phase_id  # type: ignore[call-arg]
+                    workspace_id, agent_type=upstream_agent
                 )
                 for art in artifacts[:5]:
                     title = art.get("title", "untitled")
@@ -641,6 +738,10 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                         f"### [{up_phase}] {title} ({art_type})\n{content}"
                     )
             except Exception:
+                logger.warning(
+                    "Failed to fetch upstream artifacts for phase=%s agent=%s",
+                    up_phase, upstream_agent, exc_info=True,
+                )
                 continue
 
         if not sections:
@@ -652,6 +753,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         try:
             related = await self.workspace_svc.get_related_artifacts(workspace_id, requirement_id)
         except Exception:
+            logger.warning("Failed to fetch related requirement context: ws=%s req=%s", workspace_id, requirement_id, exc_info=True)
             return ""
 
         TRUNCATION = {
@@ -712,7 +814,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 [{"title": title, "content": content[:8000], "doc_type": doc_type}],
             )
         except Exception:
-            pass
+            logger.warning("Auto-index artifact failed: ws=%s title=%s", workspace_id, title, exc_info=True)
 
     async def _upsert_artifact(
         self,
@@ -741,7 +843,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                     [{"title": title, "content": content[:8000], "doc_type": artifact_type}],
                 )
             except Exception:
-                pass
+                logger.warning("RAG index failed during upsert_artifact: ws=%s", workspace_id, exc_info=True)
         return result
 
     # ------------------------------------------------------------------
@@ -800,7 +902,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 try:
                     await self._registry.heartbeat(cap.name, agent_key)
                 except Exception:
-                    pass
+                    logger.debug("Heartbeat failed for capability %s", cap.name, exc_info=True)
 
     def start_heartbeat(self, interval: float = 30.0) -> None:
         """Start the background heartbeat loop (call after registration)."""

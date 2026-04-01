@@ -113,25 +113,32 @@ class Distiller:
                 f"{self.workspace_svc_url}/api/workspaces/{workspace_id}"
             )
             workspace_resp.raise_for_status()
-            workspace = workspace_resp.json()
+            ws_body = workspace_resp.json()
+            workspace = ws_body.get("data", ws_body) if isinstance(ws_body, dict) else ws_body
+            phases = workspace.get("phases", []) if isinstance(workspace, dict) else []
 
-            phases_resp = await client.get(
-                f"{self.workspace_svc_url}/api/workspaces/{workspace_id}/phases"
-            )
-            phases = phases_resp.json() if phases_resp.status_code == 200 else []
-
-            activities_resp = await client.get(
-                f"{self.workspace_svc_url}/api/workspaces/{workspace_id}/activities",
-                params={"limit": 200},
-            )
-            activities = (
-                activities_resp.json() if activities_resp.status_code == 200 else []
-            )
+            all_activities: list[dict[str, Any]] = []
+            page = 1
+            page_size = 100
+            while True:
+                activities_resp = await client.get(
+                    f"{self.workspace_svc_url}/api/workspaces/{workspace_id}/activities",
+                    params={"page": page, "pageSize": page_size},
+                )
+                if activities_resp.status_code != 200:
+                    break
+                act_body = activities_resp.json()
+                act_data = act_body.get("data", act_body) if isinstance(act_body, dict) else act_body
+                batch = act_data if isinstance(act_data, list) else []
+                all_activities.extend(batch)
+                if len(batch) < page_size or len(all_activities) >= 200:
+                    break
+                page += 1
 
         return {
             "workspace": workspace,
             "phases": phases,
-            "activities": activities,
+            "activities": all_activities,
         }
 
     async def extract_knowledge(

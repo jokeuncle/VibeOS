@@ -88,101 +88,6 @@ def _extract_json(text: str) -> dict[str, Any]:
     return {"summary": text, "code_artifacts": [], "dependencies": [], "tasks": []}
 
 
-TOOLS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "gitlab_push_file",
-            "description": (
-                "Commit a file (create or update) to the GitLab repository. "
-                "Use this to write every generated source file into the repo. "
-                "Call once per file."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "project_id": {
-                        "type": "string",
-                        "description": "GitLab project ID or 'namespace/name' path",
-                    },
-                    "file_path": {
-                        "type": "string",
-                        "description": "File path within the repo (e.g. 'src/components/App.tsx')",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Full file content to commit",
-                    },
-                    "branch": {
-                        "type": "string",
-                        "description": "Target branch (default: main)",
-                    },
-                    "commit_message": {
-                        "type": "string",
-                        "description": "Commit message for this file",
-                    },
-                },
-                "required": ["project_id", "file_path", "content", "commit_message"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_code",
-            "description": "Generate source code for a given specification (use when designing code before committing)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "specification": {"type": "string"},
-                    "language": {
-                        "type": "string",
-                        "enum": ["python", "typescript", "go", "rust", "java"],
-                    },
-                    "framework": {"type": "string"},
-                },
-                "required": ["specification", "language"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "review_code",
-            "description": "Review code for bugs, performance issues, and best practices",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {"type": "string"},
-                    "language": {"type": "string"},
-                    "focus": {
-                        "type": "string",
-                        "enum": ["bugs", "performance", "security", "style", "all"],
-                    },
-                },
-                "required": ["code"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "plan_implementation",
-            "description": "Create a step-by-step implementation plan for a feature",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "feature_description": {"type": "string"},
-                    "tech_stack": {"type": "string"},
-                    "constraints": {"type": "string"},
-                },
-                "required": ["feature_description"],
-            },
-        },
-    },
-]
-
-
 def _lang_for(filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
     return {
@@ -205,7 +110,6 @@ def _lang_for(filename: str) -> str:
 class DevelopmentAgent(BaseAgent):
     agent_type = AgentType.DEVELOPMENT
     system_prompt = SYSTEM_PROMPT
-    tools = TOOLS
 
     def __init__(self) -> None:
         super().__init__()

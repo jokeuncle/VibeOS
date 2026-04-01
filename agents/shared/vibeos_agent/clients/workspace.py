@@ -41,8 +41,6 @@ class WorkspaceClient:
         self, workspace_id: str, task: Task, *, phase_id: str | None = None
     ) -> dict[str, Any]:
         if not phase_id:
-            phase_id = await self.find_phase_by_type(workspace_id, "architecture")
-        if not phase_id:
             phases = await self.get_phases(workspace_id)
             if phases:
                 phase_id = phases[0]["id"]
@@ -223,12 +221,21 @@ class WorkspaceClient:
         return resp.json()
 
     async def list_artifacts(
-        self, workspace_id: str, *, execution_id: str | None = None
+        self,
+        workspace_id: str,
+        *,
+        execution_id: str | None = None,
+        agent_type: str | None = None,
     ) -> list[dict[str, Any]]:
-        url = f"/api/workspaces/{workspace_id}/artifacts"
         if execution_id:
             url = f"/api/workspaces/{workspace_id}/executions/{execution_id}/artifacts"
-        resp = await self._http.get(url)
+            resp = await self._http.get(url)
+        else:
+            url = f"/api/workspaces/{workspace_id}/artifacts"
+            params: dict[str, str] = {}
+            if agent_type:
+                params["agentType"] = agent_type
+            resp = await self._http.get(url, params=params)
         resp.raise_for_status()
         data = resp.json()
         return data.get("data", data) if isinstance(data, dict) else data

@@ -82,69 +82,6 @@ def _extract_json(text: str) -> dict[str, Any]:
     return {"summary": text, "tasks": []}
 
 
-TOOLS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "design_pipeline",
-            "description": "Design a CI/CD pipeline with stages, steps, and triggers",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "project_description": {"type": "string"},
-                    "platform": {
-                        "type": "string",
-                        "enum": ["github-actions", "gitlab-ci", "jenkins", "circleci"],
-                    },
-                    "languages": {"type": "string"},
-                },
-                "required": ["project_description"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_deployment_config",
-            "description": "Create deployment configuration for a service",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "service_name": {"type": "string"},
-                    "strategy": {
-                        "type": "string",
-                        "enum": ["blue-green", "canary", "rolling", "recreate"],
-                    },
-                    "target": {
-                        "type": "string",
-                        "enum": ["kubernetes", "ecs", "docker-compose", "bare-metal"],
-                    },
-                },
-                "required": ["service_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "design_infrastructure",
-            "description": "Design infrastructure for hosting and running services",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "requirements": {"type": "string"},
-                    "cloud_provider": {
-                        "type": "string",
-                        "enum": ["aws", "gcp", "azure", "self-hosted"],
-                    },
-                },
-                "required": ["requirements"],
-            },
-        },
-    },
-]
-
-
 def _lang_for(infra_type: str) -> str:
     return {
         "container": "dockerfile",
@@ -156,7 +93,6 @@ def _lang_for(infra_type: str) -> str:
 class CicdAgent(BaseAgent):
     agent_type = AgentType.CICD
     system_prompt = SYSTEM_PROMPT
-    tools = TOOLS
     capabilities = [
         CapabilityContract(
             name="cicd",

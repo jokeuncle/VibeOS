@@ -161,59 +161,9 @@ def _extract_json(text: str) -> dict[str, Any]:
     return {"summary": text, "user_stories": [], "acceptance_criteria": [], "constraints": [], "tasks": []}
 
 
-TOOLS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_requirements",
-            "description": "Analyze raw requirements text and extract structured user stories and constraints",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "requirements_text": {"type": "string"},
-                    "domain": {"type": "string"},
-                },
-                "required": ["requirements_text"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_user_stories",
-            "description": "Generate user stories from a feature description",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "feature_description": {"type": "string"},
-                    "target_users": {"type": "string"},
-                },
-                "required": ["feature_description"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_acceptance_criteria",
-            "description": "Create acceptance criteria for a given user story",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "user_story": {"type": "string"},
-                    "context": {"type": "string"},
-                },
-                "required": ["user_story"],
-            },
-        },
-    },
-]
-
-
 class RequirementAgent(BaseAgent):
     agent_type = AgentType.REQUIREMENT
     system_prompt = SYSTEM_PROMPT
-    tools = TOOLS
 
     def __init__(self) -> None:
         super().__init__()
