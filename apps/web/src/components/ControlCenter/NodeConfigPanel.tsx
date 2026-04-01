@@ -3,6 +3,7 @@ import { useGraphStore } from './useGraphStore'
 import type { StateField } from './useGraphStore'
 import { useT } from '../../i18n'
 import FormSelect from '../ui/FormSelect'
+import NumberStepper from '../ui/NumberStepper'
 
 const TYPE_OPTIONS = ['string', 'int', 'float', 'bool', 'list', 'dict', 'any']
 const REDUCER_OPTIONS = ['', 'append', 'replace', 'add_messages']
@@ -120,20 +121,32 @@ export default function NodeConfigPanel() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className={LABEL_CLS}>{t('controlCenter.timeout')}</label>
-                <input
-                  type="number"
-                  value={(selectedNode.data.config?.timeout as number) || 30}
-                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...selectedNode.data.config, timeout: Number(e.target.value) } })}
-                  className={INPUT_CLS}
+                <NumberStepper
+                  size="sm"
+                  integer
+                  min={1}
+                  step={1}
+                  value={(selectedNode.data.config?.timeout as number) ?? 30}
+                  onChange={(v) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { ...selectedNode.data.config, timeout: v ?? 30 },
+                    })
+                  }
                 />
               </div>
               <div>
                 <label className={LABEL_CLS}>{t('controlCenter.retry')}</label>
-                <input
-                  type="number"
-                  value={(selectedNode.data.config?.retry as number) || 0}
-                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...selectedNode.data.config, retry: Number(e.target.value) } })}
-                  className={INPUT_CLS}
+                <NumberStepper
+                  size="sm"
+                  integer
+                  min={0}
+                  step={1}
+                  value={(selectedNode.data.config?.retry as number) ?? 0}
+                  onChange={(v) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { ...selectedNode.data.config, retry: v ?? 0 },
+                    })
+                  }
                 />
               </div>
             </div>

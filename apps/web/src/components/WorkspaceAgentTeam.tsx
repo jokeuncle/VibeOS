@@ -175,6 +175,11 @@ function AgentCard({
     if (liveModel) setModel(liveModel)
   }, [liveModel])
 
+  const modelSelectOptions = useMemo(
+    () => MODEL_OPTIONS.map(m => ({ value: m, label: m })),
+    [],
+  )
+
   const isActive = liveStatus !== 'idle'
 
   async function handleModelChange(newModel: string) {
@@ -246,7 +251,7 @@ function AgentCard({
               size="sm"
               fullWidth
               value={model}
-              options={useMemo(() => MODEL_OPTIONS.map(m => ({ value: m, label: m })), [])}
+              options={modelSelectOptions}
               onChange={handleModelChange}
             />
           </div>

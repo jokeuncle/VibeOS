@@ -6,6 +6,7 @@
  */
 
 import type { WidgetProps } from '@rjsf/utils'
+import NumberStepper from '../../components/ui/NumberStepper'
 
 const inputBase =
   'w-full px-2 py-1.5 rounded-lg bg-surface-1/50 border border-border-subtle text-[11px] ' +
@@ -61,8 +62,43 @@ export function CheckboxWidget({ id, value, onChange, disabled, readonly, label 
   )
 }
 
+/** Overrides RJSF default `input[type=number]` (native spinners) with themed +/- stepper. */
+export function UpDownWidget({
+  id,
+  value,
+  onChange,
+  onBlur,
+  onFocus,
+  disabled,
+  readonly,
+  schema,
+}: WidgetProps) {
+  const isInt = schema.type === 'integer'
+  const min = typeof schema.minimum === 'number' ? schema.minimum : undefined
+  const max = typeof schema.maximum === 'number' ? schema.maximum : undefined
+  const step =
+    typeof schema.multipleOf === 'number' && schema.multipleOf > 0 ? schema.multipleOf : ('any' as const)
+
+  return (
+    <NumberStepper
+      id={id}
+      value={value}
+      onChange={(v) => onChange(v)}
+      min={min}
+      max={max}
+      step={step}
+      integer={isInt}
+      disabled={disabled || readonly}
+      size="sm"
+      onBlur={() => onBlur(id, value)}
+      onFocus={() => onFocus(id, value)}
+    />
+  )
+}
+
 export const WIDGETS = {
   TextWidget,
   TextareaWidget,
   CheckboxWidget,
+  UpDownWidget,
 } as const
