@@ -510,7 +510,7 @@ export default function WorkspacePipeline() {
   }
 
   return (
-    <div className="-mx-8 -my-6 flex flex-col min-h-[calc(100vh-4rem)]">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className={headerClasses}>
         <PipelineHeader toolbar={pipelineSubView === 'visual' ? <GraphToolbar /> : undefined} />
       </div>
