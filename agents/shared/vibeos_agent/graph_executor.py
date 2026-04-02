@@ -209,6 +209,8 @@ class GraphExecutor:
         node_config = node_def.config
         node_type = node_def.type
 
+        max_retries = node_config.get("retries", 1)
+
         async def _capability_node(state: dict[str, Any]) -> dict[str, Any]:
             logger.info(">>> capability_node START: %s (cap_ref=%s)", node_def.id, cap_ref)
             cap = await self._resolve_capability(cap_ref)
@@ -261,17 +263,32 @@ class GraphExecutor:
                 task_payload.setdefault("context", {})["prior_node_artifacts"] = phase_arts
 
             import httpx
+            import asyncio as _asyncio
             timeout = node_config.get("timeout", 300)
-            try:
-                logger.info(">>> capability_node %s: calling POST %s (timeout=%ss)", node_def.id, endpoint, timeout)
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    resp = await client.post(endpoint, json=task_payload)
-                    resp.raise_for_status()
-                    result = resp.json()
-                logger.info(">>> capability_node %s: response received, status=%s", node_def.id, result.get("type","?"))
-            except Exception as exc:
-                logger.error("Capability %s call failed: %s", cap_ref, exc)
-                return {"_last_node": node_def.id, "_error": str(exc)}
+            result = None
+            last_err = ""
+            for attempt in range(max_retries):
+                try:
+                    logger.info(">>> capability_node %s: calling POST %s (attempt=%d/%d, timeout=%ss)", node_def.id, endpoint, attempt + 1, max_retries, timeout)
+                    async with httpx.AsyncClient(timeout=timeout) as client:
+                        resp = await client.post(endpoint, json=task_payload)
+                        resp.raise_for_status()
+                        result = resp.json()
+                    logger.info(">>> capability_node %s: response received, status=%s", node_def.id, result.get("type","?"))
+                    break
+                except Exception as exc:
+                    last_err = str(exc) or f"{type(exc).__name__}"
+                    logger.warning("Capability %s attempt %d failed: %s", cap_ref, attempt + 1, last_err[:200])
+                    if attempt < max_retries - 1:
+                        await _asyncio.sleep(2 ** attempt)
+            if result is None:
+                logger.error("Capability %s all %d attempts failed", cap_ref, max_retries)
+                return {"_last_node": node_def.id, "_error": last_err}
+
+            if isinstance(result, dict) and result.get("type") == "error":
+                error_msg = result.get("error") or "agent returned error with no details"
+                logger.warning("Capability %s returned error response: %s", cap_ref, error_msg[:200])
+                return {"_last_node": node_def.id, "_error": error_msg}
 
             output: dict[str, Any] = {"_last_node": node_def.id}
             payload = result.get("payload", result)
@@ -620,7 +637,18 @@ def _get_upstream_context(state: dict[str, Any]) -> str:
     summary = state.get("_summary", "")
     llm_out = state.get("llm_output", "")
     skill_prompt = state.get("_skill_prompt", "")
-    best = summary or llm_out or skill_prompt or (str(result)[:4000] if result else "")
+    best = summary or llm_out or skill_prompt or (str(result)[:8000] if result else "")
+
+    upstream_arts = state.get("upstream_artifacts")
+    if upstream_arts and isinstance(upstream_arts, list):
+        art_lines = []
+        for art in upstream_arts[:10]:
+            title = art.get("title", "")
+            content = art.get("content", "")[:2000]
+            if title or content:
+                art_lines.append(f"[{art.get('phase','')}] {title}:\n{content}")
+        if art_lines:
+            best = best + "\n\n## Upstream Artifacts\n" + "\n---\n".join(art_lines)
     return best
 
 

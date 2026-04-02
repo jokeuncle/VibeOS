@@ -14,12 +14,12 @@ _COMMON_STATE = {
 _COMMON_CONFIG = {"checkpointer": "memory", "recursion_limit": 25}
 
 
-def _cap_node(node_id: str, cap_ref: str, title: str, timeout: int = 300) -> dict:
+def _cap_node(node_id: str, cap_ref: str, title: str, timeout: int = 300, retries: int = 2) -> dict:
     return {
         "id": node_id,
         "type": "capability",
         "capability_ref": cap_ref,
-        "config": {"task_title": title, "timeout": timeout},
+        "config": {"task_title": title, "timeout": timeout, "retries": retries},
     }
 
 

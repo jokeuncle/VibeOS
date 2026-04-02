@@ -199,6 +199,11 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
           <div className="text-[11px] text-text-tertiary font-mono">
             {artifact.type} &middot; {artifact.agentType} &middot; v{artifact.version}
           </div>
+          {!expanded && artifact.content && (
+            <div className="text-[10px] text-text-tertiary mt-0.5 truncate max-w-[300px]">
+              {artifact.content.slice(0, 120).replace(/\n/g, ' ')}
+            </div>
+          )}
         </div>
         {fileUrl && (
           <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-medium shrink-0">
@@ -263,6 +268,16 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
   )
 }
 
+function groupByAgent(artifacts: Artifact[]): Record<string, Artifact[]> {
+  const groups: Record<string, Artifact[]> = {}
+  for (const a of artifacts) {
+    const key = a.agentType || 'unknown'
+    if (!groups[key]) groups[key] = []
+    groups[key].push(a)
+  }
+  return groups
+}
+
 export default function ArtifactPanel() {
   const { activeWorkspaceId, workflowRunning, workspaces, activeRequirementId, executions } = useWorkspaceStore()
   const t = useT()
@@ -273,15 +288,24 @@ export default function ArtifactPanel() {
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
   useEffect(() => {
+    if (!activeWorkspaceId) return
     if (prevRunning && !workflowRunning) {
-      if (activeWorkspaceId) {
-        workspaceApi.listArtifacts(activeWorkspaceId)
-          .then((list) => setArtifacts(Array.isArray(list) ? list : []))
-          .catch(() => {})
-      }
+      workspaceApi.listArtifacts(activeWorkspaceId)
+        .then((list) => setArtifacts(Array.isArray(list) ? list : []))
+        .catch(() => {})
     }
     setPrevRunning(workflowRunning)
   }, [workflowRunning, activeWorkspaceId, prevRunning])
+
+  useEffect(() => {
+    if (!activeWorkspaceId || !workflowRunning) return
+    const interval = setInterval(() => {
+      workspaceApi.listArtifacts(activeWorkspaceId)
+        .then((list) => setArtifacts(Array.isArray(list) ? list : []))
+        .catch(() => {})
+    }, 8000)
+    return () => clearInterval(interval)
+  }, [activeWorkspaceId, workflowRunning])
 
   useEffect(() => {
     if (!activeWorkspaceId) return
@@ -297,16 +321,14 @@ export default function ArtifactPanel() {
   }, [activeWorkspaceId])
 
   const filteredArtifacts = useMemo(() => {
-    let filtered = artifacts
-    if (activeRequirementId) {
-      const reqExecIds = new Set(
-        executions
-          .filter(e => e.requirementId === activeRequirementId)
-          .map(e => e.id),
-      )
-      filtered = filtered.filter(a => a.executionId && reqExecIds.has(a.executionId))
-    }
-    return filtered
+    if (!activeRequirementId) return artifacts
+    const reqExecIds = new Set(
+      executions
+        .filter(e => e.requirementId === activeRequirementId)
+        .map(e => e.id),
+    )
+    const scoped = artifacts.filter(a => a.executionId && reqExecIds.has(a.executionId))
+    return scoped.length > 0 ? scoped : artifacts
   }, [artifacts, activeRequirementId, executions])
 
   if (!activeWorkspaceId) return null
@@ -338,9 +360,19 @@ export default function ArtifactPanel() {
         </div>
       )}
 
-      <div className="space-y-2">
-        {filteredArtifacts.map((art) => (
-          <ArtifactCard key={art.id} artifact={art} />
+      <div className="space-y-3">
+        {Object.entries(groupByAgent(filteredArtifacts)).map(([agent, arts]) => (
+          <div key={agent}>
+            <div className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider mb-1.5 pl-1">
+              {agent}
+              <span className="text-text-tertiary/60 ml-1">({arts.length})</span>
+            </div>
+            <div className="space-y-2">
+              {arts.map((art) => (
+                <ArtifactCard key={art.id} artifact={art} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </div>

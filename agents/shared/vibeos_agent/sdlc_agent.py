@@ -95,6 +95,13 @@ class SDLCAgent(BaseAgent):
                 1 for r in self._tool_results
                 if r.get("ok") and r.get("tool") == "workspace_create_artifact"
             )
+
+            if tool_artifact_count == 0 and raw_reply and len(raw_reply) > 200:
+                fallback_count = await self._auto_save_fallback_artifacts(
+                    task, structured, raw_reply, agent_name, rich_blocks,
+                )
+                tool_artifact_count += fallback_count
+
             await _log(
                 task.workspace_id, agent_name,
                 f"Execution complete. {tool_artifact_count} artifacts saved, {len(created_tasks)} tasks created.",
@@ -110,11 +117,12 @@ class SDLCAgent(BaseAgent):
             })
         except Exception as exc:
             await self._report_trust_outcome(task, success=False)
+            err_detail = str(exc) or f"{type(exc).__name__} (no message)"
             try:
-                await _log(task.workspace_id, agent_name, f"Execution failed: {exc}", level="error", task_id=task.task_id)
+                await _log(task.workspace_id, agent_name, f"Execution failed: {err_detail}", level="error", task_id=task.task_id)
             except Exception:
                 pass
-            yield self._make_event("error", task.workspace_id, {"error": "execute failed"})
+            yield self._make_event("error", task.workspace_id, {"error": err_detail})
             raise
         finally:
             try:
@@ -138,6 +146,49 @@ class SDLCAgent(BaseAgent):
     async def _resolve_repo_context(self, task: AgentTask) -> dict[str, Any] | None:
         """Override to provide repo context (dev/cicd agents)."""
         return None
+
+    async def _auto_save_fallback_artifacts(
+        self,
+        task: AgentTask,
+        structured: dict[str, Any],
+        raw_reply: str,
+        agent_name: str,
+        rich_blocks: list[RichBlock],
+    ) -> int:
+        """When the LLM didn't call workspace_create_artifact, auto-save its output.
+
+        Returns the number of artifacts saved.
+        """
+        saved = 0
+        phase_key = self.phase_key or _enum_val(self.agent_type)
+        art_type = f"{phase_key}_output"
+        if self.artifact_configs:
+            art_type = self.artifact_configs[0].type
+
+        content = raw_reply
+        title = f"{phase_key.title()} Output"
+        summary = structured.get("summary", "")
+        if summary:
+            title = summary[:100]
+
+        try:
+            await self.workspace_svc.create_artifact(
+                task.workspace_id,
+                agent_type=agent_name,
+                artifact_type=art_type,
+                title=title,
+                content=content[:50000],
+            )
+            saved += 1
+            rich_blocks.append(RichBlock(
+                type="code", language="text",
+                content=f"[Auto-saved artifact] {title} ({art_type})",
+                metadata={"title": title},
+            ))
+            logger.info("Auto-saved fallback artifact for %s: %s", agent_name, title[:60])
+        except Exception as exc:
+            logger.debug("Failed to auto-save fallback artifact: %s", exc)
+        return saved
 
     async def _post_process(
         self,

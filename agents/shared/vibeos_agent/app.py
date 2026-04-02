@@ -128,7 +128,9 @@ def _mount_routes(app: FastAPI, agent_key: str) -> None:
             async for event in agent.execute(task):
                 last_event = event.model_dump(mode="json", exclude_none=True)
         except Exception as exc:
-            return {"error": str(exc), "type": "error", "agent_type": agent_key}
+            err_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            _log.error("Agent %s execute failed: %s", agent_key, err_msg, exc_info=True)
+            return {"error": err_msg, "type": "error", "agent_type": agent_key}
         return last_event
 
     @app.post("/api/execute/stream")

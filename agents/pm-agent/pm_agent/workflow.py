@@ -490,9 +490,17 @@ class WorkflowEngine:
                 evt_type = event.get("event", "")
                 data = event.get("data", {})
                 if evt_type == "graph:node_complete":
-                    payload = {"phase": phase_type, "task_id": data.get("node", ""), "task_title": data.get("node", ""), "result_summary": str(data.get("output", ""))[:200], "source": "graph"}
-                    yield self.sm.ev(sid, "task", "complete", payload)
-                    await self.sm.broadcast(workspace_id, sid, "task", "complete", payload)
+                    output = data.get("output", {})
+                    node_error = output.get("_error", "") if isinstance(output, dict) else ""
+                    node_id = data.get("node", "")
+                    if node_error:
+                        payload = {"phase": phase_type, "task_id": node_id, "task_title": node_id, "error": node_error[:500], "source": "graph"}
+                        yield self.sm.ev(sid, "task", "error", payload)
+                        await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
+                    else:
+                        payload = {"phase": phase_type, "task_id": node_id, "task_title": node_id, "result_summary": str(output)[:200], "source": "graph"}
+                        yield self.sm.ev(sid, "task", "complete", payload)
+                        await self.sm.broadcast(workspace_id, sid, "task", "complete", payload)
                 elif evt_type == "graph:error":
                     payload = {"phase": phase_type, "error": data.get("error", "unknown graph error"), "source": "graph"}
                     yield self.sm.ev(sid, "task", "error", payload)
@@ -501,6 +509,29 @@ class WorkflowEngine:
             payload = {"phase": phase_type, "error": str(exc), "source": "graph"}
             yield self.sm.ev(sid, "task", "error", payload)
             await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
+
+    async def _sync_phase_task_status(
+        self, workspace_id: str, phase_id: str, phase_status: PhaseStatus,
+    ) -> None:
+        """After graph execution, sync workspace task statuses to match phase outcome.
+
+        When a phase completes successfully, mark all pending tasks in that phase
+        as completed so progress tracking and the frontend reflect reality.
+        """
+        try:
+            tasks = await self.ws_client.get_tasks_by_phase(workspace_id, phase_id)
+            target_status = "completed" if phase_status == PhaseStatus.COMPLETED else "in_progress"
+            for t in tasks:
+                if t.get("status") in ("pending", "in_progress"):
+                    try:
+                        if target_status == "completed":
+                            await self.ws_client.complete_task(workspace_id, t["id"])
+                        else:
+                            await self.ws_client.update_task(workspace_id, t["id"], {"status": target_status})
+                    except Exception:
+                        pass
+        except Exception:
+            _logger.debug("Failed to sync task status for phase %s", phase_id)
 
     async def _recover_after_project_error(self, workspace_id: str, phase_type: str, failed_task_id: str | None) -> None:
         phase_id = await self.ws_client.find_phase_by_type(workspace_id, phase_type)
@@ -708,15 +739,24 @@ class WorkflowEngine:
             if pipeline_configs is None:
                 pipeline_configs = await self._resolve_pipeline_configs(workspace_id)
             graph_def = await self._resolve_phase_graph(workspace_id, phase_type, pipeline_configs)
-        if graph_def:
-            await self.ws_gw.publish_log(workspace_id, "pm", f"Using graph execution for phase: {phase_type}")
+        effective_graph = graph_def
+        graph_source = "graph"
+        if not effective_graph:
+            from .default_graphs import DEFAULT_PHASE_GRAPHS
+            dg = DEFAULT_PHASE_GRAPHS.get(phase_type)
+            if dg and self.graph_executor and HAS_LANGGRAPH:
+                effective_graph = dg
+                graph_source = "default_graph"
+
+        if effective_graph:
+            await self.ws_gw.publish_log(workspace_id, "pm", f"Using {graph_source} execution for phase: {phase_type}")
             try:
                 await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
             except Exception:
                 pass
             graph_tasks = 0
             graph_errors = 0
-            async for evt in self._execute_graph_for_phase(workspace_id, phase_type, graph_def, sid, user_message, preferred_model=preferred_model):
+            async for evt in self._execute_graph_for_phase(workspace_id, phase_type, effective_graph, sid, user_message, preferred_model=preferred_model):
                 yield evt
                 if "task:complete" in evt:
                     graph_tasks += 1
@@ -727,49 +767,10 @@ class WorkflowEngine:
                 await self.ws_client.update_phase(workspace_id, phase_id, status=final_status)
             except Exception:
                 pass
-            payload_done = {"phase": phase_type, "tasks_executed": graph_tasks, "tasks_total": graph_tasks + graph_errors, "tasks_failed": graph_errors, "source": "graph"}
-            yield self.sm.ev(sid, "phase", "complete", payload_done)
-            await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_done)
-            yield self.sm.session_complete(sid)
-            await self.sm.finish(sid, workspace_id)
-            return
 
-        # Default graph execution: use per-phase default graphs
-        from .default_graphs import DEFAULT_PHASE_GRAPHS
+            await self._sync_phase_task_status(workspace_id, phase_id, final_status)
 
-        default_graph = DEFAULT_PHASE_GRAPHS.get(phase_type)
-        if default_graph and self.graph_executor and HAS_LANGGRAPH:
-            await self.ws_gw.publish_log(
-                workspace_id, "pm",
-                f"Using default graph for phase: {phase_type}",
-            )
-            try:
-                await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
-            except Exception:
-                pass
-            graph_tasks = 0
-            graph_errors = 0
-            async for evt in self._execute_graph_for_phase(
-                workspace_id, phase_type, default_graph, sid, user_message,
-                preferred_model=preferred_model,
-            ):
-                yield evt
-                if "task:complete" in evt:
-                    graph_tasks += 1
-                elif "task:error" in evt:
-                    graph_errors += 1
-            final_status = PhaseStatus.COMPLETED if graph_errors == 0 else PhaseStatus.IN_PROGRESS
-            try:
-                await self.ws_client.update_phase(workspace_id, phase_id, status=final_status)
-            except Exception:
-                pass
-            payload_done = {
-                "phase": phase_type,
-                "tasks_executed": graph_tasks,
-                "tasks_total": graph_tasks + graph_errors,
-                "tasks_failed": graph_errors,
-                "source": "default_graph",
-            }
+            payload_done = {"phase": phase_type, "tasks_executed": graph_tasks, "tasks_total": graph_tasks + graph_errors, "tasks_failed": graph_errors, "source": graph_source}
             yield self.sm.ev(sid, "phase", "complete", payload_done)
             await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_done)
             yield self.sm.session_complete(sid)

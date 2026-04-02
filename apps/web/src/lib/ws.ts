@@ -157,6 +157,27 @@ function handleWSEvent(event: Record<string, any>) {
       store.patchTaskStatus(event.workspaceId, event.task_id, 'pending')
     }
 
+    // Phase status patching — resolve phase UUID from type name
+    const payload = event.payload || event
+    const phaseType = payload.phase
+    if (phaseType && (eventType === 'phase:start' || eventType === 'phase:complete')) {
+      const ws = store.workspaces.find(w => w.id === activeWsId)
+      const phase = ws?.phases.find(p => p.type === phaseType)
+      if (phase) {
+        const newStatus = eventType === 'phase:start'
+          ? 'in_progress' as const
+          : (payload.tasks_failed > 0 ? 'in_progress' as const : 'completed' as const)
+        store.updatePhaseStatus(event.workspaceId, phase.id, newStatus)
+      }
+    }
+
+    // Project start/complete — set workflow running state
+    if (eventType === 'project:start') {
+      useWorkspaceStore.setState({ workflowRunning: true })
+    } else if (eventType === 'project:complete' || eventType === 'project:error') {
+      useWorkspaceStore.setState({ workflowRunning: false })
+    }
+
     const workflowEventTypes = [
       'phase:start', 'phase:complete', 'phase:skip',
       'task:start', 'task:complete', 'task:error',
@@ -164,7 +185,7 @@ function handleWSEvent(event: Record<string, any>) {
     ]
     if (workflowEventTypes.includes(eventType)) {
       const [category, action] = eventType.split(':')
-      store.appendWorkflowEvent({ category, action, data: event, sid: sid || '' })
+      store.appendWorkflowEvent({ category: category as any, action, data: event, sid: sid || '' })
     }
   }
 
