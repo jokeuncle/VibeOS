@@ -30,6 +30,7 @@ const REGISTRY = new Map<string, ToolDisplay>([
   ['run_project',                { label: '执行项目',      icon: Rocket }],
   ['run_graph',                  { label: '执行图谱',      icon: Workflow }],
   ['delegate_to_agent',          { label: '委派代理',      icon: Bot }],
+  ['workspace_create_requirement', { label: '创建需求',     icon: FilePlus }],
   ['workspace_create_task',      { label: '创建任务',      icon: ClipboardList }],
   ['workspace_update_task_status', { label: '更新任务状态', icon: RefreshCw }],
   ['workspace_create_artifact',  { label: '保存产物',      icon: FilePlus }],

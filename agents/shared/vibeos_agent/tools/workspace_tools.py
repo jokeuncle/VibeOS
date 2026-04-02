@@ -11,6 +11,56 @@ from .base import BaseTool
 logger = logging.getLogger(__name__)
 
 
+class WorkspaceCreateRequirement(BaseTool):
+    """Create a requirement (需求) record in the workspace.
+
+    This is the primary tool for creating trackable requirements that appear
+    in the workspace's requirement list / kanban board.
+    """
+
+    name = "workspace_create_requirement"
+    display_name = "创建需求"
+    description = (
+        "Create a new requirement in the current workspace. "
+        "Use this when the user asks to create/add a requirement (需求). "
+        "The requirement will appear in the workspace requirement list."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Requirement title"},
+            "description": {
+                "type": "string",
+                "description": "Detailed requirement description (supports markdown)",
+            },
+            "priority": {
+                "type": "string",
+                "enum": ["p0", "p1", "p2", "p3"],
+                "description": "Priority level (p0=critical, p1=high, p2=medium, p3=low)",
+            },
+        },
+        "required": ["title"],
+    }
+
+    def __init__(self, ws_client: Any) -> None:
+        self._ws = ws_client
+
+    async def execute(self, **kwargs: Any) -> str:
+        workspace_id = kwargs.pop("_workspace_id", "")
+        title = kwargs.get("title", "Untitled")
+        description = kwargs.get("description", "")
+        priority = kwargs.get("priority")
+
+        result = await self._ws.create_requirement(
+            workspace_id, title, description=description, priority=priority,
+        )
+        return self._json_result({
+            "status": "created",
+            "requirement_id": result.get("id", ""),
+            "title": title,
+        })
+
+
 class WorkspaceCreateTask(BaseTool):
     name = "workspace_create_task"
     display_name = "创建任务"
@@ -255,6 +305,7 @@ def _parse_file_url(metadata: str | None) -> str | None:
 def create_workspace_tools(ws_client: Any, agent_type: str, rag_client: Any = None) -> list[BaseTool]:
     """Factory: create all workspace tools with shared client."""
     return [
+        WorkspaceCreateRequirement(ws_client),
         WorkspaceCreateTask(ws_client),
         WorkspaceUpdateTaskStatus(ws_client),
         WorkspaceCreateArtifact(ws_client, agent_type, rag_client=rag_client),

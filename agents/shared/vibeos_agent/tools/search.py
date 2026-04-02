@@ -270,5 +270,10 @@ class SearchToolsMeta(BaseTool):
         return json.dumps({
             "matched_tools": len(schemas),
             "tools": schemas,
-            "hint": "You can now call any of these tools directly.",
+            "hint": (
+                "You can now call any of these tools directly. "
+                "Use workspace_create_requirement to create a requirement (需求). "
+                "Use workspace_create_task to create tasks under a phase. "
+                "Use workspace_create_artifact to save documents/deliverables."
+            ),
         }, ensure_ascii=False)

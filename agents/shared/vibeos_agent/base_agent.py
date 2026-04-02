@@ -26,6 +26,7 @@ from .models import (
 from .registry import AgentManifest, CapabilityDef, RegistryClient
 from .session import SessionManager
 from .skills import Skill, SkillRegistry, SkillToolProvider
+from .tool_loop import _merge_discovered_schemas
 from .tools import ToolManager
 from .tools.mcp_provider import MCPServerConfig, MCPToolProvider
 
@@ -573,6 +574,7 @@ class BaseAgent(ABC):
 
             messages.append(msg)
             await self._process_tool_calls(tool_calls, workspace_id, messages)
+            _merge_discovered_schemas(tool_calls, messages, tool_schemas)
 
         for msg in reversed(messages):
             if isinstance(msg, dict) and msg.get("role") in ("assistant", "system"):
@@ -663,6 +665,7 @@ class BaseAgent(ABC):
                 }
                 messages.append(assistant_msg)
                 await self._process_tool_calls(tool_calls_acc, workspace_id, messages)
+                _merge_discovered_schemas(tool_calls_acc, messages, tool_schemas)
                 continue
 
             joined = "".join(content_parts)

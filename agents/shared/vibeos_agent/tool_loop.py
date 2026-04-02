@@ -37,6 +37,33 @@ def _truncate_dict(d: dict[str, Any], limit: int = 2000) -> dict[str, Any]:
     return out
 
 
+def _merge_discovered_schemas(
+    tool_calls: list[dict[str, Any]],
+    messages: list[dict[str, Any]],
+    tool_schemas: list[dict[str, Any]],
+) -> None:
+    """After search_tools returns, merge discovered schemas into *tool_schemas*
+    so the LLM can call them as first-class tools in subsequent iterations."""
+    existing = {s.get("function", {}).get("name") for s in tool_schemas}
+
+    for tc in tool_calls:
+        if tc.get("function", {}).get("name") != "search_tools":
+            continue
+        call_id = tc.get("id", "")
+        for msg in reversed(messages):
+            if msg.get("role") == "tool" and msg.get("tool_call_id") == call_id:
+                try:
+                    data = json.loads(msg.get("content", "{}"))
+                    for schema in data.get("tools", []):
+                        name = schema.get("function", {}).get("name", "")
+                        if name and name not in existing:
+                            tool_schemas.append(schema)
+                            existing.add(name)
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+                break
+
+
 async def execute_tool_calls(
     tool_calls: list[dict[str, Any]],
     tool_manager: ToolManager,
@@ -157,6 +184,7 @@ async def run_tool_loop(
             collect_results=collect_results,
             ws_notify=ws_notify,
         )
+        _merge_discovered_schemas(tool_calls, messages, tool_schemas)
 
     for msg in reversed(messages):
         if isinstance(msg, dict) and msg.get("role") in ("assistant", "system"):
@@ -238,6 +266,7 @@ async def run_tool_loop_stream(
             )
             for evt in events:
                 yield evt
+            _merge_discovered_schemas(tool_calls_acc, messages, tool_schemas)
             continue
 
         joined = "".join(content_parts)

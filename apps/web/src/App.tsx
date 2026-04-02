@@ -5,6 +5,7 @@ import { useUIStore } from './stores/ui'
 import { useAuthStore } from './stores/auth'
 import { connectWebSocket, disconnectWebSocket } from './lib/ws'
 import { bootstrapToolRegistry } from './lib/toolDisplayRegistry'
+import { useURLSync } from './hooks/useURLSync'
 import { useI18nStore } from './i18n'
 import TitleBar from './components/TitleBar'
 import StatusBar from './components/StatusBar'
@@ -26,6 +27,8 @@ import Dock from './components/Dock'
 import LoginPage from './components/LoginPage'
 
 export default function App() {
+  useURLSync()
+
   const { activeWorkspaceId } = useWorkspaceStore()
   const {
     toggleSidebar,
@@ -65,6 +68,7 @@ export default function App() {
 
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
   const refreshActiveWorkspace = useWorkspaceStore((s) => s.refreshActiveWorkspace)
+  const fetchWorkspaceMessages = useWorkspaceStore((s) => s.fetchWorkspaceMessages)
 
   useEffect(() => {
     restoreSession()
@@ -85,11 +89,12 @@ export default function App() {
           })
         } else {
           refreshActiveWorkspace()
+          fetchWorkspaceMessages()
         }
       }
     })
     return () => disconnectWebSocket()
-  }, [fetchWorkspaces, refreshActiveWorkspace])
+  }, [fetchWorkspaces, refreshActiveWorkspace, fetchWorkspaceMessages])
 
   useEffect(() => {
     connectWebSocket(activeWorkspaceId)
