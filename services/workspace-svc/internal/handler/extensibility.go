@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vibeos/shared/models"
+	mw "github.com/vibeos/workspace-svc/internal/middleware"
 	"github.com/vibeos/workspace-svc/internal/store"
 )
 
@@ -215,9 +216,13 @@ func (h *ExtensibilityHandler) DeleteSkill(w http.ResponseWriter, r *http.Reques
 // ---------------------------------------------------------------------------
 
 func (h *ExtensibilityHandler) GetUserContext(w http.ResponseWriter, r *http.Request) {
+	authedUser := mw.GetUserID(r.Context())
 	userID := r.URL.Query().Get("userId")
 	if userID == "" {
-		writeError(w, http.StatusBadRequest, "userId is required")
+		userID = authedUser
+	}
+	if userID != authedUser && userID != "system" {
+		writeError(w, http.StatusForbidden, "cannot access another user's context")
 		return
 	}
 	wsID := ptrOrNil(r.URL.Query().Get("workspaceId"))
@@ -235,13 +240,17 @@ func (h *ExtensibilityHandler) GetUserContext(w http.ResponseWriter, r *http.Req
 }
 
 func (h *ExtensibilityHandler) UpsertUserContext(w http.ResponseWriter, r *http.Request) {
+	authedUser := mw.GetUserID(r.Context())
 	var req models.UpsertUserContextReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
 	if req.UserID == "" {
-		writeError(w, http.StatusBadRequest, "userId is required")
+		req.UserID = authedUser
+	}
+	if req.UserID != authedUser && req.UserID != "system" {
+		writeError(w, http.StatusForbidden, "cannot modify another user's context")
 		return
 	}
 	uc, err := h.store.UpsertUserContext(r.Context(), req)

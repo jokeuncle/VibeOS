@@ -159,13 +159,14 @@ function IntegrationRow({
 }) {
   const t = useT()
   const isConnected = integration.status === 'connected'
+  const isPlanned = integration.status === 'disconnected' && !['gitlab', 'gitlab-ci'].includes(integration.id)
 
   return (
     <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all
       ${isConnected
         ? 'bg-surface-1/40 border-border-subtle'
-        : 'bg-surface-1/20 border-border-subtle hover:border-border-default hover:bg-surface-2/30'
-      }`}
+        : 'bg-surface-1/20 border-border-subtle'
+      } ${isPlanned ? 'opacity-60' : ''}`}
     >
       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0
         ${isConnected ? 'bg-surface-3' : 'bg-surface-2'}`}
@@ -185,26 +186,32 @@ function IntegrationRow({
 
       <StatusBadge status={integration.status} />
 
-      <button
-        onClick={() => onConnect(integration.id)}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer shrink-0
-          ${isConnected
-            ? 'text-text-tertiary hover:text-text-secondary hover:bg-surface-3'
-            : 'bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20'
-          }`}
-      >
-        {isConnected ? (
-          <>
-            <Settings2 className="w-3 h-3" />
-            {t('integrations.action.manage')}
-          </>
-        ) : (
-          <>
-            <Plus className="w-3 h-3" />
-            {t('integrations.action.connect')}
-          </>
-        )}
-      </button>
+      {isPlanned ? (
+        <span className="px-3 py-1.5 rounded-lg text-[10px] font-medium text-text-tertiary bg-surface-2/40 border border-border-subtle shrink-0">
+          {t('integrations.action.comingSoon')}
+        </span>
+      ) : (
+        <button
+          onClick={() => onConnect(integration.id)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer shrink-0
+            ${isConnected
+              ? 'text-text-tertiary hover:text-text-secondary hover:bg-surface-3'
+              : 'bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20'
+            }`}
+        >
+          {isConnected ? (
+            <>
+              <Settings2 className="w-3 h-3" />
+              {t('integrations.action.manage')}
+            </>
+          ) : (
+            <>
+              <Plus className="w-3 h-3" />
+              {t('integrations.action.connect')}
+            </>
+          )}
+        </button>
+      )}
     </div>
   )
 }
@@ -243,10 +250,7 @@ function ServicesTab() {
   useEffect(() => { setIntegrations(derivedIntegrations) }, [derivedIntegrations])
 
   function handleConnect(id: string) {
-    if (id === 'gitlab') return
-    setIntegrations(prev =>
-      prev.map(i => i.id === id && i.status === 'disconnected' ? { ...i, status: 'connected', detail: t('integrations.detail.justConnected') } : i),
-    )
+    if (id === 'gitlab' || id === 'gitlab-ci') return
   }
 
   const categories = CATEGORY_ORDER.filter(cat => integrations.some(i => i.categoryKey === cat))

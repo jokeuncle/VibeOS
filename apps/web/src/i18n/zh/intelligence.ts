@@ -109,6 +109,7 @@ const intelligence = {
   'integrations.status.error': '错误',
   'integrations.action.connect': '连接',
   'integrations.action.manage': '管理',
+  'integrations.action.comingSoon': '即将推出',
   'integrations.tab.services': '服务',
   'integrations.tab.mcp': 'MCP 服务器',
   'integrations.tab.skills': '技能',

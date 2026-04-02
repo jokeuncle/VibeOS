@@ -243,6 +243,7 @@ func main() {
 
 	// Extensibility: MCP servers, tool configs, skills, user contexts
 	r.Route("/api/ext", func(r chi.Router) {
+		r.Use(mw.RequireAuth)
 		r.Get("/mcp-servers", extHandler.ListMCPServers)
 		r.Post("/mcp-servers", extHandler.CreateMCPServer)
 		r.Get("/mcp-servers/{id}", extHandler.GetMCPServer)

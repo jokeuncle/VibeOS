@@ -109,6 +109,7 @@ const intelligence = {
   'integrations.status.error': 'Error',
   'integrations.action.connect': 'Connect',
   'integrations.action.manage': 'Manage',
+  'integrations.action.comingSoon': 'Coming Soon',
   'integrations.tab.services': 'Services',
   'integrations.tab.mcp': 'MCP Servers',
   'integrations.tab.skills': 'Skills',
