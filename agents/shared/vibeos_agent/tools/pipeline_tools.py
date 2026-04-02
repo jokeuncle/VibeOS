@@ -51,14 +51,6 @@ class TriggerPipeline(BaseTool):
     def __init__(self, registry: AdapterRegistry) -> None:
         self._registry = registry
 
-    async def mock(self, **kwargs: Any) -> str:
-        return self._json_result({
-            "mock": True,
-            "task_id": f"{kwargs.get('project_id', 'mock')}::42",
-            "status": "created",
-            "web_url": "https://gitlab.example.com/mock/pipelines/42",
-        })
-
     async def _execute(self, **kwargs: Any) -> str:
         adapter = self._registry.get("gitlab_pipeline")
         if not adapter:
@@ -99,14 +91,6 @@ class GetPipelineStatus(BaseTool):
     def __init__(self, registry: AdapterRegistry) -> None:
         self._registry = registry
 
-    async def mock(self, **kwargs: Any) -> str:
-        return self._json_result({
-            "mock": True,
-            "task_id": kwargs.get("task_id", "mock::1"),
-            "status": "success",
-            "finished_at": "2025-01-01T00:05:00Z",
-        })
-
     async def _execute(self, **kwargs: Any) -> str:
         adapter = self._registry.get("gitlab_pipeline")
         if not adapter:
@@ -139,13 +123,6 @@ class GetPipelineLogs(BaseTool):
     def __init__(self, registry: AdapterRegistry) -> None:
         self._registry = registry
 
-    async def mock(self, **kwargs: Any) -> str:
-        return self._json_result({
-            "mock": True,
-            "task_id": kwargs.get("task_id", "mock::1"),
-            "jobs": [{"name": "build", "status": "success", "log_excerpt": "(mock) Build completed."}],
-        })
-
     async def _execute(self, **kwargs: Any) -> str:
         adapter = self._registry.get("gitlab_pipeline")
         if not adapter or not isinstance(adapter, GitLabPipelineAdapter):
@@ -174,13 +151,6 @@ class CancelPipeline(BaseTool):
 
     def __init__(self, registry: AdapterRegistry) -> None:
         self._registry = registry
-
-    async def mock(self, **kwargs: Any) -> str:
-        return self._json_result({
-            "mock": True,
-            "task_id": kwargs.get("task_id", "mock::1"),
-            "status": "cancelled",
-        })
 
     async def _execute(self, **kwargs: Any) -> str:
         adapter = self._registry.get("gitlab_pipeline")

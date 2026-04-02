@@ -37,15 +37,6 @@ class GenerateCodeTool(BaseTool):
     def __init__(self, llm_client: Any) -> None:
         self._llm = llm_client
 
-    async def mock(self, **kwargs: Any) -> str:
-        language = kwargs.get("language", "python")
-        return self._json_result({
-            "mock": True,
-            "language": language,
-            "framework": kwargs.get("framework", ""),
-            "code": f"# (mock) Generated {language} code for: {kwargs.get('specification', '')[:100]}",
-        })
-
     async def _execute(self, **kwargs: Any) -> str:
         spec = kwargs.get("specification", "")
         language = kwargs.get("language", "python")
@@ -100,14 +91,6 @@ class ReviewCodeTool(BaseTool):
     def __init__(self, llm_client: Any) -> None:
         self._llm = llm_client
 
-    async def mock(self, **kwargs: Any) -> str:
-        return self._json_result({
-            "mock": True,
-            "issues": [],
-            "summary": "(mock) No issues found.",
-            "score": 8,
-        })
-
     async def _execute(self, **kwargs: Any) -> str:
         code = kwargs.get("code", "")
         language = kwargs.get("language", "")
@@ -159,14 +142,6 @@ class PlanImplementationTool(BaseTool):
 
     def __init__(self, llm_client: Any) -> None:
         self._llm = llm_client
-
-    async def mock(self, **kwargs: Any) -> str:
-        return self._json_result({
-            "mock": True,
-            "steps": [{"step": 1, "description": "(mock) Plan step", "files": ["src/main.py"], "details": "placeholder"}],
-            "estimated_files": 1,
-            "dependencies": [],
-        })
 
     async def _execute(self, **kwargs: Any) -> str:
         feature = kwargs.get("feature_description", "")

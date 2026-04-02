@@ -1,4 +1,11 @@
-"""ToolProvider interface and ToolManager -- federated tool resolution."""
+"""ToolProvider interface and ToolManager -- the single entry point for all
+tool operations in VibeOS agents.
+
+ToolManager owns a built-in ``StaticToolProvider`` for ``BaseTool`` instances
+and federates any number of external ``ToolProvider`` sources (MCP servers,
+skill bundles, etc.).  All agents register tools directly on ToolManager;
+there is no separate ToolRegistry.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .base import BaseTool, ToolResult
+from .search import ToolLoadStrategy, SearchToolsMeta, _score_match, _AUTO_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -37,27 +45,21 @@ class ToolDescriptor:
 
 
 class ToolProvider(ABC):
-    """Abstract source of callable tools.
-
-    Concrete providers include static tools (``BaseTool``), MCP servers,
-    DB-configured dynamic tools, and skill bundles.
-    """
+    """Abstract source of callable tools (MCP servers, skill bundles, etc.)."""
 
     provider_key: str = ""
 
     @abstractmethod
     async def list_tools(self) -> list[ToolDescriptor]:
-        """Return descriptors for all tools this provider offers."""
         ...
 
     @abstractmethod
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
-        """Execute the named tool with the given arguments."""
         ...
 
 
 class StaticToolProvider(ToolProvider):
-    """Wraps the existing ``ToolRegistry`` as a :class:`ToolProvider`."""
+    """Hosts ``BaseTool`` instances as a :class:`ToolProvider`."""
 
     provider_key = "static"
 
@@ -103,19 +105,39 @@ class StaticToolProvider(ToolProvider):
 
 
 class ToolManager:
-    """Federates multiple :class:`ToolProvider` instances into a unified API.
+    """Single entry point for all tool operations.
 
+    Owns a built-in :class:`StaticToolProvider` for ``BaseTool`` instances
+    and federates additional :class:`ToolProvider` sources (MCP, skills).
     When the LLM returns a ``tool_call``, the manager routes it to the
-    correct provider based on registration order (first provider that
-    owns the tool name wins).
+    correct provider (first match wins).
+
+    Graph nodes (``agentic``, ``mcp capability``) also use this same
+    ToolManager instance, so the tool namespace is unified.
     """
 
-    def __init__(self) -> None:
-        self._providers: list[ToolProvider] = []
+    def __init__(self, *, strategy: str = ToolLoadStrategy.AUTO) -> None:
+        self._static = StaticToolProvider()
+        self._providers: list[ToolProvider] = [self._static]
         self._tool_index: dict[str, ToolProvider] = {}
         self._display_name_cache: dict[str, str] = {}
+        self._strategy = strategy
+        self._search_tool_registered = False
+
+    # -- Direct BaseTool registration (built-in static provider) ---------------
+
+    def register(self, tool: BaseTool) -> None:
+        """Register a single ``BaseTool`` instance."""
+        self._static.register(tool)
+
+    def register_many(self, tools: list[BaseTool]) -> None:
+        """Register multiple ``BaseTool`` instances at once."""
+        self._static.register_many(tools)
+
+    # -- External provider management ------------------------------------------
 
     def register_provider(self, provider: ToolProvider) -> None:
+        """Add an external :class:`ToolProvider` (MCP, skill, etc.)."""
         self._providers.append(provider)
 
     def remove_providers(self, key_prefix: str) -> None:
@@ -124,13 +146,18 @@ class ToolManager:
             k for k, v in self._tool_index.items()
             if v.provider_key.startswith(key_prefix)
         }
-        self._providers = [p for p in self._providers if not p.provider_key.startswith(key_prefix)]
+        self._providers = [
+            p for p in self._providers
+            if p is self._static or not p.provider_key.startswith(key_prefix)
+        ]
         self._tool_index = {
             k: v for k, v in self._tool_index.items()
             if not v.provider_key.startswith(key_prefix)
         }
         for name in removed_tools:
             self._display_name_cache.pop(name, None)
+
+    # -- Index & schema --------------------------------------------------------
 
     async def refresh_index(self) -> None:
         """Rebuild the name -> provider lookup from all providers."""
@@ -150,22 +177,66 @@ class ToolManager:
                     provider.provider_key, exc_info=True,
                 )
 
-    async def get_schemas(self) -> list[dict[str, Any]]:
-        """Return merged OpenAI-compatible tool schemas from all providers."""
+    async def get_schemas(self, *, force_eager: bool = False) -> list[dict[str, Any]]:
+        """Return OpenAI-compatible tool schemas.
+
+        When strategy is ``lazy`` (or ``auto`` with many tools), only the
+        ``search_tools`` meta-tool schema is returned.  The LLM uses it to
+        discover real tools on demand, keeping the initial context small.
+        """
+        all_descriptors = await self._all_descriptors()
+        use_lazy = self._should_use_lazy(len(all_descriptors)) and not force_eager
+
+        if use_lazy:
+            self._ensure_search_tool()
+            return [SearchToolsMeta(self).schema()]
+
         schemas: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for desc in all_descriptors:
+            if desc.name not in seen:
+                schemas.append(desc.to_openai_schema())
+                seen.add(desc.name)
+        return schemas
+
+    def _should_use_lazy(self, tool_count: int) -> bool:
+        if self._strategy == ToolLoadStrategy.LAZY:
+            return True
+        if self._strategy == ToolLoadStrategy.EAGER:
+            return False
+        return tool_count > _AUTO_THRESHOLD
+
+    def _ensure_search_tool(self) -> None:
+        """Register the search_tools meta-tool once."""
+        if not self._search_tool_registered:
+            self._static.register(SearchToolsMeta(self))
+            self._search_tool_registered = True
+
+    async def search(self, query: str, *, limit: int = 8) -> list[ToolDescriptor]:
+        """Search all registered tools by natural-language query."""
+        descriptors = await self._all_descriptors()
+        scored = [(d, _score_match(query, d)) for d in descriptors if d.name != "search_tools"]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [d for d, s in scored[:limit] if s > 0]
+
+    async def _all_descriptors(self) -> list[ToolDescriptor]:
+        """Collect descriptors from all providers (de-duped, ordered)."""
+        result: list[ToolDescriptor] = []
         seen: set[str] = set()
         for provider in self._providers:
             try:
                 for desc in await provider.list_tools():
                     if desc.name not in seen:
-                        schemas.append(desc.to_openai_schema())
+                        result.append(desc)
                         seen.add(desc.name)
             except Exception:
                 logger.warning(
                     "Failed to list tools from provider %s",
                     provider.provider_key, exc_info=True,
                 )
-        return schemas
+        return result
+
+    # -- Execution -------------------------------------------------------------
 
     async def execute(self, name: str, arguments: dict[str, Any]) -> ToolResult:
         """Route execution to the owning provider."""
@@ -181,23 +252,17 @@ class ToolManager:
 
     @property
     def has_tools(self) -> bool:
-        return bool(self._tool_index) or any(
-            getattr(p, "has_tools", True) for p in self._providers
+        return self._static.has_tools or bool(self._tool_index) or any(
+            getattr(p, "has_tools", True)
+            for p in self._providers
+            if p is not self._static
         )
 
+    # -- Introspection ---------------------------------------------------------
+
     async def list_all_descriptors(self) -> list[ToolDescriptor]:
-        """Return descriptors across all providers (for UI display)."""
-        result: list[ToolDescriptor] = []
-        seen: set[str] = set()
-        for provider in self._providers:
-            try:
-                for desc in await provider.list_tools():
-                    if desc.name not in seen:
-                        result.append(desc)
-                        seen.add(desc.name)
-            except Exception:
-                logger.warning("Failed to list tools from %s", provider.provider_key, exc_info=True)
-        return result
+        """Return descriptors across all providers (for UI / graph display)."""
+        return await self._all_descriptors()
 
     async def get_display_name(self, tool_name: str) -> str:
         """Resolve the display_name for *tool_name*, using cache when available."""

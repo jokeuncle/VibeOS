@@ -95,7 +95,7 @@ class DevelopmentAgent(SDLCAgent):
     def __init__(self) -> None:
         super().__init__()
         from vibeos_agent.tools.dev_tools import create_dev_tools
-        self._static_provider.register_many(create_dev_tools(self.llm))
+        self.tool_manager.register_many(create_dev_tools(self.llm))
 
     async def _resolve_repo_context(self, task: AgentTask) -> dict[str, Any] | None:
         ctx = task.context or {}

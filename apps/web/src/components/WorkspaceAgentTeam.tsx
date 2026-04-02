@@ -283,7 +283,7 @@ function AgentRow({
                   <MessageSquare className="w-3 h-3 text-text-tertiary" />{t('agentTeam.field.systemPrompt')}
                 </div>
                 <p className="text-[10px] text-text-tertiary mb-2">{t('agentTeam.field.systemPromptHint')}</p>
-                <textarea value={promptDraft} onChange={e => setPromptDraft(e.target.value)} rows={3} className={`${inputClass} font-mono resize-y min-h-[3.5rem]`} spellCheck={false} />
+                <textarea value={promptDraft} onChange={e => setPromptDraft(e.target.value)} rows={8} className={`${inputClass} font-mono resize-y min-h-[9rem]`} spellCheck={false} />
                 <div className="flex justify-end mt-2">
                   <button type="button" onClick={handleSavePrompt} disabled={saving}
                     className="rounded-md bg-accent text-white text-[11px] font-medium px-3 py-1.5 hover:opacity-90 disabled:opacity-50 cursor-pointer">

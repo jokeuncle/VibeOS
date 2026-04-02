@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from .base import ToolResult
+from .base import BaseTool, ToolResult
 from .provider import ToolDescriptor, ToolProvider
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,34 @@ class MCPToolProvider(ToolProvider):
             logger.debug("list_prompts not supported by %s", self._config.name, exc_info=True)
             return []
 
+    async def read_resource(self, uri: str) -> str:
+        """Read the content of a single MCP resource by URI."""
+        await self._ensure_session()
+        result = await self._session.read_resource(uri)
+        parts = []
+        for block in result.contents:
+            if hasattr(block, "text"):
+                parts.append(block.text)
+            elif hasattr(block, "blob"):
+                parts.append(f"[binary blob, {len(block.blob)} bytes]")
+            else:
+                parts.append(str(block))
+        return "\n".join(parts)
+
+    async def get_prompt(self, name: str, arguments: dict[str, str] | None = None) -> list[dict[str, str]]:
+        """Get a rendered MCP prompt as a list of messages."""
+        await self._ensure_session()
+        result = await self._session.get_prompt(name, arguments=arguments or {})
+        messages: list[dict[str, str]] = []
+        for msg in result.messages:
+            content = ""
+            if hasattr(msg.content, "text"):
+                content = msg.content.text
+            else:
+                content = str(msg.content)
+            messages.append({"role": msg.role, "content": content})
+        return messages
+
     def invalidate_cache(self) -> None:
         self._tools_cache = None
 
@@ -196,3 +224,39 @@ class MCPToolProvider(ToolProvider):
             except Exception:
                 logger.debug("Error closing MCP transport", exc_info=True)
             self._transport_ctx = None
+
+
+class ReadMCPResourceTool(BaseTool):
+    """Read the content of an MCP resource by URI."""
+
+    name = "read_mcp_resource"
+    display_name = "读取 MCP 资源"
+    description = (
+        "Read the content of an MCP resource. "
+        "Use list_resources first to discover available URIs."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "uri": {
+                "type": "string",
+                "description": "The resource URI to read",
+            },
+        },
+        "required": ["uri"],
+    }
+
+    def __init__(self, providers: list[MCPToolProvider]) -> None:
+        self._providers = providers
+
+    async def _execute(self, **kwargs: Any) -> str:
+        uri = kwargs["uri"]
+        for provider in self._providers:
+            try:
+                resources = await provider.list_resources()
+                if any(r.get("uri") == uri for r in resources):
+                    content = await provider.read_resource(uri)
+                    return self._json_result({"uri": uri, "content": content})
+            except Exception:
+                continue
+        return self._json_result({"error": f"Resource not found: {uri}"})

@@ -89,20 +89,17 @@ async def lifespan(app: FastAPI):
         registry=app.state.registry,
     )
 
-    from vibeos_agent.tools.provider import StaticToolProvider
-    static_prov = StaticToolProvider()
-    static_prov.register_many(create_pm_tools(
+    tool_manager.register_many(create_pm_tools(
         app.state.ws_client,
         workflow_engine=app.state.workflow,
         graph_executor=app.state.graph_executor,
     ))
-    static_prov.register_many(create_workspace_tools(app.state.ws_client, "pm"))
-    static_prov.register_many(create_delegation_tools("pm"))
-    static_prov.register_many(create_dev_tools(app.state.llm))
-    static_prov.register_many(create_gitlab_tools())
-    static_prov.register_many(create_pipeline_tools())
-    static_prov.register_many(create_feishu_tools())
-    tool_manager.register_provider(static_prov)
+    tool_manager.register_many(create_workspace_tools(app.state.ws_client, "pm"))
+    tool_manager.register_many(create_delegation_tools("pm"))
+    tool_manager.register_many(create_dev_tools(app.state.llm))
+    tool_manager.register_many(create_gitlab_tools())
+    tool_manager.register_many(create_pipeline_tools())
+    tool_manager.register_many(create_feishu_tools())
 
     app.state.conversation = ConversationEngine(
         llm=app.state.llm,

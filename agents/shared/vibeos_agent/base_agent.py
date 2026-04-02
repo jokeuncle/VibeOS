@@ -26,7 +26,7 @@ from .models import (
 from .registry import AgentManifest, CapabilityDef, RegistryClient
 from .session import SessionManager
 from .skills import Skill, SkillRegistry, SkillToolProvider
-from .tools import ToolManager, StaticToolProvider
+from .tools import ToolManager
 from .tools.mcp_provider import MCPServerConfig, MCPToolProvider
 
 logger = logging.getLogger(__name__)
@@ -98,9 +98,7 @@ class BaseAgent(ABC):
 
     def __init__(self) -> None:
         self.clients = ClientContainer()
-        self._static_provider = StaticToolProvider()
         self.tool_manager = ToolManager()
-        self.tool_manager.register_provider(self._static_provider)
         self._workspace_tools_loaded: set[str] = set()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._task_context_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
@@ -124,19 +122,19 @@ class BaseAgent(ABC):
         agent_key = _enum_val(self.agent_type) if hasattr(self, "agent_type") else "unknown"
         try:
             from .tools.workspace_tools import create_workspace_tools
-            self._static_provider.register_many(
+            self.tool_manager.register_many(
                 create_workspace_tools(self.workspace_svc, agent_key, rag_client=self.rag),
             )
         except Exception:
             logger.debug("Failed to register workspace tools", exc_info=True)
         try:
             from .tools.gitlab_tools import create_gitlab_tools
-            self._static_provider.register_many(create_gitlab_tools())
+            self.tool_manager.register_many(create_gitlab_tools())
         except Exception:
             logger.debug("Failed to register gitlab tools", exc_info=True)
         try:
             from .tools.delegation_tools import create_delegation_tools
-            self._static_provider.register_many(create_delegation_tools(agent_key))
+            self.tool_manager.register_many(create_delegation_tools(agent_key))
         except Exception:
             logger.debug("Failed to register delegation tools", exc_info=True)
 
@@ -790,6 +788,24 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             if mcp_servers:
                 lines = [f"- {s.get('name', '?')}: {s.get('description', '')}" for s in mcp_servers[:10]]
                 sections.append("## Available MCP servers\n" + "\n".join(lines))
+
+                for provider in self.tool_manager._providers:
+                    if not hasattr(provider, "list_resources"):
+                        continue
+                    try:
+                        resources = await provider.list_resources()
+                        if resources:
+                            res_lines = [
+                                f"- {r.get('name', '?')} ({r.get('uri', '')}): {r.get('description', '')}"
+                                for r in resources[:8]
+                            ]
+                            sections.append(
+                                f"## MCP Resources ({provider.provider_key})\n"
+                                + "\n".join(res_lines)
+                                + "\nUse read_mcp_resource tool to access content."
+                            )
+                    except Exception:
+                        pass
         except Exception:
             logger.debug("Failed to load MCP servers for ws=%s", workspace_id, exc_info=True)
 
@@ -952,6 +968,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         """Lazy-load MCP + Skill providers for *workspace_id* (once per process)."""
         if workspace_id in self._workspace_tools_loaded:
             return
+        mcp_providers: list[MCPToolProvider] = []
         try:
             mcp_servers = await self.workspace_svc.list_mcp_servers(workspace_id)
             for row in (mcp_servers or []):
@@ -962,10 +979,15 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                     provider = MCPToolProvider(cfg)
                     provider.provider_key = f"mcp:{cfg.name}:{workspace_id}"
                     self.tool_manager.register_provider(provider)
+                    mcp_providers.append(provider)
                 except Exception:
                     logger.debug("Skip MCP server %s", row.get("name", "?"), exc_info=True)
         except Exception:
             logger.debug("Failed to load MCP servers for ws=%s", workspace_id, exc_info=True)
+
+        if mcp_providers:
+            from .tools.mcp_provider import ReadMCPResourceTool
+            self.tool_manager.register(ReadMCPResourceTool(mcp_providers))
 
         try:
             db_skills = await self.workspace_svc.list_skills(workspace_id)
@@ -1011,7 +1033,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 source=agent_key,
             ))
 
-        for tool in self._static_provider._tools.values():
+        for tool in self.tool_manager._static._tools.values():
             defs.append(CapabilityDef(
                 name=f"{agent_key}.{tool.name}",
                 provider=agent_key,
@@ -1073,7 +1095,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         """
         import json as _json
         agent_key = _enum_val(self.agent_type)
-        tool_schemas = [t.schema() for t in self._static_provider._tools.values()]
+        tool_schemas = [t.schema() for t in self.tool_manager._static._tools.values()]
         caps: dict[str, Any] = {}
         for cap in self.capabilities:
             caps[cap.name] = cap.model_dump(mode="json")

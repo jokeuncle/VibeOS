@@ -11,7 +11,6 @@ import json
 import os
 import sys
 
-os.environ.setdefault("VIBEOS_MOCK_EXTERNAL", "true")
 os.environ.setdefault("WORKSPACE_SVC_URL", "http://localhost:8010")
 os.environ.setdefault("WS_GATEWAY_URL", "http://localhost:8020")
 os.environ.setdefault("LLM_BASE_URL", os.environ.get("LLM_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"))
