@@ -462,10 +462,17 @@ class WorkflowEngine:
             if primary:
                 strategy = primary.get("branchStrategy", "feature")
                 default_branch = primary.get("branchDefault", "main")
+                project_url = primary.get("projectUrl", "")
+                project_path = ""
+                if project_url:
+                    from urllib.parse import urlparse
+                    project_path = urlparse(project_url).path.strip("/")
                 gitlab_ctx = {
                     "gitlab_repos": repos,
                     "gitlab_primary_project": primary.get("projectId"),
                     "gitlab_primary_url": primary.get("gitlabUrl"),
+                    "gitlab_project_path": project_path,
+                    "gitlab_url": primary.get("gitlabUrl"),
                     "gitlab_branch_strategy": strategy,
                     "gitlab_branch_default": default_branch,
                     "gitlab_branch": resolve_branch_name(phase_type, strategy, default_branch),

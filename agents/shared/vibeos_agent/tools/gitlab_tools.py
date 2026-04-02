@@ -324,21 +324,33 @@ class GitLabPushFile(BaseTool):
                 return _commit_file(actual_branch)
             except _gitlab.exceptions.GitlabCreateError as exc:
                 err_msg = str(exc)
-                if "not allowed to push" not in err_msg and "protected branch" not in err_msg.lower():
+                needs_new_branch = (
+                    "not allowed to push" in err_msg
+                    or "protected branch" in err_msg.lower()
+                    or "You can only create or edit files when you are on a branch" in err_msg
+                    or "branch does not exist" in err_msg.lower()
+                )
+                if not needs_new_branch:
                     raise
 
                 feature_branch = f"vibeos/{file_path.replace('/', '-').replace('.', '-')}"
-                logger.info("Branch %s is protected, creating feature branch %s", branch, feature_branch)
+                logger.info("Branch %s unavailable (%s), creating %s from main", branch, err_msg[:80], feature_branch)
+                ref_branch = "main"
                 try:
-                    project.branches.create({"branch": feature_branch, "ref": branch})
+                    project.branches.get(branch)
+                    ref_branch = branch
+                except _gitlab.exceptions.GitlabGetError:
+                    pass
+                try:
+                    project.branches.create({"branch": feature_branch, "ref": ref_branch})
                     created_branch = True
                 except _gitlab.exceptions.GitlabCreateError:
-                    pass  # branch may already exist
+                    pass
 
                 result = _commit_file(feature_branch)
                 result["fallback_branch"] = True
                 result["source_branch"] = feature_branch
-                result["target_branch"] = branch
+                result["target_branch"] = ref_branch
                 return result
 
         result = await asyncio.to_thread(_push)

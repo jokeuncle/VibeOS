@@ -86,16 +86,21 @@ class CodingAgent(BaseAgent):
         )
 
         gitlab_url = ctx.get("gitlab_url") or ctx.get("gitlab_primary_url") or os.getenv("GITLAB_URL", "")
-        project_path = ctx.get("gitlab_primary_project", "")
-        branch = ctx.get("gitlab_branch", "main")
+        project_path = ctx.get("gitlab_project_path", "")
+        if not project_path:
+            project_path = ctx.get("gitlab_primary_project", "")
+        branch = ctx.get("gitlab_branch_default", "main")
         credential_id = ctx.get("gitlab_credential_id")
+
+        logger.info("CodingAgent context: gitlab_url=%s project_path=%s branch=%s cred=%s ctx_keys=%s",
+                     gitlab_url, project_path, branch, credential_id, list(ctx.keys()))
 
         if not gitlab_url or not project_path:
             yield AgentEvent(
                 type="error",
                 agent_type=AgentType.CODING,
                 workspace_id=workspace_id,
-                payload={"error": "Missing gitlab_url or gitlab_primary_project in task context"},
+                payload={"error": f"Missing gitlab_url={gitlab_url!r} or project_path={project_path!r} in task context. ctx keys: {list(ctx.keys())}"},
                 timestamp=datetime.now(timezone.utc),
             )
             return

@@ -165,8 +165,14 @@ class GraphExecutor:
         "_skill_prompt": (str, ""),
         "_awaiting_human": (bool, False),
         "_phase_artifacts": (list, []),
+        "_passthrough": (dict, {}),
         "llm_output": (str, ""),
         "upstream_artifacts": (list, []),
+        "workspace_id": (str, ""),
+        "phase_type": (str, ""),
+        "user_message": (str, ""),
+        "preferred_model": (str, ""),
+        "agent_type": (str, ""),
     }
 
     def _build_state_type(self, schema: dict[str, StateFieldDef]) -> type:
@@ -286,7 +292,11 @@ class GraphExecutor:
                 return {"_last_node": node_def.id, "_error": last_err}
 
             if isinstance(result, dict) and result.get("type") == "error":
-                error_msg = result.get("error") or "agent returned error with no details"
+                error_msg = (
+                    result.get("error")
+                    or (result.get("payload") or {}).get("error")
+                    or "agent returned error with no details"
+                )
                 logger.warning("Capability %s returned error response: %s", cap_ref, error_msg[:200])
                 return {"_last_node": node_def.id, "_error": error_msg}
 
@@ -557,6 +567,12 @@ class GraphExecutor:
         compiled = await self.compile(graph_def)
         initial = input_state or {}
 
+        parsed = ParsedGraphDef.from_dict(graph_def)
+        known_keys = set(self._INTERNAL_FIELDS) | set(parsed.state_schema)
+        extra = {k: v for k, v in initial.items() if k not in known_keys}
+        if extra:
+            initial["_passthrough"] = extra
+
         yield {"event": "graph:start", "data": {"nodes": [n["id"] for n in graph_def.get("nodes", [])]}}
 
         try:
@@ -593,12 +609,14 @@ def _build_agent_task(
     if upstream and str(upstream) not in user_msg:
         user_msg = f"{user_msg}\n\n--- Previous step output ---\n{str(upstream)[:2000]}"
 
+    passthrough = state.get("_passthrough") or {}
     context: dict[str, Any] = {
         "source": "graph_executor",
         "node_id": node_def.id,
         "node_type": node_def.type,
         "task_title": task_title,
         "task_description": task_desc,
+        **passthrough,
         **{k: v for k, v in state.items() if not k.startswith("_") and k != "workspace_id"},
     }
     if upstream:
