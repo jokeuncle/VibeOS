@@ -63,7 +63,7 @@ DEFAULT_PHASE_GRAPHS: dict[str, dict] = {
     },
     "development": {
         "nodes": [
-            _cap_node("code_implementation", "development.code_gen", "Code Implementation", timeout=600),
+            _cap_node("code_implementation", "coding.execute", "Code Implementation (OpenHands)", timeout=900, retries=1),
         ],
         "edges": _linear_edges("code_implementation"),
         "state_schema": _COMMON_STATE,
