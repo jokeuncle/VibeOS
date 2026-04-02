@@ -194,6 +194,19 @@ class WorkspaceClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def list_workspaces(self) -> dict[str, Any]:
+        resp = await self._http.get("/api/workspaces")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def create_workspace(self, title: str, description: str = "") -> dict[str, Any]:
+        resp = await self._http.post(
+            "/api/workspaces",
+            json={"title": title, "description": description},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def create_artifact(
         self,
         workspace_id: str,

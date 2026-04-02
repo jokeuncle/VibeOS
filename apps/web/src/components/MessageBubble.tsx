@@ -8,6 +8,7 @@ import { feedbackApi } from '../lib/api'
 import { RichBlockRenderer } from './RichBlockRenderer'
 import { HomeReasoningPanel } from './HomeReasoningPanel'
 import { ToolInvocationBlock } from './ToolInvocationBlock'
+import { MarkdownContent } from './MessageMarkdown'
 import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
 import type { Message, ContentSegment } from '../types'
 import type { TranslationKey } from '../i18n/en'
@@ -178,11 +179,16 @@ export function UserBubble({ msg }: { msg: Message }) {
 function TextBubble({ text }: { text: string }) {
   const cleaned = text.replace(/\n{3,}/g, '\n\n').trim()
   if (!cleaned) return null
+  const hasMarkdown = /[*#`\[\]]|^\s*[-*]\s/m.test(cleaned)
   return (
     <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
-      <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
-        {cleaned}
-      </p>
+      {hasMarkdown ? (
+        <MarkdownContent text={cleaned} />
+      ) : (
+        <p className="text-xs text-text-primary/90 leading-relaxed whitespace-pre-line">
+          {cleaned}
+        </p>
+      )}
     </div>
   )
 }

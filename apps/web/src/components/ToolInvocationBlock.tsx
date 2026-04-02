@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, XCircle, Loader2, ChevronRight } from 'lucide-react'
 import { getToolDisplay } from '../lib/toolDisplayRegistry'
+import { ToolOutputRenderer, ToolInputRenderer } from './ToolOutputRenderer'
 import type { ToolInvocation } from '../types'
 
 const STATUS_STYLE = {
@@ -62,31 +63,6 @@ function CollapsibleSection({
   )
 }
 
-function JsonPreview({ data }: { data: Record<string, unknown> | string }) {
-  const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-  const lines = text.split('\n')
-  const truncated = lines.length > 12
-  const display = truncated ? lines.slice(0, 12).join('\n') + '\n  …' : text
-
-  return (
-    <pre className="text-[10px] font-mono text-text-tertiary leading-relaxed whitespace-pre-wrap break-all bg-surface-2/30 rounded-md px-2 py-1.5 max-h-48 overflow-y-auto">
-      {display}
-    </pre>
-  )
-}
-
-function OutputPreview({ text }: { text: string }) {
-  const lines = text.split('\n')
-  const truncated = lines.length > 8
-  const display = truncated ? lines.slice(0, 8).join('\n') + '\n…' : text
-
-  return (
-    <pre className="text-[10px] font-mono text-text-secondary leading-relaxed whitespace-pre-wrap break-all bg-surface-2/30 rounded-md px-2 py-1.5 max-h-48 overflow-y-auto">
-      {display}
-    </pre>
-  )
-}
-
 export function ToolInvocationBlock({ invocation }: { invocation: ToolInvocation }) {
   const { status, toolName, displayName, input, output, error, durationMs } = invocation
   const display = getToolDisplay(toolName)
@@ -126,17 +102,17 @@ export function ToolInvocationBlock({ invocation }: { invocation: ToolInvocation
         <div className="px-3 pb-2 space-y-1 border-t border-border-subtle/30 pt-1.5">
           {hasInput && (
             <CollapsibleSection label="Input" defaultOpen={status === 'calling'}>
-              <JsonPreview data={input!} />
+              <ToolInputRenderer data={input!} />
             </CollapsibleSection>
           )}
           {error && (
             <CollapsibleSection label="Error" defaultOpen>
-              <OutputPreview text={error} />
+              <ToolOutputRenderer text={error} isError />
             </CollapsibleSection>
           )}
           {output && !error && (
             <CollapsibleSection label="Output" defaultOpen={false}>
-              <OutputPreview text={output} />
+              <ToolOutputRenderer text={output} />
             </CollapsibleSection>
           )}
         </div>
