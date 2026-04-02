@@ -11,6 +11,8 @@ dependencies = [
     "pydantic>=2.0",
     "httpx",
     "redis[hiredis]",
+    "jieba>=0.42",
+    "rank-bm25>=0.2",
 ]
 
 [project.optional-dependencies]

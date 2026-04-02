@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .base import BaseTool, ToolResult
-from .search import ToolLoadStrategy, SearchToolsMeta, _score_match, _AUTO_THRESHOLD
+from .search import ToolLoadStrategy, SearchToolsMeta, score_tools, _AUTO_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -213,11 +213,14 @@ class ToolManager:
             self._search_tool_registered = True
 
     async def search(self, query: str, *, limit: int = 8) -> list[ToolDescriptor]:
-        """Search all registered tools by natural-language query."""
+        """Search all registered tools by natural-language query.
+
+        Uses BM25-inspired multilingual scoring with CJK tokenization,
+        synonym expansion, and field-weighted IDF ranking.
+        """
         descriptors = await self._all_descriptors()
-        scored = [(d, _score_match(query, d)) for d in descriptors if d.name != "search_tools"]
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return [d for d, s in scored[:limit] if s > 0]
+        candidates = [d for d in descriptors if d.name != "search_tools"]
+        return score_tools(query, candidates, limit=limit)
 
     async def _all_descriptors(self) -> list[ToolDescriptor]:
         """Collect descriptors from all providers (de-duped, ordered)."""
