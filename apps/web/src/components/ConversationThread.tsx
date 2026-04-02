@@ -157,7 +157,7 @@ export default function ConversationThread({
 
     if (embedInPanel) {
       return (
-        <div className="flex w-full shrink-0 justify-center pb-2 pt-0.5">
+        <div className="flex w-full min-w-0 shrink-0 justify-center pb-2 pt-0.5">
           {pill}
         </div>
       )

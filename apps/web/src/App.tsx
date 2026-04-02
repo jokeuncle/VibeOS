@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useWorkspaceStore } from './stores/workspace'
 import { useUIStore } from './stores/ui'
@@ -37,7 +37,27 @@ export default function App() {
     commandPaletteOpen,
     settingsOpen,
     sidebarCollapsed,
+    viewMode,
+    conversationCollapsed,
   } = useUIStore()
+  const messages = useWorkspaceStore((s) => s.messages)
+  const activeRequirementId = useWorkspaceStore((s) => s.activeRequirementId)
+
+  const workspaceThreadHasMessages = useMemo(() => {
+    if (!activeWorkspaceId) return false
+    let filtered = messages.filter((m) => {
+      const wid = m.workspaceId
+      return wid == null || wid === activeWorkspaceId
+    })
+    if (viewMode === 'requirements' && activeRequirementId) {
+      const rid = activeRequirementId
+      filtered = filtered.filter((m) => m.requirementId === rid || !m.requirementId)
+    }
+    return filtered.length > 0
+  }, [messages, activeWorkspaceId, viewMode, activeRequirementId])
+
+  const workspaceThreadExpanded =
+    !!activeWorkspaceId && workspaceThreadHasMessages && !conversationCollapsed.workspace
   const { locale } = useI18nStore()
   const restoreSession = useAuthStore((s) => s.restoreSession)
   const authToken = useAuthStore((s) => s.token)
@@ -145,17 +165,6 @@ export default function App() {
               <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                   <WorkspaceView />
-
-                  {/* ConversationThread: floats above content */}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center px-6 pb-2 sm:px-10">
-                    <div className="pointer-events-auto w-full max-w-2xl">
-                      <ConversationThread
-                        context="workspace"
-                        workspaceId={activeWorkspaceId ?? undefined}
-                        onDismiss={() => useWorkspaceStore.getState().clearWorkspaceConversation()}
-                      />
-                    </div>
-                  </div>
                 </div>
               </div>
             </motion.div>
@@ -187,8 +196,29 @@ export default function App() {
               mass: 0.9,
             }}
           >
-            <div className="pointer-events-auto w-full max-w-2xl">
-              <CommandBar />
+            {/*
+              Same strip as WorkspaceHome: flex-col-reverse keeps CommandBar pinned at bottom;
+              ConversationThread (incl. collapsed pill) sits above and shares max-w-2xl so the pill
+              stays centered with the input — not viewport-fixed (which misaligns beside the sidebar).
+            */}
+            <div className="pointer-events-auto flex w-full min-w-0 max-w-2xl flex-col-reverse items-stretch gap-1.5">
+              <div className="w-full shrink-0">
+                <CommandBar />
+              </div>
+              <div
+                className={
+                  workspaceThreadExpanded
+                    ? 'min-h-0 overflow-hidden rounded-2xl border border-border-subtle/35 bg-surface-1/50 shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)] backdrop-blur-xl'
+                    : 'min-h-0 overflow-hidden'
+                }
+              >
+                <ConversationThread
+                  context="workspace"
+                  workspaceId={activeWorkspaceId ?? undefined}
+                  embedInPanel
+                  onDismiss={() => useWorkspaceStore.getState().clearWorkspaceConversation()}
+                />
+              </div>
             </div>
           </motion.div>
         ) : null}

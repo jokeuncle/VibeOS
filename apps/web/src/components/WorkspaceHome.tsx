@@ -331,7 +331,7 @@ export default function WorkspaceHome() {
 
       {/* flex-col-reverse + absolute bottom-0: NLP bar stays pinned; thread grows upward (no CLS on expand). */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-6 pb-2 pt-1 sm:px-10">
-        <div className="pointer-events-auto flex w-full max-w-2xl flex-col-reverse items-stretch gap-1.5">
+        <div className="pointer-events-auto flex w-full min-w-0 max-w-2xl flex-col-reverse items-stretch gap-1.5">
           <div className="w-full shrink-0">
             <CommandBar />
           </div>

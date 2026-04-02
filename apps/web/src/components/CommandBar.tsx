@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles, ArrowUp, Command, Bot, Slash, CheckSquare,
   FileText, Blocks, Palette, Code2, FlaskConical, Rocket, Activity,
-  X, ChevronRight, Loader2, Target,
+  X, ChevronRight, Target,
   PlusSquare, ListChecks, UserPlus, FileBarChart, Eye,
   type LucideIcon,
 } from 'lucide-react'
@@ -13,8 +13,6 @@ import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import { translateSeedTaskCopy } from '../lib/seedTaskI18n'
 import { useActiveNlpContext, useSlashCommands } from '../hooks/useNlpContext'
-import type { Agent } from '../types'
-
 interface Suggestion {
   id: string
   type: 'agent' | 'command' | 'task'
@@ -85,42 +83,6 @@ function predictIntent(text: string): IntentHint | null {
   return null
 }
 
-function AgentActivityIndicator({
-  agents,
-  t,
-  popoverInset,
-}: {
-  agents: Agent[]
-  t: (key: TranslationKey) => string
-  popoverInset: string
-}) {
-  const runningAgents = agents.filter((a) => a.status === 'running')
-  if (runningAgents.length === 0) return null
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 4 }}
-      className={`absolute bottom-full mb-1 ${popoverInset}`}
-    >
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20 backdrop-blur-sm">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
-        </span>
-        <Loader2 className="w-3 h-3 text-accent animate-spin" />
-        <span className="text-[11px] text-accent font-medium">
-          {runningAgents.length === 1
-            ? `${t(`agent.name.${runningAgents[0].type}` as TranslationKey)} ${t('agent.status.running')}`
-            : `${runningAgents.length} ${t('agent.active')} ${t('agent.status.running')}`}
-        </span>
-        
-      </div>
-    </motion.div>
-  )
-}
-
 export default function CommandBar({
   embedInPanel = false,
   withThreadAbove = false,
@@ -142,7 +104,6 @@ export default function CommandBar({
   const t = useT()
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
-  const workspaceAgents = activeWorkspace?.agents || []
 
   /**
    * Workspace list rows omit requirements until GET /workspaces/:id; avoid discovery / zero-requirement
@@ -345,7 +306,6 @@ export default function CommandBar({
 
   const showSuggestions = focused && suggestions.length > 0
   const showIntentHint = focused && intentHint && !showSuggestions && input.trim().length >= 3
-  const hasRunningAgents = workspaceAgents.some((a) => a.status === 'running')
 
   const ctxAgentLabel = activeCtx?.agentLabel || t('agent.name.pm')
   const ctxIcon = activeCtx?.icon ? PHASE_ICONS[activeCtx.icon] : null
@@ -503,13 +463,6 @@ export default function CommandBar({
               </button>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Agent activity indicator */}
-      <AnimatePresence>
-        {hasRunningAgents && (
-          <AgentActivityIndicator agents={workspaceAgents} t={t} popoverInset={barPopOverInset} />
         )}
       </AnimatePresence>
 
