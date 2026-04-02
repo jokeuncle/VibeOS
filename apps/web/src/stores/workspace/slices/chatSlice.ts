@@ -14,6 +14,7 @@ import {
   buildNlpPhaseContext,
   safeParseRichBlocks,
   mergeMessagesById,
+  dedupeNearDuplicateMessages,
 } from '../helpers'
 import type { WorkspaceState, MessageScope } from '../types'
 import { workspaceMessagesFetchInflight } from '../inflight'
@@ -284,7 +285,11 @@ export function buildChatSlice(set: SetState, get: GetState) {
             sessionId: m.sessionId, contextType: 'home' as ConversationContext,
             workspaceId: m.workspaceId, requirementId: m.requirementId, executionId: m.executionId,
           }))
-          set((s) => ({ homeMessages: mergeMessagesById(restored, s.homeMessages), homeMessagesCursor: resp.cursor || null, homeMessagesHasMore: resp.hasMore || false }))
+          set((s) => ({
+            homeMessages: dedupeNearDuplicateMessages(mergeMessagesById(restored, s.homeMessages)),
+            homeMessagesCursor: resp.cursor || null,
+            homeMessagesHasMore: resp.hasMore || false,
+          }))
         } catch (err) {
           console.error('Failed to fetch home messages:', err)
         }

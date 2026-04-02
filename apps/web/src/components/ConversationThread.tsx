@@ -8,12 +8,6 @@ import { SystemMessage, UserBubble, AgentMessageRow } from './MessageBubble'
 import type { Message, ConversationContext } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
-const QUICK_START = [
-  { id: 'ecommerce', key: 'nlp.quickStart.ecommerce' as TranslationKey },
-  { id: 'blog', key: 'nlp.quickStart.blog' as TranslationKey },
-  { id: 'dashboard', key: 'nlp.quickStart.dashboard' as TranslationKey },
-]
-
 interface ConversationThreadProps {
   context: ConversationContext
   workspaceId?: string
@@ -38,7 +32,6 @@ export default function ConversationThread({
     homeNlpLoading,
     messagesHasMore,
     homeMessagesHasMore,
-    sendHomeNLPStream,
     fetchMessages,
     loadOlderMessages,
   } = store
@@ -130,10 +123,6 @@ export default function ConversationThread({
     onDismiss?.()
   }
 
-  function handleQuickStart(text: string) {
-    sendHomeNLPStream(text)
-  }
-
   if (!isHome && !workspaceId) return null
 
   // Collapsed pill when minimized but has messages
@@ -177,11 +166,9 @@ export default function ConversationThread({
     return pill
   }
 
-  const lastAgentMsg = visible ? [...threadMessages].reverse().find((m) => m.role === 'agent') : undefined
-  const lastAgentId = lastAgentMsg?.id
-  const hasActionBlocks = lastAgentMsg?.richBlocks?.some((b) => b.type === 'nlp_action')
-  const showQuickStart = isHome && visible && !isStreaming && !hasActionBlocks && threadMessages.length <= 2
-    && lastAgentMsg && !lastAgentMsg.richBlocks?.some((b) => b.type === 'error_card')
+  const lastAgentId = visible
+    ? [...threadMessages].reverse().find((m) => m.role === 'agent')?.id
+    : undefined
 
   const panelTitle = isHome
     ? t('nlp.homeAssistantPanel' as TranslationKey)
@@ -263,30 +250,6 @@ export default function ConversationThread({
                   )}
                 </div>
               ))}
-
-              {showQuickStart && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.25 }}
-                  className="space-y-1.5 ml-8"
-                >
-                  <span className="text-[10px] text-text-tertiary font-medium ml-0.5">
-                    {t('nlp.quickStartHint' as TranslationKey)}
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {QUICK_START.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => handleQuickStart(t(s.key))}
-                        className="px-3 py-1.5 rounded-lg bg-surface-2/60 border border-border-subtle text-[11px] text-text-secondary hover:bg-accent/10 hover:border-accent/20 hover:text-accent transition-all cursor-pointer"
-                      >
-                        {t(s.key)}
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
             </div>
           </div>
         </motion.div>

@@ -12,6 +12,9 @@ import CommandBar from './CommandBar'
 import type { Workspace } from '../types'
 import { WORKSPACE_CARD_BG, WORKSPACE_CARD_TEXT, workspaceColorFallback } from '../lib/workspaceColors'
 
+/** Set true to show stats row + workspace search on the home dashboard. */
+const SHOW_HOME_STATS_AND_SEARCH = false
+
 const container = {
   hidden: { opacity: 0 },
   show: {
@@ -228,7 +231,7 @@ export default function WorkspaceHome() {
         </motion.div>
 
         {/* Global overview stats */}
-        {workspaces.length > 0 && (
+        {SHOW_HOME_STATS_AND_SEARCH && workspaces.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -251,7 +254,7 @@ export default function WorkspaceHome() {
           </motion.div>
         )}
 
-        {(workspaces.length > 0 || loading) && (
+        {SHOW_HOME_STATS_AND_SEARCH && (workspaces.length > 0 || loading) && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -332,21 +335,24 @@ export default function WorkspaceHome() {
           <div className="w-full shrink-0">
             <CommandBar />
           </div>
-          {homeThreadExpanded ? (
-            <div className="min-h-0 max-h-[min(70vh,38rem)] overflow-hidden rounded-2xl border border-border-subtle/35 bg-surface-1/50 shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)] backdrop-blur-xl">
-              <ConversationThread
-                context="home"
-                embedInPanel
-                onDismiss={() => useWorkspaceStore.getState().clearHomeMessages()}
-              />
-            </div>
-          ) : (
+          {/*
+            Single stable parent for ConversationThread. Previously the thread switched between
+            two branches when homeThreadExpanded toggled, which unmounted/remounted the component,
+            re-ran fetchMessages, and mergeMessagesById kept both server- and client-id copies → duplicate “你好”.
+          */}
+          <div
+            className={
+              homeThreadExpanded
+                ? 'min-h-0 max-h-[min(70vh,38rem)] overflow-hidden rounded-2xl border border-border-subtle/35 bg-surface-1/50 shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)] backdrop-blur-xl'
+                : 'min-h-0 overflow-hidden'
+            }
+          >
             <ConversationThread
               context="home"
               embedInPanel
               onDismiss={() => useWorkspaceStore.getState().clearHomeMessages()}
             />
-          )}
+          </div>
         </div>
       </div>
     </div>

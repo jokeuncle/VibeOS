@@ -76,6 +76,22 @@ export function patchWorkspace(
   return workspaces.map((w) => (w.id === id ? fn(w) : w))
 }
 
+/** Drop optimistic + persisted copies that share role, content, and near-equal time (home NLP refetch / remount). */
+export function dedupeNearDuplicateMessages(sortedOldestFirst: Message[], windowMs = 8000): Message[] {
+  const out: Message[] = []
+  for (const m of sortedOldestFirst) {
+    const t = new Date(m.timestamp).getTime()
+    const body = (m.content || '').trim()
+    const dup = out.some((o) => {
+      if (o.role !== m.role) return false
+      if ((o.content || '').trim() !== body) return false
+      return Math.abs(new Date(o.timestamp).getTime() - t) <= windowMs
+    })
+    if (!dup) out.push(m)
+  }
+  return out
+}
+
 export function mergeMessagesById(remoteOldestFirst: Message[], local: Message[]): Message[] {
   const map = new Map<string, Message>()
   for (const m of remoteOldestFirst) map.set(m.id, m)

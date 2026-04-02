@@ -191,7 +191,8 @@ export function AgentMessageRow({
 
   const { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks } =
     partitionNlpConversationRichBlocks(msg.richBlocks)
-  const showReasoning = !!(reasoningTimeline || reasoningIntent)
+  const showReasoning =
+    !!(reasoningTimeline || reasoningIntent) && richLayout !== 'home'
   const showTextBubble = shouldShowAgentTextBubble(msg.content, msg.richBlocks)
   const hasVisible =
     showTextBubble ||
