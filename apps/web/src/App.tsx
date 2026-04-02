@@ -4,6 +4,7 @@ import { useWorkspaceStore } from './stores/workspace'
 import { useUIStore } from './stores/ui'
 import { useAuthStore } from './stores/auth'
 import { connectWebSocket, disconnectWebSocket } from './lib/ws'
+import { bootstrapToolRegistry } from './lib/toolDisplayRegistry'
 import { useI18nStore } from './i18n'
 import TitleBar from './components/TitleBar'
 import StatusBar from './components/StatusBar'
@@ -50,6 +51,7 @@ export default function App() {
   }, [restoreSession])
 
   useEffect(() => {
+    bootstrapToolRegistry()
     fetchWorkspaces().then(() => {
       const state = useWorkspaceStore.getState()
       const { activeWorkspaceId, workspaces, setActiveWorkspace } = state

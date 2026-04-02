@@ -343,7 +343,7 @@ export default function WorkspaceHome() {
           <div
             className={
               homeThreadExpanded
-                ? 'min-h-0 max-h-[min(70vh,38rem)] overflow-hidden rounded-2xl border border-border-subtle/35 bg-surface-1/50 shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)] backdrop-blur-xl'
+                ? 'min-h-0 overflow-hidden rounded-2xl border border-border-subtle/35 bg-surface-1/50 shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)] backdrop-blur-xl'
                 : 'min-h-0 overflow-hidden'
             }
           >

@@ -9,6 +9,7 @@ from .base import BaseTool
 
 class GenerateCodeTool(BaseTool):
     name = "generate_code"
+    display_name = "生成代码"
     description = (
         "Generate source code for a given specification. Returns the generated code "
         "which can then be committed via gitlab_push_file."
@@ -62,6 +63,7 @@ class GenerateCodeTool(BaseTool):
 
 class ReviewCodeTool(BaseTool):
     name = "review_code"
+    display_name = "审查代码"
     description = (
         "Review code for bugs, performance issues, security vulnerabilities, "
         "and best-practice violations. Returns structured findings."
@@ -114,6 +116,7 @@ class ReviewCodeTool(BaseTool):
 
 class PlanImplementationTool(BaseTool):
     name = "plan_implementation"
+    display_name = "规划实现"
     description = (
         "Create a step-by-step implementation plan for a feature, "
         "breaking it into files, functions, and concrete coding tasks."

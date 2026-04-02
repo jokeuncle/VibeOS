@@ -148,6 +148,7 @@ type SendMessageReq struct {
 	AgentType     string `json:"agentType,omitempty"`
 	SessionID     string `json:"sessionId,omitempty"`
 	RichBlocks    string `json:"richBlocks,omitempty"` // JSON string
+	Segments      string `json:"segments,omitempty"`   // JSON string (ContentSegment[])
 	ContextType   string `json:"contextType,omitempty"`
 	RequirementID string `json:"requirementId,omitempty"`
 	ExecutionID   string `json:"executionId,omitempty"`

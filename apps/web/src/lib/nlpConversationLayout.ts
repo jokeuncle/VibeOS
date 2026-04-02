@@ -1,6 +1,6 @@
-import type { RichBlock } from '../types'
+import type { RichBlock, ContentSegment } from '../types'
 
-/** Shown inside collapsible CoT panel instead of inline with the reply. */
+/** Shown inside collapsible CoT panel instead of inline with the reply (legacy path only). */
 export const NLP_CONVERSATION_REASONING_TYPES = new Set<RichBlock['type']>(['intent_feedback', 'execution_timeline'])
 
 export const NLP_CONVERSATION_CARD_TYPES = new Set<RichBlock['type']>([
@@ -26,7 +26,15 @@ export function shouldShowAgentTextBubble(
   return !dup
 }
 
-export function partitionNlpConversationRichBlocks(blocks: RichBlock[] | undefined) {
+/**
+ * Partition richBlocks for rendering. When `hasSegments` is true,
+ * execution_timeline is already rendered inline via segments so we
+ * skip extracting it as a reasoning block.
+ */
+export function partitionNlpConversationRichBlocks(
+  blocks: RichBlock[] | undefined,
+  hasSegments = false,
+) {
   if (!blocks?.length) {
     return {
       reasoningTimeline: undefined as RichBlock | undefined,
@@ -35,10 +43,22 @@ export function partitionNlpConversationRichBlocks(blocks: RichBlock[] | undefin
       cardBlocks: [] as RichBlock[],
     }
   }
-  const reasoningTimeline = blocks.find((b) => b.type === 'execution_timeline')
+
+  const reasoningTimeline = hasSegments
+    ? undefined
+    : blocks.find((b) => b.type === 'execution_timeline')
   const reasoningIntent = blocks.find((b) => b.type === 'intent_feedback')
-  const visible = blocks.filter((b) => !NLP_CONVERSATION_REASONING_TYPES.has(b.type))
+
+  const skipTypes = hasSegments
+    ? new Set<RichBlock['type']>(['intent_feedback'])
+    : NLP_CONVERSATION_REASONING_TYPES
+  const visible = blocks.filter((b) => !skipTypes.has(b.type))
   const cardBlocks = visible.filter((b) => NLP_CONVERSATION_CARD_TYPES.has(b.type))
   const inlineBlocks = visible.filter((b) => !NLP_CONVERSATION_CARD_TYPES.has(b.type))
   return { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks }
+}
+
+/** Check whether a message uses the new segment-based layout. */
+export function hasContentSegments(segments: ContentSegment[] | undefined): boolean {
+  return !!segments && segments.length > 0
 }

@@ -23,6 +23,7 @@ export type EventCategory =
   | 'intent'
   | 'timeline'
   | 'content'
+  | 'tool'
   | 'task'
   | 'phase'
   | 'project'

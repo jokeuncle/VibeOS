@@ -176,7 +176,7 @@ export const workspaceApi = {
 
   saveMessage: (wsId: string, msg: {
     role: string; content: string; agentType?: string; richBlocks?: string;
-    contextType?: string; requirementId?: string; executionId?: string;
+    segments?: string; contextType?: string; requirementId?: string; executionId?: string;
   }) =>
     request<{ data: any }>(`/api/workspaces/${wsId}/messages`, {
       method: 'POST',
@@ -426,7 +426,7 @@ export const globalMessageApi = {
       `/api/messages?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
     ),
 
-  save: (msg: { role: string; content: string; agentType?: string; richBlocks?: string }) =>
+  save: (msg: { role: string; content: string; agentType?: string; richBlocks?: string; segments?: string }) =>
     request<{ data: any }>('/api/messages', {
       method: 'POST',
       body: JSON.stringify(msg),

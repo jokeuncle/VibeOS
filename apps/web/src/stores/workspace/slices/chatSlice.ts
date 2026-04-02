@@ -1,5 +1,5 @@
 import type { StoreApi } from 'zustand'
-import type { AgentType, Message, RichBlock, ExecutionStep, ConversationContext } from '../../../types'
+import type { AgentType, Message, RichBlock, ExecutionStep, ContentSegment, ConversationContext } from '../../../types'
 import {
   workspaceApi,
   globalMessageApi,
@@ -8,11 +8,14 @@ import { ExecutionSession } from '../../../lib/executionSession'
 import {
   parseContentBlock,
   parseTimelineStep,
+  parseToolStart,
+  parseToolResult,
 } from '../../../lib/sseEventParsers'
 import {
   friendlyError,
   buildNlpPhaseContext,
   safeParseRichBlocks,
+  safeParseSegments,
   mergeMessagesById,
   dedupeNearDuplicateMessages,
 } from '../helpers'
@@ -41,14 +44,31 @@ export function buildChatSlice(set: SetState, get: GetState) {
     options?: { targetAgent?: string; locale?: string },
   ) {
     let content = ''
+    let pendingText = ''
     const agentType: AgentType = (options?.targetAgent as AgentType) || 'pm'
     const richBlocks: RichBlock[] = []
+    const segments: ContentSegment[] = []
     const timelineSteps: ExecutionStep[] = []
     const persist = !isHome && !wsId.startsWith('ws-temp-')
     const agentDmKey = options?.targetAgent ? `${wsId}:${options.targetAgent}` : ''
 
+    const flushText = () => {
+      if (pendingText.trim()) {
+        segments.push({ kind: 'text', text: pendingText })
+        pendingText = ''
+      }
+    }
+
     const updateMsg = () => {
-      const msg: Partial<Message> = { content, agentType, richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined }
+      const hasSegments = segments.length > 0 || pendingText.trim().length > 0
+      const liveSegments: ContentSegment[] = hasSegments
+        ? [...segments, ...(pendingText.trim() ? [{ kind: 'text' as const, text: pendingText }] : [])]
+        : undefined as any
+      const msg: Partial<Message> = {
+        content, agentType,
+        richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined,
+        segments: liveSegments || undefined,
+      }
       if (isHome) {
         set((s) => ({ homeMessages: s.homeMessages.map((m) => m.id === msgId ? { ...m, ...msg } : m) }))
       } else if (agentDmKey) {
@@ -87,9 +107,24 @@ export function buildChatSlice(set: SetState, get: GetState) {
         upsertTimeline()
         updateMsg()
       })
+      .on('tool', (action, data) => {
+        if (action === 'start') {
+          flushText()
+          segments.push({ kind: 'tool_use', invocation: parseToolStart(data) })
+        } else if (action === 'result') {
+          const patch = parseToolResult(data)
+          const seg = segments.find(
+            (s): s is ContentSegment & { kind: 'tool_use' } =>
+              s.kind === 'tool_use' && s.invocation.id === patch.id,
+          )
+          if (seg) Object.assign(seg.invocation, patch)
+        }
+        updateMsg()
+      })
       .on('content', (action, data) => {
         if (action === 'delta' && data.delta) {
           content += data.delta
+          pendingText += data.delta
         } else if (action === 'block') {
           const parsed = parseContentBlock(data)
           if (parsed) richBlocks.push(parsed)
@@ -133,24 +168,28 @@ export function buildChatSlice(set: SetState, get: GetState) {
           updateMsg()
         }
       } finally {
+        flushText()
+        const finalSegments = segments.length > 0 ? segments : undefined
         if (isHome) {
           set({ homeNlpLoading: false })
-          const hasAgentTurn = content.trim().length > 0 || richBlocks.length > 0
+          const hasAgentTurn = content.trim().length > 0 || richBlocks.length > 0 || (finalSegments && finalSegments.length > 0)
           if (hasAgentTurn) {
             globalMessageApi.save({
               role: 'agent',
               content: content.trim(),
               agentType,
               richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined,
+              segments: finalSegments ? JSON.stringify(finalSegments) : undefined,
             }).catch(() => {})
           }
         } else {
           set({ nlpLoading: false, chatLoading: false })
-          if (persist && (content.trim() || richBlocks.length > 0)) {
+          if (persist && (content.trim() || richBlocks.length > 0 || (finalSegments && finalSegments.length > 0))) {
             const ctxType = agentDmKey ? 'agent_dm' : 'workspace'
             workspaceApi.saveMessage(wsId, {
               role: 'agent', content: content.trim(), agentType,
               richBlocks: richBlocks.length > 0 ? JSON.stringify(richBlocks) : undefined,
+              segments: finalSegments ? JSON.stringify(finalSegments) : undefined,
               contextType: ctxType,
             }).catch(() => {})
           }
@@ -174,12 +213,14 @@ export function buildChatSlice(set: SetState, get: GetState) {
 
     addMessage: (message: Message) => {
       const ctx = message.contextType || 'workspace'
+      const segmentsJson = message.segments && message.segments.length > 0 ? JSON.stringify(message.segments) : undefined
       if (ctx === 'home') {
         set((s) => ({ homeMessages: [...s.homeMessages, message] }))
         globalMessageApi.save({
           role: message.role, content: message.content || '',
           agentType: message.agentType,
           richBlocks: message.richBlocks ? JSON.stringify(message.richBlocks) : undefined,
+          segments: segmentsJson,
         }).catch((err) => console.warn('Failed to persist home message:', err))
       } else {
         set((s) => ({ messages: [...s.messages, message] }))
@@ -189,6 +230,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
             role: message.role, content: message.content || '',
             agentType: message.agentType,
             richBlocks: message.richBlocks ? JSON.stringify(message.richBlocks) : undefined,
+            segments: segmentsJson,
             contextType: ctx, requirementId: message.requirementId,
             executionId: message.executionId,
           }).catch((err) => console.warn('Failed to persist message:', err))
@@ -282,6 +324,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
           const restored: Message[] = (resp.data || []).reverse().map((m: any) => ({
             id: m.id, role: m.role, content: m.content, agentType: m.agentType,
             timestamp: m.createdAt, richBlocks: safeParseRichBlocks(m.richBlocks),
+            segments: safeParseSegments(m.segments),
             sessionId: m.sessionId, contextType: 'home' as ConversationContext,
             workspaceId: m.workspaceId, requirementId: m.requirementId, executionId: m.executionId,
           }))
@@ -312,6 +355,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
           const restored: Message[] = (msgResp.data || []).reverse().map((m: any) => ({
             id: m.id, role: m.role, content: m.content, agentType: m.agentType,
             timestamp: m.createdAt, richBlocks: safeParseRichBlocks(m.richBlocks),
+            segments: safeParseSegments(m.segments),
             sessionId: m.sessionId, contextType: (m.contextType || 'workspace') as ConversationContext,
             workspaceId: m.workspaceId, requirementId: m.requirementId, executionId: m.executionId,
           }))
@@ -337,6 +381,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
           const older: Message[] = (resp.data || []).reverse().map((m: any) => ({
             id: m.id, role: m.role, content: m.content, agentType: m.agentType,
             timestamp: m.createdAt, richBlocks: safeParseRichBlocks(m.richBlocks),
+            segments: safeParseSegments(m.segments),
             sessionId: m.sessionId, contextType: 'home' as ConversationContext,
           }))
           set((s) => ({ homeMessages: [...older, ...s.homeMessages], homeMessagesCursor: resp.cursor || null, homeMessagesHasMore: resp.hasMore }))
@@ -350,6 +395,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
         const older: Message[] = (resp.data || []).reverse().map((m: any) => ({
           id: m.id, role: m.role, content: m.content, agentType: m.agentType,
           timestamp: m.createdAt, richBlocks: safeParseRichBlocks(m.richBlocks),
+          segments: safeParseSegments(m.segments),
           sessionId: m.sessionId, contextType: (m.contextType || 'workspace') as ConversationContext,
           workspaceId: m.workspaceId, requirementId: m.requirementId, executionId: m.executionId,
         }))

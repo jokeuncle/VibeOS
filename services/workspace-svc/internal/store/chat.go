@@ -33,10 +33,10 @@ func (s *PostgresStore) GetOrCreateChatSession(ctx context.Context, workspaceID,
 
 func (s *PostgresStore) SaveChatMessage(ctx context.Context, msg *models.ChatMessage) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO chat_messages (id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		`INSERT INTO chat_messages (id, session_id, workspace_id, context_type, role, content, rich_blocks, segments, agent_type, requirement_id, execution_id, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		msg.ID, msg.SessionID, msg.WorkspaceID, msg.ContextType, msg.Role, msg.Content,
-		msg.RichBlocks, msg.AgentType, msg.RequirementID, msg.ExecutionID, msg.CreatedAt,
+		msg.RichBlocks, msg.Segments, msg.AgentType, msg.RequirementID, msg.ExecutionID, msg.CreatedAt,
 	)
 	return err
 }
@@ -53,7 +53,7 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 	var err error
 	if cursor == "" {
 		rows, err = s.pool.Query(ctx,
-			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, segments, agent_type, requirement_id, execution_id, created_at
 			 FROM chat_messages
 			 WHERE workspace_id = $1
 			 ORDER BY created_at DESC, id DESC
@@ -71,7 +71,7 @@ func (s *PostgresStore) ListChatMessages(ctx context.Context, workspaceID string
 		}
 		cursorID := parts[1]
 		rows, err = s.pool.Query(ctx,
-			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, segments, agent_type, requirement_id, execution_id, created_at
 			 FROM chat_messages
 			 WHERE workspace_id = $1 AND (created_at, id) < ($2, $3)
 			 ORDER BY created_at DESC, id DESC
@@ -99,7 +99,7 @@ func (s *PostgresStore) ListGlobalMessages(ctx context.Context, cursor string, l
 	var err error
 	if cursor == "" {
 		rows, err = s.pool.Query(ctx,
-			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, segments, agent_type, requirement_id, execution_id, created_at
 			 FROM chat_messages
 			 WHERE context_type = 'home'
 			 ORDER BY created_at DESC, id DESC
@@ -117,7 +117,7 @@ func (s *PostgresStore) ListGlobalMessages(ctx context.Context, cursor string, l
 		}
 		cursorID := parts[1]
 		rows, err = s.pool.Query(ctx,
-			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, agent_type, requirement_id, execution_id, created_at
+			`SELECT id, session_id, workspace_id, context_type, role, content, rich_blocks, segments, agent_type, requirement_id, execution_id, created_at
 			 FROM chat_messages
 			 WHERE context_type = 'home' AND (created_at, id) < ($1, $2)
 			 ORDER BY created_at DESC, id DESC
@@ -139,7 +139,7 @@ func scanChatMessages(rows pgx.Rows, limit int) []models.ChatMessage {
 	for rows.Next() {
 		var m models.ChatMessage
 		if err := rows.Scan(&m.ID, &m.SessionID, &m.WorkspaceID, &m.ContextType,
-			&m.Role, &m.Content, &m.RichBlocks, &m.AgentType,
+			&m.Role, &m.Content, &m.RichBlocks, &m.Segments, &m.AgentType,
 			&m.RequirementID, &m.ExecutionID, &m.CreatedAt); err != nil {
 			continue
 		}

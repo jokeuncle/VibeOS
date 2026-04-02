@@ -25,6 +25,7 @@ _AGENT_ENDPOINTS: dict[str, str] = {
 
 class DelegateToAgent(BaseTool):
     name = "delegate_to_agent"
+    display_name = "委派代理"
     description = (
         "Delegate a sub-task to another specialist agent and get their result. "
         "Use this when the current task requires expertise from another domain "

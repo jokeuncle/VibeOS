@@ -17,6 +17,7 @@ class TriggerPipeline(BaseTool):
     """Trigger a CI/CD pipeline on the configured infrastructure."""
 
     name = "trigger_pipeline"
+    display_name = "触发流水线"
     description = (
         "Trigger a CI/CD pipeline build for a GitLab project. "
         "Returns the pipeline ID and URL for status tracking."
@@ -71,6 +72,7 @@ class GetPipelineStatus(BaseTool):
     """Query current status of a previously triggered pipeline."""
 
     name = "get_pipeline_status"
+    display_name = "查询流水线"
     description = (
         "Check the current status of a running or completed CI/CD pipeline. "
         "Provide the task_id returned by trigger_pipeline."
@@ -102,6 +104,7 @@ class GetPipelineLogs(BaseTool):
     """Fetch job logs from a CI/CD pipeline."""
 
     name = "get_pipeline_logs"
+    display_name = "查看日志"
     description = (
         "Retrieve build/test logs from a CI/CD pipeline's jobs. "
         "Useful for diagnosing failures or reviewing build output."
@@ -133,6 +136,7 @@ class CancelPipeline(BaseTool):
     """Cancel a running CI/CD pipeline."""
 
     name = "cancel_pipeline"
+    display_name = "取消流水线"
     description = "Cancel a running CI/CD pipeline. Best-effort cancellation."
     parameters = {
         "type": "object",

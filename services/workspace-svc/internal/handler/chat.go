@@ -71,6 +71,9 @@ func (h *ChatHandler) SaveMessage(w http.ResponseWriter, r *http.Request) {
 	if req.RichBlocks != "" {
 		msg.RichBlocks = &req.RichBlocks
 	}
+	if req.Segments != "" {
+		msg.Segments = &req.Segments
+	}
 	msg.RequirementID = nilIfEmpty(req.RequirementID)
 	msg.ExecutionID = nilIfEmpty(req.ExecutionID)
 
@@ -128,6 +131,9 @@ func (h *ChatHandler) SaveGlobalMessage(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.RichBlocks != "" {
 		msg.RichBlocks = &req.RichBlocks
+	}
+	if req.Segments != "" {
+		msg.Segments = &req.Segments
 	}
 
 	if err := h.store.SaveChatMessage(r.Context(), msg); err != nil {

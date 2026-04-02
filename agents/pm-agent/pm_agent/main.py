@@ -38,7 +38,11 @@ from vibeos_agent.mcp_discovery import check_mcp_health, discover_and_register_m
 from vibeos_agent.session import SessionManager as AgentSessionManager
 from vibeos_agent.skills import Skill, SkillRegistry, SkillToolProvider
 from vibeos_agent.tools.delegation_tools import create_delegation_tools
+from vibeos_agent.tools.dev_tools import create_dev_tools
+from vibeos_agent.tools.feishu_tools import create_feishu_tools
+from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
 from vibeos_agent.tools.mcp_provider import MCPServerConfig, MCPToolProvider
+from vibeos_agent.tools.pipeline_tools import create_pipeline_tools
 from vibeos_agent.tools.provider import ToolManager
 from vibeos_agent.tools.workspace_tools import create_workspace_tools
 
@@ -94,6 +98,10 @@ async def lifespan(app: FastAPI):
     ))
     static_prov.register_many(create_workspace_tools(app.state.ws_client, "pm"))
     static_prov.register_many(create_delegation_tools("pm"))
+    static_prov.register_many(create_dev_tools(app.state.llm))
+    static_prov.register_many(create_gitlab_tools())
+    static_prov.register_many(create_pipeline_tools())
+    static_prov.register_many(create_feishu_tools())
     tool_manager.register_provider(static_prov)
 
     app.state.conversation = ConversationEngine(
@@ -186,6 +194,24 @@ async def _load_mcp_providers(
 # ---------------------------------------------------------------------------
 # Unified conversation endpoint
 # ---------------------------------------------------------------------------
+
+@app.get("/api/conversation/tools")
+async def list_tools() -> dict[str, Any]:
+    """Return all registered tool descriptors for frontend dynamic display."""
+    tm: ToolManager = app.state.tool_manager
+    descriptors = await tm.list_all_descriptors()
+    return {
+        "data": [
+            {
+                "name": d.name,
+                "displayName": d.display_name or d.name,
+                "description": d.description,
+                "provider": d.provider_key,
+            }
+            for d in descriptors
+        ]
+    }
+
 
 @app.post("/api/conversation/stream")
 async def handle_conversation(req: ConversationRequest) -> StreamingResponse:

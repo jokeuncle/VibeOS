@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import { StreamingDots } from './MessageBubble'
 import { RichBlockRenderer } from './RichBlockRenderer'
+import { ToolInvocationBlock } from './ToolInvocationBlock'
 import type { TranslationKey } from '../i18n/en'
 
 export default function AgentChat() {
@@ -77,13 +78,30 @@ export default function AgentChat() {
                   <span className="text-[11px] font-medium text-text-secondary">
                     {msg.role === 'user' ? t('conversation.you') : t(nameKey)}
                   </span>
-                  <p className="text-xs text-text-primary/90 leading-relaxed mt-0.5 whitespace-pre-wrap">{msg.content}</p>
-                  {msg.richBlocks && msg.richBlocks.length > 0 && (
-                    <div className="space-y-2 mt-2">
-                      {msg.richBlocks.map((block, i) => (
-                        <RichBlockRenderer key={i} block={block} />
-                      ))}
+                  {msg.segments && msg.segments.length > 0 ? (
+                    <div className="space-y-2 mt-1">
+                      {msg.segments.map((seg, i) => {
+                        if (seg.kind === 'text') return (
+                          <p key={`s-${i}`} className="text-xs text-text-primary/90 leading-relaxed whitespace-pre-wrap">{seg.text}</p>
+                        )
+                        if (seg.kind === 'tool_use') return (
+                          <ToolInvocationBlock key={`t-${seg.invocation.id}`} invocation={seg.invocation} />
+                        )
+                        if (seg.kind === 'block') return <RichBlockRenderer key={`b-${i}`} block={seg.block} />
+                        return null
+                      })}
                     </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-text-primary/90 leading-relaxed mt-0.5 whitespace-pre-wrap">{msg.content}</p>
+                      {msg.richBlocks && msg.richBlocks.length > 0 && (
+                        <div className="space-y-2 mt-2">
+                          {msg.richBlocks.map((block, i) => (
+                            <RichBlockRenderer key={i} block={block} />
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

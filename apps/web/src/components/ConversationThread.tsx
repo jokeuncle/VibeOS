@@ -176,8 +176,13 @@ export default function ConversationThread({
 
   const richLayout = isHome ? 'home' : undefined
 
+  /**
+   * Embed: fixed height + flex column + flex-1 scroll.
+   * max-h alone lets the column stay `height:auto`, so flex-1 collapses (~0) — message strip looks “squashed”.
+   * Same cap as before: min(70vh, 38rem).
+   */
   const shellClass = embedInPanel
-    ? ''
+    ? 'flex h-[min(70vh,38rem)] max-h-[min(70vh,38rem)] min-h-0 w-full flex-col overflow-hidden'
     : 'rounded-2xl bg-surface-1/50 backdrop-blur-xl shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)]'
 
   const scrollRounding = embedInPanel ? '' : 'rounded-b-2xl'
@@ -193,7 +198,7 @@ export default function ConversationThread({
           transition={{ duration: 0.25 }}
           className={shellClass}
         >
-          <div className={`px-4 py-3 border-b border-border-subtle/35 flex items-center gap-2 ${embedInPanel ? '' : 'rounded-t-2xl'}`}>
+          <div className={`shrink-0 px-4 py-3 border-b border-border-subtle/35 flex items-center gap-2 ${embedInPanel ? '' : 'rounded-t-2xl'}`}>
             <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
               <Sparkles className="w-3.5 h-3.5 text-accent" />
             </div>
@@ -221,7 +226,11 @@ export default function ConversationThread({
           </div>
           <div
             ref={scrollRef}
-            className={`min-h-[18rem] max-h-[min(70vh,38rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth ${scrollRounding}`}
+            className={
+              embedInPanel
+                ? `min-h-0 flex-1 basis-0 overflow-y-auto overflow-x-hidden p-3 pb-5 scroll-smooth ${scrollRounding}`
+                : `min-h-[18rem] max-h-[min(70vh,38rem)] overflow-y-auto overflow-x-hidden p-3 pb-5 scroll-smooth ${scrollRounding}`
+            }
           >
             <div className={`mx-auto w-full ${isHome ? 'max-w-xl' : 'max-w-2xl'} space-y-2.5`}>
               {hasMore && (

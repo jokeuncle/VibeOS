@@ -29,11 +29,13 @@ class BaseTool(ABC):
     """Abstract base for all agent-callable tools.
 
     Subclasses must define ``name``, ``description``, ``parameters`` (JSON Schema)
-    and implement ``execute``.
+    and implement ``execute``.  Optionally set ``display_name`` for a
+    human-friendly label forwarded to the frontend.
     """
 
     name: str
     description: str
+    display_name: str = ""
     parameters: dict[str, Any] = {"type": "object", "properties": {}}
 
     @abstractmethod

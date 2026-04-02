@@ -23,6 +23,7 @@ class ToolDescriptor:
     description: str
     parameters: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}})
     provider_key: str = ""
+    display_name: str = ""
 
     def to_openai_schema(self) -> dict[str, Any]:
         return {
@@ -77,6 +78,7 @@ class StaticToolProvider(ToolProvider):
                 description=t.description,
                 parameters=t.parameters,
                 provider_key=self.provider_key,
+                display_name=getattr(t, "display_name", "") or "",
             )
             for t in self._tools.values()
         ]
@@ -186,3 +188,14 @@ class ToolManager:
             except Exception:
                 logger.warning("Failed to list tools from %s", provider.provider_key, exc_info=True)
         return result
+
+    async def get_display_name(self, tool_name: str) -> str:
+        """Resolve the display_name for *tool_name* from the owning provider."""
+        for provider in self._providers:
+            try:
+                for desc in await provider.list_tools():
+                    if desc.name == tool_name:
+                        return desc.display_name or ""
+            except Exception:
+                pass
+        return ""

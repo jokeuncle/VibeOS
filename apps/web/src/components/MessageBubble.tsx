@@ -7,8 +7,9 @@ import { useT } from '../i18n'
 import { feedbackApi } from '../lib/api'
 import { RichBlockRenderer } from './RichBlockRenderer'
 import { HomeReasoningPanel } from './HomeReasoningPanel'
+import { ToolInvocationBlock } from './ToolInvocationBlock'
 import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
-import type { Message } from '../types'
+import type { Message, ContentSegment } from '../types'
 import type { TranslationKey } from '../i18n/en'
 
 export function TypingIndicator() {
@@ -174,6 +175,41 @@ export function UserBubble({ msg }: { msg: Message }) {
   )
 }
 
+function TextBubble({ text }: { text: string }) {
+  const cleaned = text.replace(/\n{3,}/g, '\n\n').trim()
+  if (!cleaned) return null
+  return (
+    <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
+      <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
+        {cleaned}
+      </p>
+    </div>
+  )
+}
+
+function SegmentRenderer({
+  segments,
+  richLayout,
+}: {
+  segments: ContentSegment[]
+  richLayout?: string
+}) {
+  return (
+    <>
+      {segments.map((seg, i) => {
+        if (seg.kind === 'text') return <TextBubble key={`s-${i}`} text={seg.text} />
+        if (seg.kind === 'tool_use') return <ToolInvocationBlock key={`t-${seg.invocation.id}`} invocation={seg.invocation} />
+        if (seg.kind === 'block') return (
+          <div key={`b-${i}`} className="w-full min-w-0">
+            <RichBlockRenderer block={seg.block} richLayout={richLayout === 'home' ? 'home' : undefined} />
+          </div>
+        )
+        return null
+      })}
+    </>
+  )
+}
+
 export function AgentMessageRow({
   msg,
   isLastAgent,
@@ -188,18 +224,70 @@ export function AgentMessageRow({
   showFeedback?: boolean
 }) {
   const t = useT()
+  const agentRowStreaming = isStreaming && isLastAgent
+  const useSegments = msg.segments && msg.segments.length > 0
 
+  // --- Segment-based path (new) ---
+  if (useSegments) {
+    const { reasoningIntent, cardBlocks } = partitionNlpConversationRichBlocks(msg.richBlocks, true)
+    const hasVisible = msg.segments!.length > 0
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className="flex items-start gap-2 group"
+      >
+        <div className="w-6 h-6 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+          <Bot className="w-3 h-3 text-accent" />
+        </div>
+        <div className="flex-1 space-y-2 min-w-0">
+          {agentRowStreaming && !hasVisible ? (
+            <StreamingDots label={t('nlp.generatingReply' as TranslationKey)} />
+          ) : (
+            <>
+              {reasoningIntent && (
+                <HomeReasoningPanel
+                  intentBlock={reasoningIntent}
+                  isStreaming={agentRowStreaming}
+                />
+              )}
+              <SegmentRenderer segments={msg.segments!} richLayout={richLayout} />
+              {cardBlocks.length > 0 && (
+                <div className="mt-1 w-full max-w-full space-y-2">
+                  {cardBlocks.map((block, i) => (
+                    <div key={`c-${i}`} className="w-full min-w-0">
+                      <RichBlockRenderer block={block} richLayout={richLayout === 'home' ? 'home' : undefined} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {showFeedback && !agentRowStreaming && (
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  <FeedbackButtons msg={msg} />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </motion.div>
+    )
+  }
+
+  // --- Legacy path (backward compat for old messages without segments) ---
   const { reasoningTimeline, reasoningIntent, inlineBlocks, cardBlocks } =
     partitionNlpConversationRichBlocks(msg.richBlocks)
-  const showReasoning =
-    !!(reasoningTimeline || reasoningIntent) && richLayout !== 'home'
+  const showReasoning = !!(reasoningTimeline || reasoningIntent)
   const showTextBubble = shouldShowAgentTextBubble(msg.content, msg.richBlocks)
+  const bubbleText = showTextBubble
+    ? (msg.content || '').replace(/\n{3,}/g, '\n\n')
+    : ''
   const hasVisible =
     showTextBubble ||
     inlineBlocks.length > 0 ||
     cardBlocks.length > 0 ||
     showReasoning
-  const agentRowStreaming = isStreaming && isLastAgent
 
   return (
     <motion.div
@@ -223,13 +311,7 @@ export function AgentMessageRow({
                 isStreaming={agentRowStreaming}
               />
             )}
-            {showTextBubble && (
-              <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
-                <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-line">
-                  {msg.content}
-                </p>
-              </div>
-            )}
+            {showTextBubble && <TextBubble text={bubbleText} />}
             {inlineBlocks.map((block, i) => (
               <div key={`i-${i}`}>
                 <RichBlockRenderer block={block} />

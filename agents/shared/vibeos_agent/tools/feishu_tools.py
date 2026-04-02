@@ -32,6 +32,7 @@ def _get_client() -> Any:
 
 class FeishuSendMessage(BaseTool):
     name = "feishu_send_message"
+    display_name = "发送飞书消息"
     description = "Send a text or rich-text message to a Feishu chat or user."
     parameters = {
         "type": "object",
@@ -91,6 +92,7 @@ class FeishuSendMessage(BaseTool):
 
 class FeishuCreateTask(BaseTool):
     name = "feishu_create_task"
+    display_name = "创建飞书任务"
     description = "Create a task in Feishu Tasks."
     parameters = {
         "type": "object",
@@ -138,6 +140,7 @@ class FeishuCreateTask(BaseTool):
 
 class FeishuUploadDoc(BaseTool):
     name = "feishu_upload_doc"
+    display_name = "上传飞书文档"
     description = "Create a document in Feishu Docs with the given content."
     parameters = {
         "type": "object",

@@ -13,7 +13,7 @@
  * `parseTimelineStep`, `parseIntentBlock`.
  */
 
-import type { AgentType, RichBlock, ExecutionStep } from '../types'
+import type { AgentType, RichBlock, ExecutionStep, ToolInvocation } from '../types'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +51,26 @@ export function parseTimelineStep(data: any): ExecutionStep {
     label: data.label,
     status: data.status,
     detail: data.detail,
+  }
+}
+
+export function parseToolStart(data: any): ToolInvocation {
+  return {
+    id: data.call_id,
+    toolName: data.tool_name,
+    displayName: data.display_name || data.tool_name,
+    status: 'calling',
+    input: data.input,
+  }
+}
+
+export function parseToolResult(data: any): Partial<ToolInvocation> & { id: string } {
+  return {
+    id: data.call_id,
+    status: data.status === 'error' ? 'error' : 'completed',
+    output: data.output,
+    error: data.status === 'error' ? data.output : undefined,
+    durationMs: data.duration_ms,
   }
 }
 

@@ -68,6 +68,16 @@ export function safeParseRichBlocks(raw: unknown): import('../../types').RichBlo
   }
 }
 
+export function safeParseSegments(raw: unknown): import('../../types').ContentSegment[] | undefined {
+  if (!raw) return undefined
+  if (typeof raw !== 'string') return raw as import('../../types').ContentSegment[]
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+}
+
 export function patchWorkspace(
   workspaces: Workspace[],
   id: string,

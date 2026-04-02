@@ -322,6 +322,26 @@ export interface ActivitySummary {
   createdAt: string
 }
 
+// ---------------------------------------------------------------------------
+// Tool invocation & content segments (Claude-style interleaved rendering)
+// ---------------------------------------------------------------------------
+
+export interface ToolInvocation {
+  id: string
+  toolName: string
+  displayName: string
+  status: 'calling' | 'completed' | 'error'
+  input?: Record<string, unknown>
+  output?: string
+  error?: string
+  durationMs?: number
+}
+
+export type ContentSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool_use'; invocation: ToolInvocation }
+  | { kind: 'block'; block: RichBlock }
+
 /**
  * Unified event categories for the SSE protocol.
  * All events follow the format: `<category>:<action>`
@@ -331,6 +351,7 @@ export type UnifiedEventCategory =
   | 'intent'
   | 'timeline'
   | 'content'
+  | 'tool'
   | 'task'
   | 'phase'
   | 'project'
@@ -492,6 +513,8 @@ export interface Message {
   role: 'user' | 'agent' | 'system'
   content: string
   richBlocks?: RichBlock[]
+  /** Ordered content segments for interleaved tool-call rendering. */
+  segments?: ContentSegment[]
   agentType?: AgentType
   timestamp: string
   sessionId?: string

@@ -313,6 +313,7 @@ type ChatMessage struct {
 	Role          string    `json:"role" db:"role"`
 	Content       string    `json:"content" db:"content"`
 	RichBlocks    *string   `json:"richBlocks,omitempty" db:"rich_blocks"`
+	Segments      *string   `json:"segments,omitempty" db:"segments"`
 	AgentType     *string   `json:"agentType,omitempty" db:"agent_type"`
 	RequirementID *string   `json:"requirementId,omitempty" db:"requirement_id"`
 	ExecutionID   *string   `json:"executionId,omitempty" db:"execution_id"`

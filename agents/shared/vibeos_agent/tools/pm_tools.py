@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class QueryProgressTool(BaseTool):
     name = "query_progress"
+    display_name = "查询进度"
     description = (
         "Query the current workspace's overall progress: phase statuses, "
         "task counts, and completion rates. Returns structured data that "
@@ -61,6 +62,7 @@ class QueryProgressTool(BaseTool):
 
 class CreateWorkspaceTool(BaseTool):
     name = "create_workspace"
+    display_name = "创建工作区"
     description = (
         "Create a new workspace with a title and optional description. "
         "Use when the user asks to start a new project or workspace."
@@ -91,6 +93,7 @@ class CreateWorkspaceTool(BaseTool):
 
 class RunPhaseTool(BaseTool):
     name = "run_phase"
+    display_name = "执行阶段"
     description = (
         "Execute all pending tasks in a specific SDLC phase of the current "
         "workspace. Phase types: requirement, architecture, design, "
@@ -134,6 +137,7 @@ class RunPhaseTool(BaseTool):
 
 class RunTaskTool(BaseTool):
     name = "run_task"
+    display_name = "执行任务"
     description = (
         "Execute a specific task by ID in the current workspace."
     )
@@ -167,6 +171,7 @@ class RunTaskTool(BaseTool):
 
 class RunProjectTool(BaseTool):
     name = "run_project"
+    display_name = "执行项目"
     description = (
         "Execute the full project lifecycle starting from a given phase. "
         "Runs all phases sequentially from the start phase onward."
@@ -203,6 +208,7 @@ class RunProjectTool(BaseTool):
 
 class RunGraphTool(BaseTool):
     name = "run_graph"
+    display_name = "执行图谱"
     description = (
         "Execute a structured workflow graph for complex multi-step tasks. "
         "Use when a graph_id is specified or the task needs orchestrated execution."
@@ -265,6 +271,7 @@ class RunGraphTool(BaseTool):
 
 class ListWorkspacesTool(BaseTool):
     name = "list_workspaces"
+    display_name = "查询工作区"
     description = "List all available workspaces for the user."
     parameters = {"type": "object", "properties": {}}
 

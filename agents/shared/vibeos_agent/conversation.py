@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -33,12 +34,16 @@ You are VibeOS, an AI-native SDLC platform assistant. You manage software \
 projects across their full lifecycle.
 
 You have access to tools for:
-- Workspace management (query progress, create workspaces)
+- Workspace management (query progress, create workspaces, list workspaces)
 - Phase/task execution (run phases, run tasks, run full projects)
 - Delegation to specialist agents (requirement, architecture, design, \
 development, testing, cicd, monitoring)
 - Graph-based workflow execution
 - Artifact and task creation
+- Code generation, review, and implementation planning
+- GitLab integration (issues, merge requests, pipelines, file push)
+- CI/CD pipelines (trigger, status, logs, cancel)
+- Feishu/Lark messaging, tasks, and document creation
 
 Use tools when the user wants to perform actions. Respond conversationally \
 when they ask questions or want to discuss.
@@ -143,7 +148,8 @@ class ConversationEngine:
 
         try:
             async for event in self._pipeline.run(ctx, terminal=self._agentic_terminal):
-                yield self._event_to_sse(sid, event)
+                for frame in self._event_to_sse(sid, event):
+                    yield frame
         except Exception as exc:
             logger.error("Conversation failed: %s", exc, exc_info=True)
             yield _sse("session", "error", {"error": str(exc)}, sid)
@@ -255,6 +261,7 @@ class ConversationEngine:
         for tc in tool_calls:
             fn = tc.get("function", {})
             name = fn.get("name", "")
+            call_id = tc.get("id", "") or f"call_{name}_{uuid.uuid4().hex[:8]}"
             raw_args = fn.get("arguments", "{}")
 
             try:
@@ -262,10 +269,18 @@ class ConversationEngine:
             except json.JSONDecodeError:
                 args = {}
 
-            events.append(_evt("tool_start", tool=name, arguments={**args}))
+            display_name = await self._tool_manager.get_display_name(name)
+
+            events.append(_evt(
+                "tool_start", tool=name, call_id=call_id,
+                display_name=display_name,
+                arguments=_truncate_dict(args, 2000),
+            ))
 
             args["_workspace_id"] = ctx.workspace_id
+            t0 = time.monotonic()
             result = await self._tool_manager.execute(name, args)
+            duration_ms = int((time.monotonic() - t0) * 1000)
 
             ctx.tool_results.append({
                 "tool": name, "ok": result.ok,
@@ -273,8 +288,10 @@ class ConversationEngine:
             })
 
             events.append(_evt(
-                "tool_result", tool=name,
-                ok=result.ok, output=result.output[:2000],
+                "tool_result", tool=name, call_id=call_id,
+                display_name=display_name,
+                ok=result.ok, output=result.output[:3000],
+                duration_ms=duration_ms,
             ))
 
             messages.append({
@@ -297,25 +314,71 @@ class ConversationEngine:
         messages.append({"role": "user", "content": ctx.user_message})
         return messages
 
-    def _event_to_sse(self, sid: str, event: AgentEvent) -> str:
+    def _event_to_sse(self, sid: str, event: AgentEvent) -> list[str]:
         etype = event.type
         payload = event.payload or {}
 
         if etype == "content_delta":
-            return _sse("content", "delta", {"delta": payload.get("delta", "")}, sid)
+            return [_sse("content", "delta", {"delta": payload.get("delta", "")}, sid)]
+
         if etype == "tool_start":
-            return _sse("timeline", "step", {
-                "step_id": f"tool_{payload.get('tool', '')}",
-                "label": f"Calling {payload.get('tool', '')}",
-                "status": "running",
-            }, sid)
+            name = payload.get("tool", "")
+            call_id = payload.get("call_id", f"tool_{name}")
+            display_name = payload.get("display_name", "")
+            label = display_name or name
+            return [
+                _sse("tool", "start", {
+                    "call_id": call_id,
+                    "tool_name": name,
+                    "display_name": display_name,
+                    "input": payload.get("arguments"),
+                }, sid),
+                _sse("timeline", "step", {
+                    "step_id": call_id,
+                    "label": label,
+                    "status": "running",
+                }, sid),
+            ]
+
         if etype == "tool_result":
-            return _sse("timeline", "step", {
-                "step_id": f"tool_{payload.get('tool', '')}",
-                "label": f"Calling {payload.get('tool', '')}",
-                "status": "completed" if payload.get("ok") else "error",
-            }, sid)
-        return _sse("content", "payload", {"payload": payload}, sid)
+            name = payload.get("tool", "")
+            call_id = payload.get("call_id", f"tool_{name}")
+            display_name = payload.get("display_name", "")
+            label = display_name or name
+            ok = payload.get("ok")
+            return [
+                _sse("tool", "result", {
+                    "call_id": call_id,
+                    "tool_name": name,
+                    "display_name": display_name,
+                    "status": "completed" if ok else "error",
+                    "output": payload.get("output", ""),
+                    "duration_ms": payload.get("duration_ms"),
+                }, sid),
+                _sse("timeline", "step", {
+                    "step_id": call_id,
+                    "label": label,
+                    "status": "completed" if ok else "error",
+                }, sid),
+            ]
+
+        return [_sse("content", "payload", {"payload": payload}, sid)]
+
+
+def _truncate_dict(d: dict[str, Any], max_chars: int = 2000) -> dict[str, Any]:
+    """Shallow-truncate dict values so the JSON repr stays within *max_chars*."""
+    out: dict[str, Any] = {}
+    budget = max_chars
+    for k, v in d.items():
+        if k.startswith("_"):
+            continue
+        s = json.dumps(v, ensure_ascii=False, default=str)
+        if len(s) > budget:
+            out[k] = s[:budget] + "…"
+            break
+        out[k] = v
+        budget -= len(s)
+    return out
 
 
 def _sse(category: str, action: str, payload: dict[str, Any], sid: str) -> str:

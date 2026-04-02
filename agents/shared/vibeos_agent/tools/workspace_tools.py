@@ -9,6 +9,7 @@ from .base import BaseTool
 
 class WorkspaceCreateTask(BaseTool):
     name = "workspace_create_task"
+    display_name = "创建任务"
     description = "Create a new task in the current workspace under a specific phase."
     parameters = {
         "type": "object",
@@ -50,6 +51,7 @@ class WorkspaceCreateTask(BaseTool):
 
 class WorkspaceUpdateTaskStatus(BaseTool):
     name = "workspace_update_task_status"
+    display_name = "更新任务状态"
     description = "Update a task's status (pending, in_progress, completed)."
     parameters = {
         "type": "object",
@@ -77,6 +79,7 @@ class WorkspaceUpdateTaskStatus(BaseTool):
 
 class WorkspaceCreateArtifact(BaseTool):
     name = "workspace_create_artifact"
+    display_name = "创建工件"
     description = "Save a structured artifact (spec, code, config, etc.) to the workspace."
     parameters = {
         "type": "object",
@@ -117,6 +120,7 @@ class WorkspaceCreateArtifact(BaseTool):
 
 class WorkspaceQueryPhases(BaseTool):
     name = "workspace_query_phases"
+    display_name = "查询阶段"
     description = "List all phases and their tasks/status in the current workspace."
     parameters = {"type": "object", "properties": {}}
 
