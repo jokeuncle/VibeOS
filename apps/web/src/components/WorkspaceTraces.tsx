@@ -123,7 +123,10 @@ function ExecutionTraceRow({ exec }: { exec: AgentExecution }) {
           >
             <div className="px-4 pb-4 border-t border-border-subtle pt-3 space-y-1.5">
               {exec.steps.length === 0 && (
-                <p className="text-[11px] text-text-tertiary">No execution steps recorded.</p>
+                <div className="space-y-1">
+                  <p className="text-[11px] text-text-tertiary">{t('traces.noStepsRecorded')}</p>
+                  <p className="text-[10px] text-text-tertiary/75 leading-relaxed">{t('traces.noStepsHint')}</p>
+                </div>
               )}
               {exec.steps.map((step, i) => (
                 <div key={step.id} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-surface-2/60 border border-border-subtle">

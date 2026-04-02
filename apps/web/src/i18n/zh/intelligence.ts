@@ -242,6 +242,8 @@ const intelligence = {
   'traces.toolCalls': '工具调用',
   'traces.totalLogsCount': '条日志',
   'traces.emptyHint': '运行工作流或输入 NLP 指令后，即可在此查看 Agent 追踪记录。',
+  'traces.noStepsRecorded': '本次执行没有记录到步骤。',
+  'traces.noStepsHint': '步骤来自 NLP 对话中的工具调用，以及工作流中的阶段 / 任务事件。历史记录在功能上线前的运行可能仍为空；新跑一次即可看到。',
 }
 
 export default intelligence

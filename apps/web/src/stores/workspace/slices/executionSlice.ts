@@ -9,10 +9,21 @@ type GetState = StoreApi<WorkspaceState>['getState']
 const MAX_EXECUTIONS = 200
 
 function normalizeExec(e: AgentExecution): AgentExecution {
+  const raw = (e as { steps?: ExecutionStep[] | string | null }).steps
+  let steps: ExecutionStep[] = []
+  if (Array.isArray(raw)) steps = raw
+  else if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) steps = parsed as ExecutionStep[]
+    } catch {
+      /* keep empty */
+    }
+  }
   return {
     ...e,
     taskIds: e.taskIds ?? [],
-    steps: e.steps ?? [],
+    steps,
   }
 }
 

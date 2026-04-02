@@ -242,6 +242,8 @@ const intelligence = {
   'traces.toolCalls': 'Tool calls',
   'traces.totalLogsCount': 'logs',
   'traces.emptyHint': 'Run a workflow or NLP command to see agent traces here.',
+  'traces.noStepsRecorded': 'No execution steps were stored for this run.',
+  'traces.noStepsHint': 'Steps are saved from tool calls (NLP) and phase/task events (workflow). Older runs may be empty until you run something again.',
 } as const
 
 export default intelligence

@@ -133,8 +133,10 @@ class ConversationEngine:
             try:
                 summary = (req.message or "").strip().replace("\n", " ")[:120]
                 rid: str | None = None
-                if req.context and isinstance(req.context.get("requirementId"), str):
-                    rid = req.context["requirementId"]
+                if req.context:
+                    raw_rid = req.context.get("requirement_id") or req.context.get("requirementId")
+                    if isinstance(raw_rid, str) and raw_rid.strip():
+                        rid = raw_rid.strip()
                 await self._ws_client.create_execution(
                     req.workspace_id,
                     execution_id=sid,
