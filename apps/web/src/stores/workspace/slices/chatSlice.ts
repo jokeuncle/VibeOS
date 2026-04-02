@@ -21,6 +21,7 @@ import {
 } from '../helpers'
 import type { WorkspaceState, MessageScope } from '../types'
 import { workspaceMessagesFetchInflight } from '../inflight'
+import { useUIStore } from '../../ui'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
@@ -249,6 +250,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
     sendNLPMessageStream: (input: string) => {
       const wsId = get().activeWorkspaceId
       if (!wsId) return
+      useUIStore.getState().setConversationCollapsed('workspace', false)
       const ts = new Date().toISOString()
       const msgId = crypto.randomUUID()
       const persist = !wsId.startsWith('ws-temp-')
@@ -302,6 +304,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
     },
 
     sendHomeNLPStream: (input: string) => {
+      useUIStore.getState().setConversationCollapsed('home', false)
       const ts = new Date().toISOString()
       const msgId = crypto.randomUUID()
       const userMsg = makeMsg({ id: crypto.randomUUID(), role: 'user', content: input, timestamp: ts, contextType: 'home' })

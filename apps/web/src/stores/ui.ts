@@ -299,7 +299,8 @@ export const useUIStore = create<UIState>()(
   setConversationVisible: (ctx, visible) =>
     set((s) => ({ conversationVisible: { ...s.conversationVisible, [ctx]: visible } })),
 
-  conversationCollapsed: {},
+  /** Default collapsed so a full page load / message restore shows the pill, not the expanded panel. */
+  conversationCollapsed: { home: true, workspace: true },
   setConversationCollapsed: (ctx, collapsed) =>
     set((s) => ({ conversationCollapsed: { ...s.conversationCollapsed, [ctx]: collapsed } })),
   toggleConversation: (ctx) =>
