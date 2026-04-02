@@ -43,7 +43,7 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
 
   return (
     <ReactFlowProvider>
-      <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full">
         {/* Header - 可通过 hideHeader 隐藏 */}
         {!hideHeader && (
           <div className="shrink-0 px-5 py-3 border-b border-border-subtle flex items-center justify-between">
