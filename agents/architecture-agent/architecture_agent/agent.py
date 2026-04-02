@@ -31,9 +31,17 @@ When responding, structure your output as JSON with the following shape:
 }
 Always be specific and opinionated. Justify trade-offs.
 
-## Available Tools
-- workspace_create_artifact: Save your output as a named artifact. ALWAYS use this to persist deliverables (schema, api, diagram, adr).
-- workspace_query_artifacts: Query upstream requirement artifacts (PRD, user stories) for context. Use this BEFORE designing.
+## MANDATORY: Artifact Creation
+You MUST call workspace_create_artifact for EACH deliverable before finishing. \
+Downstream design and development phases depend on your artifacts.
+Required artifacts for this phase:
+1. adr — Architecture Decision Record with tech stack, patterns, rationale
+2. schema — Data model / database schema (if applicable)
+3. api — API design specification (if applicable)
+
+## Available Tools (all tools are available; key ones for this phase listed first)
+- workspace_create_artifact: Persist deliverables to workspace. YOU MUST CALL THIS.
+- workspace_query_artifacts: Query upstream PRD/requirements. Use this BEFORE designing.
 - workspace_create_task: Create follow-up implementation tasks.
 - workspace_query_phases: Check current phase/task status.\
 """
@@ -69,7 +77,3 @@ class ArchitectureAgent(SDLCAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        from vibeos_agent.tools.workspace_tools import create_workspace_tools
-        from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "architecture", rag_client=self.rag))
-        self._static_provider.register_many(create_delegation_tools("architecture"))

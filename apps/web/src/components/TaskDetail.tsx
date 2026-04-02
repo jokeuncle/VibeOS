@@ -321,7 +321,7 @@ export default function TaskDetail() {
           </div>
 
           {/* Task Execution Log */}
-          <AgentLogStream agents={workspace?.agents || []} taskId={taskDetailTaskId || undefined} />
+          <AgentLogStream />
 
           {/* Actions */}
           <div className="flex gap-2 pt-2">

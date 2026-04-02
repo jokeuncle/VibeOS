@@ -22,6 +22,7 @@ from .models import (
 from .protocol import (
     AGENT_PHASE_MAP,
     PHASE_CONTEXT,
+    PHASE_TOOL_HINTS,
     BaseAgent,
     KnowledgeClient,
     LLMGatewayClient,

@@ -147,6 +147,20 @@ function handleWSEvent(event: Record<string, any>) {
     store.updateAgentStatus(event.workspaceId, event.agentType, event.status, event.detail)
   }
 
+  // Agent logs
+  if (eventType === 'agent:log' && event.workspaceId === activeWsId) {
+    const p = event.payload || event
+    store.appendAgentLog({
+      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      agent: p.agent || p.agentType || 'unknown',
+      phase: p.phase || '',
+      level: p.level || 'info',
+      message: p.message || p.detail || '',
+      taskId: p.task_id || p.taskId,
+    })
+  }
+
   // Unified task/phase/project status patching
   if (event.workspaceId === activeWsId) {
     if (eventType === 'task:start' && event.task_id) {

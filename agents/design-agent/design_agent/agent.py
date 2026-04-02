@@ -63,13 +63,19 @@ IMPORTANT for design_image artifacts:
 
 Always prioritize usability, accessibility, and visual consistency.
 
-## Available Tools
-- workspace_create_artifact: Save your output as a named artifact. ALWAYS use this to persist deliverables (design_spec as markdown, design_image as HTML).
-- workspace_query_artifacts: Query upstream PRD and architecture artifacts for context. Use this BEFORE designing.
+## MANDATORY: Artifact Creation
+You MUST call workspace_create_artifact for EACH deliverable before finishing. \
+Development phase depends on your design artifacts for implementation.
+Required artifacts for this phase:
+1. design_spec — Complete UI/UX specification in markdown
+2. design_image — HTML wireframe(s) with inline CSS for visual preview
+
+## Available Tools (all tools are available; key ones for this phase listed first)
+- workspace_create_artifact: Persist deliverables to workspace. YOU MUST CALL THIS for each artifact above.
+- workspace_query_artifacts: Query upstream PRD and architecture artifacts. Use BEFORE designing.
 - workspace_create_task: Create follow-up implementation tasks.
 - workspace_query_phases: Check current phase/task status.
 
-IMPORTANT: Call workspace_create_artifact for EACH deliverable (design_spec and design_image separately). \
 The tool automatically uploads to CDN for preview.\
 """
 
@@ -102,7 +108,3 @@ class DesignAgent(SDLCAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        from vibeos_agent.tools.workspace_tools import create_workspace_tools
-        from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "design", rag_client=self.rag))
-        self._static_provider.register_many(create_delegation_tools("design"))

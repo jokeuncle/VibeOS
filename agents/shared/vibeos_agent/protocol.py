@@ -8,7 +8,7 @@ The implementation has been split into focused modules:
 All existing ``from vibeos_agent.protocol import ...`` statements continue to work.
 """
 
-from .base_agent import AGENT_PHASE_MAP, PHASE_CONTEXT, BaseAgent
+from .base_agent import AGENT_PHASE_MAP, PHASE_CONTEXT, PHASE_TOOL_HINTS, BaseAgent
 from .clients import (
     KnowledgeClient,
     LLMGatewayClient,

@@ -55,6 +55,37 @@ AGENT_PHASE_MAP: dict[str, str] = {
 }
 
 
+PHASE_TOOL_HINTS: dict[str, list[str]] = {
+    "requirement": [
+        "workspace_create_artifact", "workspace_query_artifacts",
+        "workspace_create_task", "workspace_query_phases",
+    ],
+    "architecture": [
+        "workspace_create_artifact", "workspace_query_artifacts",
+        "workspace_create_task", "workspace_query_phases",
+    ],
+    "design": [
+        "workspace_create_artifact", "workspace_query_artifacts",
+        "workspace_create_task", "workspace_query_phases",
+    ],
+    "development": [
+        "workspace_create_artifact", "gitlab_push_file", "gitlab_create_mr",
+        "workspace_query_artifacts", "workspace_create_task",
+    ],
+    "testing": [
+        "workspace_create_artifact", "gitlab_push_file",
+        "workspace_query_artifacts", "workspace_create_task",
+    ],
+    "deployment": [
+        "workspace_create_artifact", "gitlab_push_file", "gitlab_create_mr",
+        "workspace_query_artifacts",
+    ],
+    "monitoring": [
+        "workspace_create_artifact", "workspace_query_artifacts",
+    ],
+}
+
+
 class BaseAgent(ABC):
     """Abstract base every VibeOS domain agent must extend."""
 
@@ -81,6 +112,33 @@ class BaseAgent(ABC):
         self._current_task_var: contextvars.ContextVar[Any | None] = contextvars.ContextVar(
             "current_task", default=None,
         )
+        self._register_standard_tools()
+
+    def _register_standard_tools(self) -> None:
+        """Register all standard tools in the base class.
+
+        All agents get the full suite of tools. The LLM decides which to call
+        based on the phase context and system prompt guidance.
+        Subclasses can still call register_many() for domain-specific extras.
+        """
+        agent_key = _enum_val(self.agent_type) if hasattr(self, "agent_type") else "unknown"
+        try:
+            from .tools.workspace_tools import create_workspace_tools
+            self._static_provider.register_many(
+                create_workspace_tools(self.workspace_svc, agent_key, rag_client=self.rag),
+            )
+        except Exception:
+            logger.debug("Failed to register workspace tools", exc_info=True)
+        try:
+            from .tools.gitlab_tools import create_gitlab_tools
+            self._static_provider.register_many(create_gitlab_tools())
+        except Exception:
+            logger.debug("Failed to register gitlab tools", exc_info=True)
+        try:
+            from .tools.delegation_tools import create_delegation_tools
+            self._static_provider.register_many(create_delegation_tools(agent_key))
+        except Exception:
+            logger.debug("Failed to register delegation tools", exc_info=True)
 
     # Backward-compatible aliases so existing subclass code keeps working.
     @property

@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from .base_agent import BaseAgent
+from .base_agent import PHASE_TOOL_HINTS, BaseAgent
 from .clients._utils import _enum_val
 from .models import (
     AgentEvent,
@@ -97,10 +97,11 @@ class SDLCAgent(BaseAgent):
             )
 
             if tool_artifact_count == 0 and raw_reply and len(raw_reply) > 200:
-                fallback_count = await self._auto_save_fallback_artifacts(
-                    task, structured, raw_reply, agent_name, rich_blocks,
+                await _log(
+                    task.workspace_id, agent_name,
+                    "WARNING: LLM did not call workspace_create_artifact. No deliverables were persisted.",
+                    level="warn", task_id=task.task_id,
                 )
-                tool_artifact_count += fallback_count
 
             await _log(
                 task.workspace_id, agent_name,
@@ -136,59 +137,26 @@ class SDLCAgent(BaseAgent):
 
     def _build_execute_prompt(self, task: AgentTask) -> str:
         user_msg = task.user_message or task.description
-        return (
-            f"Task: {task.intent}\n"
-            f"Description: {task.description}\n"
-            f"User request: {user_msg}\n"
-            f"Context: {json.dumps(task.context)}"
-        )
+        phase_key = self.phase_key or _enum_val(self.agent_type)
+        hints = PHASE_TOOL_HINTS.get(phase_key, [])
+
+        parts = [
+            f"Task: {task.intent}",
+            f"Description: {task.description}",
+            f"User request: {user_msg}",
+            f"Context: {json.dumps(task.context)}",
+        ]
+        if hints:
+            parts.append(
+                "\n## Recommended tools for this phase\n"
+                + ", ".join(f"`{h}`" for h in hints)
+                + "\nAll other registered tools are also available if needed."
+            )
+        return "\n".join(parts)
 
     async def _resolve_repo_context(self, task: AgentTask) -> dict[str, Any] | None:
         """Override to provide repo context (dev/cicd agents)."""
         return None
-
-    async def _auto_save_fallback_artifacts(
-        self,
-        task: AgentTask,
-        structured: dict[str, Any],
-        raw_reply: str,
-        agent_name: str,
-        rich_blocks: list[RichBlock],
-    ) -> int:
-        """When the LLM didn't call workspace_create_artifact, auto-save its output.
-
-        Returns the number of artifacts saved.
-        """
-        saved = 0
-        phase_key = self.phase_key or _enum_val(self.agent_type)
-        art_type = f"{phase_key}_output"
-        if self.artifact_configs:
-            art_type = self.artifact_configs[0].type
-
-        content = raw_reply
-        title = f"{phase_key.title()} Output"
-        summary = structured.get("summary", "")
-        if summary:
-            title = summary[:100]
-
-        try:
-            await self.workspace_svc.create_artifact(
-                task.workspace_id,
-                agent_type=agent_name,
-                artifact_type=art_type,
-                title=title,
-                content=content[:50000],
-            )
-            saved += 1
-            rich_blocks.append(RichBlock(
-                type="code", language="text",
-                content=f"[Auto-saved artifact] {title} ({art_type})",
-                metadata={"title": title},
-            ))
-            logger.info("Auto-saved fallback artifact for %s: %s", agent_name, title[:60])
-        except Exception as exc:
-            logger.debug("Failed to auto-save fallback artifact: %s", exc)
-        return saved
 
     async def _post_process(
         self,

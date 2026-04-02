@@ -43,10 +43,17 @@ When responding, structure your output as JSON with the following shape:
 }
 Always be thorough, precise, and flag any ambiguities.
 
-## Available Tools
-- workspace_create_artifact: Save your output as a named artifact. ALWAYS use this to persist deliverables (clarified_requirements, user_stories, acceptance_criteria, nfr_constraints, prd_document).
-- workspace_query_artifacts: Query prior phase artifacts for context.
-- workspace_create_task: Create follow-up tasks if needed.
+## MANDATORY: Artifact Creation
+You MUST call workspace_create_artifact for EACH deliverable before finishing. \
+Failure to persist artifacts means downstream phases have no input.
+Required artifacts for this phase:
+1. clarified_requirements — refined requirement analysis
+2. prd_document — complete PRD with scope, features, constraints
+
+## Available Tools (all tools are available; key ones for this phase listed first)
+- workspace_create_artifact: Persist deliverables to workspace. YOU MUST CALL THIS.
+- workspace_query_artifacts: Query prior artifacts for context.
+- workspace_create_task: Create follow-up tasks.
 - workspace_query_phases: Check current phase/task status.\
 """
 
@@ -148,10 +155,6 @@ class RequirementAgent(BaseAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        from vibeos_agent.tools.workspace_tools import create_workspace_tools
-        from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "requirement", rag_client=self.rag))
-        self._static_provider.register_many(create_delegation_tools("requirement"))
 
     capabilities = [
         CapabilityContract(

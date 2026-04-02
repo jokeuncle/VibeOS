@@ -9,7 +9,7 @@ import {
   parseTimelineStep,
 } from '../../../lib/sseEventParsers'
 import { friendlyError } from '../helpers'
-import type { WorkspaceState } from '../types'
+import type { WorkspaceState, AgentLogEntry } from '../types'
 
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
@@ -88,6 +88,12 @@ export function buildWorkflowSlice(set: SetState, get: GetState) {
       set((s) => ({ workflowEvents: [...s.workflowEvents, event] }))
     },
 
+    agentLogs: [] as AgentLogEntry[],
+    appendAgentLog: (entry: AgentLogEntry) => {
+      set((s) => ({ agentLogs: [...s.agentLogs.slice(-499), entry] }))
+    },
+    clearAgentLogs: () => set({ agentLogs: [] }),
+
     runTask: (taskId: string) => {
       runViaConversation(set, get, `Run task ${taskId}`)
     },
@@ -115,6 +121,7 @@ export function buildWorkflowSlice(set: SetState, get: GetState) {
   } satisfies Pick<
     WorkspaceState,
     | 'workflowRunning' | 'workflowEvents' | 'appendWorkflowEvent'
+    | 'agentLogs' | 'appendAgentLog' | 'clearAgentLogs'
     | 'runTask' | 'runPhase' | 'runProject' | 'runRequirement'
   >
 }

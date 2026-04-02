@@ -62,7 +62,7 @@ export function RequirementDetailAgentsTab({ workspace, t }: { workspace: Worksp
         <GanttChart phases={workspace.phases} startDate={workspace.createdAt} />
       </motion.div>
       <AgentTimeline agents={workspace.agents} />
-      <AgentLogStream agents={workspace.agents} />
+      <AgentLogStream />
     </div>
   )
 }

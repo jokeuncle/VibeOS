@@ -24,6 +24,16 @@ export interface AgentStatusEvent {
   timestamp: number
 }
 
+export interface AgentLogEntry {
+  id: string
+  timestamp: string
+  agent: string
+  phase: string
+  level: 'info' | 'success' | 'warn' | 'error'
+  message: string
+  taskId?: string
+}
+
 export interface MessageScope {
   contextType: ConversationContext
   workspaceId?: string
@@ -98,6 +108,10 @@ export interface WorkspaceState {
   workflowRunning: boolean
   workflowEvents: UnifiedEvent[]
   appendWorkflowEvent: (event: UnifiedEvent) => void
+
+  agentLogs: AgentLogEntry[]
+  appendAgentLog: (entry: AgentLogEntry) => void
+  clearAgentLogs: () => void
   runTask: (taskId: string) => void
   runPhase: (phaseType: string, userMessage?: string) => void
   runProject: (userMessage?: string) => void
