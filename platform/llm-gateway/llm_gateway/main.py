@@ -481,6 +481,15 @@ async def list_trust_scores() -> dict:
     }
 
 
+@app.post("/api/circuit-breakers/reset")
+async def reset_circuit_breakers() -> dict:
+    """Reset all circuit breakers to closed state."""
+    if not cb_registry:
+        raise HTTPException(status_code=503, detail="Circuit breaker registry not initialized")
+    count = cb_registry.reset_all()
+    return {"reset": count, "circuit_breakers": cb_registry.all_status()}
+
+
 @app.get("/api/trust/autonomy/{model}/{agent_type}")
 async def check_autonomy(model: str, agent_type: str) -> dict:
     """Check if an agent can operate autonomously with a given model."""

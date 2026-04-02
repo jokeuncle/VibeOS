@@ -130,3 +130,10 @@ class CircuitBreakerRegistry:
 
     def all_status(self) -> list[dict]:
         return [cb.status() for cb in self._breakers.values()]
+
+    def reset_all(self) -> int:
+        count = 0
+        for cb in self._breakers.values():
+            cb._reset()
+            count += 1
+        return count
