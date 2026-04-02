@@ -121,7 +121,14 @@ function AgentActivityIndicator({
   )
 }
 
-export default function CommandBar() {
+export default function CommandBar({
+  embedInPanel = false,
+  withThreadAbove = false,
+}: {
+  embedInPanel?: boolean
+  /** When embedded under ConversationThread, flat top + divider; when false, this block is the top of the shell. */
+  withThreadAbove?: boolean
+}) {
   const [input, setInput] = useState('')
   const [focused, setFocused] = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
@@ -362,8 +369,28 @@ export default function CommandBar() {
 
   const placeholder = getPlaceholder()
 
+  const formShell = embedInPanel
+    ? withThreadAbove
+      ? `w-full mb-0 flex items-center gap-3 px-4 h-12 rounded-none border-0 border-t border-border-subtle/35 transition-all duration-300 ${
+          focused
+            ? 'border-accent/30 bg-surface-2/50 shadow-none'
+            : 'border-border-subtle/35 bg-surface-2/30 hover:bg-surface-2/40'
+        }`
+      : `w-full mb-0 flex items-center gap-3 px-4 h-12 rounded-2xl border transition-all duration-300 ${
+          focused
+            ? 'border-accent/40 bg-surface-2/50 shadow-[0_0_30px_rgba(99,102,241,0.08)]'
+            : 'border-border-subtle bg-surface-2/40 hover:border-border-default'
+        }`
+    : null
+
   return (
-    <div className="relative z-[55] w-full max-w-2xl mx-auto">
+    <div
+      className={
+        embedInPanel
+          ? 'relative z-auto w-full'
+          : 'relative z-[55] w-full max-w-2xl mx-auto'
+      }
+    >
       {/* Suggestion dropdown (above input) */}
       <AnimatePresence>
         {showSuggestions && (
@@ -488,14 +515,17 @@ export default function CommandBar() {
 
       <form
         onSubmit={handleSubmit}
-        className={`
+        className={
+          formShell ??
+          `
           w-full mb-3 flex items-center gap-3 px-4 h-12 rounded-2xl border transition-all duration-300
           ${
             focused
               ? 'border-accent/40 bg-surface-2 shadow-[0_0_30px_rgba(99,102,241,0.08)]'
               : 'border-border-default bg-surface-1 hover:border-border-strong'
           }
-        `}
+        `
+        }
       >
         <Sparkles className={`w-4 h-4 shrink-0 transition-colors ${focused ? 'text-accent' : 'text-text-tertiary'}`} />
 
@@ -536,7 +566,13 @@ export default function CommandBar() {
       </form>
 
       {!activeWorkspaceId && (
-        <div className="mt-2 flex justify-center sm:justify-start px-0.5">
+        <div
+          className={
+            embedInPanel
+              ? 'mt-1.5 flex justify-center sm:justify-start px-1 pb-0 sm:px-0.5'
+              : 'mt-2 flex justify-center sm:justify-start px-0.5'
+          }
+        >
           <button
             type="button"
             disabled={nlpLoading || homeNlpLoading}

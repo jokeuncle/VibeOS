@@ -19,6 +19,8 @@ interface ConversationThreadProps {
   workspaceId?: string
   requirementId?: string
   onDismiss?: () => void
+  /** When true, only render header + scroll (no outer card chrome) — parent provides shell + input. Home + CommandBar use this. */
+  embedInPanel?: boolean
 }
 
 export default function ConversationThread({
@@ -26,6 +28,7 @@ export default function ConversationThread({
   workspaceId,
   requirementId,
   onDismiss,
+  embedInPanel = false,
 }: ConversationThreadProps) {
   const store = useWorkspaceStore()
   const {
@@ -139,14 +142,18 @@ export default function ConversationThread({
       ? t('nlp.homeAssistantPanel' as TranslationKey)
       : t('nlp.workspaceAssistantPanel' as TranslationKey)
 
-    return (
+    const pill = (
       <motion.button
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.2 }}
         onClick={() => toggleConversation(context)}
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full bg-accent/90 hover:bg-accent text-white shadow-lg hover:shadow-xl transition-all cursor-pointer backdrop-blur-sm"
+        className={
+          embedInPanel
+            ? 'flex items-center gap-2 px-4 py-2.5 rounded-full bg-accent/90 hover:bg-accent text-white shadow-lg hover:shadow-xl transition-all cursor-pointer backdrop-blur-sm'
+            : 'fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full bg-accent/90 hover:bg-accent text-white shadow-lg hover:shadow-xl transition-all cursor-pointer backdrop-blur-sm'
+        }
         title={t('nlp.expandAssistant' as TranslationKey)}
       >
         <MessageCircle className="w-4 h-4" />
@@ -158,6 +165,16 @@ export default function ConversationThread({
         )}
       </motion.button>
     )
+
+    if (embedInPanel) {
+      return (
+        <div className="flex w-full shrink-0 justify-center pb-2 pt-0.5">
+          {pill}
+        </div>
+      )
+    }
+
+    return pill
   }
 
   const lastAgentMsg = visible ? [...threadMessages].reverse().find((m) => m.role === 'agent') : undefined
@@ -172,6 +189,12 @@ export default function ConversationThread({
 
   const richLayout = isHome ? 'home' : undefined
 
+  const shellClass = embedInPanel
+    ? ''
+    : 'rounded-2xl bg-surface-1/50 backdrop-blur-xl shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)]'
+
+  const scrollRounding = embedInPanel ? '' : 'rounded-b-2xl'
+
   return (
     <AnimatePresence>
       {visible && (
@@ -181,9 +204,9 @@ export default function ConversationThread({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
           transition={{ duration: 0.25 }}
-          className="rounded-2xl bg-surface-1/50 backdrop-blur-xl shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)]"
+          className={shellClass}
         >
-          <div className="px-4 py-3 border-b border-border-subtle/35 flex items-center gap-2 rounded-t-2xl">
+          <div className={`px-4 py-3 border-b border-border-subtle/35 flex items-center gap-2 ${embedInPanel ? '' : 'rounded-t-2xl'}`}>
             <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
               <Sparkles className="w-3.5 h-3.5 text-accent" />
             </div>
@@ -211,7 +234,7 @@ export default function ConversationThread({
           </div>
           <div
             ref={scrollRef}
-            className="min-h-[18rem] max-h-[min(70vh,38rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth rounded-b-2xl"
+            className={`min-h-[18rem] max-h-[min(70vh,38rem)] overflow-y-auto overflow-x-hidden p-3 pb-3.5 scroll-smooth ${scrollRounding}`}
           >
             <div className={`mx-auto w-full ${isHome ? 'max-w-xl' : 'max-w-2xl'} space-y-2.5`}>
               {hasMore && (

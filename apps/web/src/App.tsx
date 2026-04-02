@@ -170,27 +170,25 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <motion.div
-          className="pointer-events-none absolute bottom-0 right-0 z-30 flex justify-center px-6 pb-2 pt-1 sm:px-10"
-          initial={false}
-          animate={{
-            left: activeWorkspaceId
-              ? sidebarCollapsed
-                ? SIDEBAR_WIDTH_COLLAPSED
-                : SIDEBAR_WIDTH_EXPANDED
-              : 0,
-          }}
-          transition={{
-            type: 'spring',
-            stiffness: 420,
-            damping: 34,
-            mass: 0.9,
-          }}
-        >
-          <div className="pointer-events-auto w-full max-w-2xl">
-            <CommandBar />
-          </div>
-        </motion.div>
+        {activeWorkspaceId ? (
+          <motion.div
+            className="pointer-events-none absolute bottom-0 right-0 z-30 flex justify-center px-6 pb-2 pt-1 sm:px-10"
+            initial={false}
+            animate={{
+              left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED,
+            }}
+            transition={{
+              type: 'spring',
+              stiffness: 420,
+              damping: 34,
+              mass: 0.9,
+            }}
+          >
+            <div className="pointer-events-auto w-full max-w-2xl">
+              <CommandBar />
+            </div>
+          </motion.div>
+        ) : null}
       </div>
 
       <Dock />

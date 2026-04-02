@@ -8,6 +8,7 @@ import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import { HOME_COMMANDS, type NlpContextDescriptor } from '../lib/nlpContext'
 import ContextMenu, { useContextMenu, type ContextMenuItem } from './ui/ContextMenu'
 import ConversationThread from './ConversationThread'
+import CommandBar from './CommandBar'
 import type { Workspace } from '../types'
 import { WORKSPACE_CARD_BG, WORKSPACE_CARD_TEXT, workspaceColorFallback } from '../lib/workspaceColors'
 
@@ -164,8 +165,9 @@ function WorkspaceCard({
 }
 
 export default function WorkspaceHome() {
-  const { workspaces, setActiveWorkspace, loading } = useWorkspaceStore()
-  const { setTemplatePickerOpen, homeSearchQuery, setHomeSearchQuery } = useUIStore()
+  const { workspaces, setActiveWorkspace, loading, homeMessages } = useWorkspaceStore()
+  const { setTemplatePickerOpen, homeSearchQuery, setHomeSearchQuery, conversationCollapsed } = useUIStore()
+  const homeThreadExpanded = homeMessages.length > 0 && !conversationCollapsed.home
   const t = useT()
 
   const homeDesc: NlpContextDescriptor = {
@@ -324,12 +326,27 @@ export default function WorkspaceHome() {
         </div>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-6 sm:px-10 pb-3 sm:pb-4">
-        <div className="pointer-events-auto w-full max-w-2xl">
-          <ConversationThread
-            context="home"
-            onDismiss={() => useWorkspaceStore.getState().clearHomeMessages()}
-          />
+      {/* flex-col-reverse + absolute bottom-0: NLP bar stays pinned; thread grows upward (no CLS on expand). */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-6 pb-2 pt-1 sm:px-10">
+        <div className="pointer-events-auto flex w-full max-w-2xl flex-col-reverse items-stretch gap-1.5">
+          <div className="w-full shrink-0">
+            <CommandBar />
+          </div>
+          {homeThreadExpanded ? (
+            <div className="min-h-0 max-h-[min(70vh,38rem)] overflow-hidden rounded-2xl border border-border-subtle/35 bg-surface-1/50 shadow-[0_20px_64px_-20px_rgba(0,0,0,.09),0_8px_28px_-12px_rgba(0,0,0,.05)] backdrop-blur-xl">
+              <ConversationThread
+                context="home"
+                embedInPanel
+                onDismiss={() => useWorkspaceStore.getState().clearHomeMessages()}
+              />
+            </div>
+          ) : (
+            <ConversationThread
+              context="home"
+              embedInPanel
+              onDismiss={() => useWorkspaceStore.getState().clearHomeMessages()}
+            />
+          )}
         </div>
       </div>
     </div>
