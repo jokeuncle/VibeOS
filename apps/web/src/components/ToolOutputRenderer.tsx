@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { ChevronRight, Copy, Check, AlertTriangle } from 'lucide-react'
-import { MarkdownContent } from './MessageMarkdown'
+import { MarkdownPreview } from './MarkdownPreview'
 
 type OutputFormat = 'json' | 'markdown' | 'plain' | 'error'
 
@@ -132,7 +132,7 @@ function MarkdownView({ text, comfortable }: { text: string; comfortable?: boole
   const maxH = comfortable ? 'max-h-[min(70vh,28rem)]' : 'max-h-64'
   return (
     <div className={`bg-surface-2/30 rounded-md px-2.5 py-1.5 overflow-y-auto tool-output-md ${maxH}`}>
-      <MarkdownContent text={text} />
+      <MarkdownPreview text={text} />
     </div>
   )
 }

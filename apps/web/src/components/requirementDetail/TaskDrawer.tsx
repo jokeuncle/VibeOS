@@ -13,6 +13,7 @@ import { getTaskTypeInfo } from './phaseMeta'
 import { PHASE_CHECKLIST, getPhaseDrawerSections } from './phaseStatus'
 import { PhaseHintCard } from './PhaseHintCard'
 import { PRIORITY_COLORS } from './uiConstants'
+import { ArtifactRenderedBody } from '../ArtifactRenderedBody'
 
 export function TaskDrawer({ task, phase, artifacts, open, onClose, t, refLinks, onRefLinksChange, localFiles, onLocalFilesChange }: {
   task: Task | null; phase: PhaseType; artifacts: Artifact[]
@@ -198,10 +199,8 @@ export function TaskDrawer({ task, phase, artifacts, open, onClose, t, refLinks,
                         </div>
                         <ChevronDown className="w-3 h-3 text-text-tertiary shrink-0 transition-transform group-open:rotate-180" />
                       </summary>
-                      <div className="px-3 pb-3 pt-2 border-t border-border-subtle">
-                        <pre className="text-[11px] text-text-secondary whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono">
-                          {art.content}
-                        </pre>
+                      <div className="px-3 pb-3 pt-2 border-t border-border-subtle max-h-80 overflow-y-auto">
+                        <ArtifactRenderedBody artifact={art} />
                       </div>
                     </details>
                   ))

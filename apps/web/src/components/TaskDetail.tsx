@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { CheckCircle2, Circle, Loader2, Eye, Pencil, User, Send } from 'lucide-react'
-import { marked } from 'marked'
 import SlideOver from './ui/SlideOver'
 import DatePicker from './ui/DatePicker'
 import AgentLogStream from './AgentLogStream'
@@ -10,6 +9,7 @@ import { useT } from '../i18n'
 import { LABEL_COLORS, type PhaseStatus, type TaskPriority, type LabelColor, type TaskComment } from '../types'
 import { TaskLinksAndAttachments, type TaskRefLink, type TaskLocalFile } from './TaskLinksAndAttachments'
 import type { TranslationKey } from '../i18n/en'
+import { MarkdownEditorField, MarkdownPreview } from './MarkdownPreview'
 
 const STATUSES: PhaseStatus[] = ['pending', 'in_progress', 'completed']
 const PRIORITIES: (TaskPriority | '')[] = ['', 'p0', 'p1', 'p2', 'p3']
@@ -79,11 +79,6 @@ export default function TaskDetail() {
       setPreviewMode(false)
     }
   }, [task])
-
-  const renderedMarkdown = useMemo(() => {
-    if (!description) return ''
-    return marked.parse(description, { async: false }) as string
-  }, [description])
 
   function addComment() {
     if (!commentText.trim()) return
@@ -250,17 +245,19 @@ export default function TaskDetail() {
             </div>
 
             {previewMode ? (
-              <div
-                className="markdown-body w-full min-h-[120px] px-3 py-2 rounded-lg bg-surface-2 border border-border-default text-sm text-text-primary"
-                dangerouslySetInnerHTML={{ __html: renderedMarkdown || `<span style="color: var(--color-text-tertiary)">${t('task.descriptionPlaceholder')}</span>` }}
-              />
+              <div className="w-full min-h-[120px] rounded-lg bg-surface-2/40 border border-border-subtle overflow-hidden">
+                {description.trim() ? (
+                  <MarkdownPreview text={description} />
+                ) : (
+                  <div className="px-3 py-3 text-sm text-text-tertiary">{t('task.descriptionPlaceholder')}</div>
+                )}
+              </div>
             ) : (
-              <textarea
+              <MarkdownEditorField
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={t('task.descriptionPlaceholder')}
-                rows={5}
-                className="w-full px-3 py-2 rounded-lg bg-surface-2 border border-border-default text-sm text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40 transition-colors resize-none font-mono"
+                onChange={(v) => setDescription(v ?? '')}
+                height={200}
+                textareaProps={{ placeholder: t('task.descriptionPlaceholder') }}
               />
             )}
           </div>

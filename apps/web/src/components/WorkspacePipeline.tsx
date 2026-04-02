@@ -11,7 +11,7 @@ export default function WorkspacePipeline() {
   const t = useT()
   const { activeWorkspaceId, workspaces } = useWorkspaceStore()
 
-  const ws = activeWorkspaceId ? workspaces[activeWorkspaceId] : undefined
+  const ws = activeWorkspaceId ? workspaces.find((w) => w.id === activeWorkspaceId) : undefined
   const phases = ws?.phases ?? []
 
   const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {

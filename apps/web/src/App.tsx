@@ -77,6 +77,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    document.body.setAttribute('data-color-mode', theme === 'light' ? 'light' : 'dark')
   }, [theme])
 
   useEffect(() => {

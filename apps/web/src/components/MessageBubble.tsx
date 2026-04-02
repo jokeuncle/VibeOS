@@ -8,7 +8,7 @@ import { feedbackApi } from '../lib/api'
 import { RichBlockRenderer } from './RichBlockRenderer'
 import { HomeReasoningPanel } from './HomeReasoningPanel'
 import { ToolInvocationBlock } from './ToolInvocationBlock'
-import { MarkdownContent } from './MessageMarkdown'
+import { MarkdownPreview } from './MarkdownPreview'
 import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
 import type { Message, ContentSegment } from '../types'
 import type { TranslationKey } from '../i18n/en'
@@ -183,7 +183,7 @@ function TextBubble({ text }: { text: string }) {
   return (
     <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-surface-2/80 border border-accent/10 w-fit max-w-[min(100%,26rem)]">
       {hasMarkdown ? (
-        <MarkdownContent text={cleaned} />
+        <MarkdownPreview text={cleaned} className="vibe-md--in-bubble" />
       ) : (
         <p className="text-xs text-text-primary/90 leading-relaxed whitespace-pre-line">
           {cleaned}

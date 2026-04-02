@@ -283,21 +283,181 @@ input[type="datetime-local"] {
   background: var(--color-surface-3);
 }
 
-/* Tool output markdown — compact variant */
-.tool-output-md {
-  font-size: 10px;
-  line-height: 1.5;
+/* --------------------------------------------------------------------------
+   Vibe × @uiw markdown — @theme tokens, padding, typography (preview + editor)
+   Customization: override these rules or add a wrapper class in `MarkdownPreview`.
+   -------------------------------------------------------------------------- */
+[data-color-mode*='dark'] .vibe-md.wmde-markdown-var,
+[data-color-mode*='light'] .vibe-md.wmde-markdown-var {
+  --color-fg-default: var(--color-text-primary);
+  --color-fg-muted: var(--color-text-secondary);
+  --color-fg-subtle: var(--color-text-tertiary);
+  --color-canvas-default: transparent;
+  --color-canvas-subtle: var(--color-surface-3);
+  --color-border-default: var(--color-border-default);
+  --color-border-muted: var(--color-border-subtle);
+  --color-accent-fg: var(--color-accent);
+  --color-accent-emphasis: var(--color-accent-hover);
+  --color-neutral-muted: color-mix(in srgb, var(--color-text-tertiary) 24%, transparent);
+  --color-attention-subtle: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  /* Inline code / Prism — stay legible on both themes */
+  --color-prettylights-syntax-comment: var(--color-text-tertiary);
+  --color-prettylights-syntax-constant: var(--color-accent);
+  --color-prettylights-syntax-keyword: var(--color-danger);
+  --color-prettylights-syntax-string: var(--color-success);
+  --color-prettylights-syntax-entity: var(--color-accent-hover);
+  --color-prettylights-syntax-variable: var(--color-warning);
 }
-.tool-output-md h2, .tool-output-md h3, .tool-output-md h4 {
-  font-size: 10px;
-  margin-top: 0.5rem;
-  margin-bottom: 0.25rem;
+
+.vibe-md .wmde-markdown {
+  padding: 0.75rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  background-color: transparent !important;
+  color: var(--color-text-primary);
 }
-.tool-output-md pre {
-  font-size: 10px;
+
+/* Bubble already has padding — avoid double gutter */
+.vibe-md--in-bubble .wmde-markdown {
+  padding: 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
 }
-.tool-output-md p {
+
+.vibe-md .wmde-markdown :where(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.vibe-md .wmde-markdown h1 { font-size: 1.05rem; margin: 0.85em 0 0.4em; padding-bottom: 0.25em; }
+.vibe-md .wmde-markdown h2 { font-size: 0.98rem; margin: 0.8em 0 0.35em; padding-bottom: 0.2em; }
+.vibe-md .wmde-markdown h3 { font-size: 0.92rem; margin: 0.72em 0 0.3em; }
+.vibe-md .wmde-markdown h4 { font-size: 0.88rem; margin: 0.65em 0 0.28em; }
+.vibe-md .wmde-markdown p { margin: 0.45em 0; }
+
+.vibe-md .wmde-markdown a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vibe-md .wmde-markdown a:hover {
+  color: var(--color-accent-hover);
+}
+
+.vibe-md .wmde-markdown :not(pre) > code {
+  background: var(--color-surface-3) !important;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  padding: 0.1em 0.38em;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.vibe-md .wmde-markdown pre {
+  background: var(--color-surface-3) !important;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem !important;
+  margin: 0.6em 0;
+}
+
+.vibe-md .wmde-markdown pre code,
+.vibe-md .wmde-markdown pre tt {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+.vibe-md .wmde-markdown blockquote {
+  border-left-color: var(--color-accent) !important;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-surface-2) 65%, transparent);
+  border-radius: 0 8px 8px 0;
+  padding: 0.4em 0.9em !important;
+  margin: 0.55em 0 !important;
+}
+
+.vibe-md .wmde-markdown hr {
+  background-color: transparent !important;
+  border: 0;
+  border-top: 1px solid var(--color-border-subtle) !important;
+  margin: 0.85em 0 !important;
+  height: 0 !important;
+}
+
+.vibe-md .wmde-markdown :where(ul, ol) {
+  padding-left: 1.25em;
+  margin: 0.45em 0;
+}
+.vibe-md .wmde-markdown li {
+  margin: 0.18em 0;
+}
+
+.vibe-md .wmde-markdown table {
+  border-collapse: collapse;
+  margin: 0.65em 0;
+  width: 100%;
+  max-width: 100%;
+  font-size: 0.95em;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.vibe-md .wmde-markdown table th,
+.vibe-md .wmde-markdown table td {
+  border: 1px solid var(--color-border-subtle);
+  padding: 0.45em 0.65em;
+}
+.vibe-md .wmde-markdown table th {
+  background: color-mix(in srgb, var(--color-surface-3) 85%, transparent);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.vibe-md .wmde-markdown table tr:nth-child(2n) {
+  background: color-mix(in srgb, var(--color-surface-2) 50%, transparent);
+}
+
+/* Dense tool / artifact rails */
+.tool-output-md .vibe-md .wmde-markdown {
+  padding: 0.5rem 0.65rem;
   font-size: 10px;
+  line-height: 1.55;
+}
+.tool-output-md .vibe-md .wmde-markdown h1 { font-size: 1.08em; }
+.tool-output-md .vibe-md .wmde-markdown h2 { font-size: 1.02em; }
+.tool-output-md .vibe-md .wmde-markdown h3 { font-size: 0.98em; }
+.tool-output-md .vibe-md .wmde-markdown pre {
+  padding: 0.45rem 0.6rem !important;
+}
+
+/* Markdown source editor (TaskDetail, etc.) */
+.vibe-md-editor-wrapped {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-2);
+}
+
+.vibe-md-editor-wrapped .w-md-editor {
+  box-shadow: none !important;
+  border-radius: 0;
+  border: none;
+  --md-editor-font-family: var(--font-sans);
+  background-color: transparent !important;
+  --md-editor-background-color: transparent !important;
+  --md-editor-box-shadow-color: transparent !important;
+}
+
+.vibe-md-editor-wrapped .w-md-editor-content {
+  border-radius: 0;
+}
+
+.vibe-md-editor-wrapped .w-md-editor-text {
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+  padding: 12px 14px !important;
 }
 
 /* Drag overlay */
