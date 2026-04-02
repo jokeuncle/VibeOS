@@ -126,6 +126,29 @@ class ConversationEngine:
         """Execute a conversation turn, yielding SSE frames."""
         sid = uuid.uuid4().hex
         agent_type = AgentType.PM
+        step_accum: list[dict[str, Any]] = []
+        execution_persisted = False
+
+        if req.workspace_id and req.workspace_id not in ("", "__home__"):
+            try:
+                summary = (req.message or "").strip().replace("\n", " ")[:120]
+                rid: str | None = None
+                if req.context and isinstance(req.context.get("requirementId"), str):
+                    rid = req.context["requirementId"]
+                await self._ws_client.create_execution(
+                    req.workspace_id,
+                    execution_id=sid,
+                    intent_type="conversation",
+                    intent_summary=summary or "conversation",
+                    triggered_by="nlp",
+                    user_message=req.message or "",
+                    agent_type="pm",
+                    result_type="general",
+                    requirement_id=rid,
+                )
+                execution_persisted = True
+            except Exception:
+                logger.debug("create_execution for conversation skipped", exc_info=True)
 
         ctx = InvocationContext(
             workspace_id=req.workspace_id,
@@ -148,13 +171,37 @@ class ConversationEngine:
 
         try:
             async for event in self._pipeline.run(ctx, terminal=self._agentic_terminal):
-                for frame in self._event_to_sse(sid, event):
+                for frame in self._event_to_sse(
+                    sid, event, step_accum if execution_persisted else None,
+                ):
                     yield frame
         except Exception as exc:
             logger.error("Conversation failed: %s", exc, exc_info=True)
+            if execution_persisted:
+                try:
+                    await self._ws_client.update_execution(
+                        req.workspace_id,
+                        sid,
+                        status="failed",
+                        error_message=str(exc),
+                        steps=json.dumps(step_accum, ensure_ascii=False),
+                    )
+                except Exception:
+                    logger.debug("update_execution (failed) skipped", exc_info=True)
             yield _sse("session", "error", {"error": str(exc)}, sid)
             yield _sse_done()
             return
+
+        if execution_persisted:
+            try:
+                await self._ws_client.update_execution(
+                    req.workspace_id,
+                    sid,
+                    status="success",
+                    steps=json.dumps(step_accum, ensure_ascii=False),
+                )
+            except Exception:
+                logger.debug("update_execution (success) skipped", exc_info=True)
 
         # Persist to session history
         from .models import Message
@@ -314,7 +361,12 @@ class ConversationEngine:
         messages.append({"role": "user", "content": ctx.user_message})
         return messages
 
-    def _event_to_sse(self, sid: str, event: AgentEvent) -> list[str]:
+    def _event_to_sse(
+        self,
+        sid: str,
+        event: AgentEvent,
+        step_accum: list[dict[str, Any]] | None = None,
+    ) -> list[str]:
         etype = event.type
         payload = event.payload or {}
 
@@ -326,6 +378,8 @@ class ConversationEngine:
             call_id = payload.get("call_id", f"tool_{name}")
             display_name = payload.get("display_name", "")
             label = display_name or name
+            if step_accum is not None:
+                step_accum.append({"id": call_id, "label": label, "status": "running"})
             return [
                 _sse("tool", "start", {
                     "call_id": call_id,
@@ -346,6 +400,25 @@ class ConversationEngine:
             display_name = payload.get("display_name", "")
             label = display_name or name
             ok = payload.get("ok")
+            st = "completed" if ok else "error"
+            if step_accum is not None:
+                updated = False
+                for row in step_accum:
+                    if row.get("id") == call_id:
+                        row["status"] = st
+                        out = payload.get("output", "")
+                        if isinstance(out, str) and out.strip():
+                            row["detail"] = out[:1500]
+                        updated = True
+                        break
+                if not updated:
+                    detail = payload.get("output", "")
+                    step_accum.append({
+                        "id": call_id,
+                        "label": label,
+                        "status": st,
+                        "detail": detail[:1500] if isinstance(detail, str) else "",
+                    })
             return [
                 _sse("tool", "result", {
                     "call_id": call_id,
@@ -358,7 +431,7 @@ class ConversationEngine:
                 _sse("timeline", "step", {
                     "step_id": call_id,
                     "label": label,
-                    "status": "completed" if ok else "error",
+                    "status": st,
                 }, sid),
             ]
 

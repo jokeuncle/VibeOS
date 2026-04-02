@@ -238,6 +238,7 @@ const intelligence = {
   'traces.status.success': 'Success',
   'traces.status.error': 'Error',
   'traces.status.running': 'Running',
+  'traces.statusFilter': 'Status',
   'traces.toolCalls': 'Tool calls',
   'traces.totalLogsCount': 'logs',
   'traces.emptyHint': 'Run a workflow or NLP command to see agent traces here.',

@@ -103,13 +103,18 @@ class SessionManager:
         workspace_id: str,
         status: str = "success",
         error_message: str | None = None,
+        *,
+        steps: str | None = None,
     ) -> None:
-        """Mark the persistent AgentExecution as terminal."""
+        """Mark the persistent AgentExecution as terminal; optional steps JSON array."""
         if workspace_id and workspace_id != "__home__":
             try:
                 await self.ws_client.update_execution(
-                    workspace_id, sid, status=status,
+                    workspace_id,
+                    sid,
+                    status=status,
                     error_message=error_message,
+                    steps=steps,
                 )
             except Exception:
                 pass

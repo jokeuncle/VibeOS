@@ -10,6 +10,7 @@ SSE protocol.  All events are emitted as:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -137,6 +138,49 @@ class WorkflowEngine:
         self._pending_approvals: dict[str, asyncio.Event] = {}
         self._approval_results: dict[str, bool] = {}
         self._mcp_loaded_workspaces: set[str] = set()
+        self._trace_by_sid: dict[str, list[dict[str, Any]]] = {}
+
+    def _trace_ev(
+        self,
+        sid: str,
+        category: str,
+        action: str,
+        payload: dict[str, Any] | None = None,
+    ) -> str:
+        """Emit SSE like sm.ev and append a summary step for Traces UI."""
+        p = payload or {}
+        label = (
+            p.get("task_title")
+            or p.get("title")
+            or p.get("phase")
+            or p.get("error")
+            or f"{category} · {action}"
+        )
+        if category == "phase" and p.get("phase"):
+            label = f"{p.get('phase')} — {action}"
+        detail = ""
+        if p and action in ("error", "complete") and category in ("task", "phase", "project"):
+            detail = json.dumps(p, ensure_ascii=False, default=str)[:1200]
+        if action == "start":
+            step_status = "running"
+        elif action == "error":
+            step_status = "error"
+        else:
+            step_status = "completed"
+        bucket = self._trace_by_sid.setdefault(sid, [])
+        bucket.append({
+            "id": f"{category}_{action}_{len(bucket)}",
+            "label": str(label)[:240],
+            "status": step_status,
+            "detail": detail,
+        })
+        return self.sm.ev(sid, category, action, payload)
+
+    def _dump_trace(self, sid: str) -> str | None:
+        steps = self._trace_by_sid.pop(sid, None)
+        if not steps:
+            return None
+        return json.dumps(steps, ensure_ascii=False)
 
     async def _ensure_mcp_providers(self, workspace_id: str) -> None:
         """Lazily load MCP tool providers for a workspace into the ToolManager."""
@@ -451,7 +495,7 @@ class WorkflowEngine:
         sid: str, user_message: str = "", preferred_model: str | None = None,
     ) -> AsyncIterator[str]:
         if not self.graph_executor:
-            yield self.sm.ev(sid, "phase", "skip", {"phase": phase_type, "reason": "GraphExecutor not available"})
+            yield self._trace_ev(sid, "phase", "skip", {"phase": phase_type, "reason": "GraphExecutor not available"})
             return
         await self._ensure_mcp_providers(workspace_id)
 
@@ -502,19 +546,19 @@ class WorkflowEngine:
                     node_id = data.get("node", "")
                     if node_error:
                         payload = {"phase": phase_type, "task_id": node_id, "task_title": node_id, "error": node_error[:500], "source": "graph"}
-                        yield self.sm.ev(sid, "task", "error", payload)
+                        yield self._trace_ev(sid, "task", "error", payload)
                         await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
                     else:
                         payload = {"phase": phase_type, "task_id": node_id, "task_title": node_id, "result_summary": str(output)[:200], "source": "graph"}
-                        yield self.sm.ev(sid, "task", "complete", payload)
+                        yield self._trace_ev(sid, "task", "complete", payload)
                         await self.sm.broadcast(workspace_id, sid, "task", "complete", payload)
                 elif evt_type == "graph:error":
                     payload = {"phase": phase_type, "error": data.get("error", "unknown graph error"), "source": "graph"}
-                    yield self.sm.ev(sid, "task", "error", payload)
+                    yield self._trace_ev(sid, "task", "error", payload)
                     await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
         except Exception as exc:
             payload = {"phase": phase_type, "error": str(exc), "source": "graph"}
-            yield self.sm.ev(sid, "task", "error", payload)
+            yield self._trace_ev(sid, "task", "error", payload)
             await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
 
     async def _sync_phase_task_status(
@@ -574,7 +618,7 @@ class WorkflowEngine:
 
         if not target_task:
             sid_err = "err-" + task_id[:8]
-            yield self.sm.ev(sid_err, "task", "error", {"task_id": task_id, "error": "Task not found"})
+            yield self._trace_ev(sid_err, "task", "error", {"task_id": task_id, "error": "Task not found"})
             return
 
         task_title = target_task.get("title", "Untitled")
@@ -590,7 +634,7 @@ class WorkflowEngine:
         yield self.sm.session_start(sid, "workflow_task", workspace_id)
 
         payload_start = {"phase": phase_type, "task_id": task_id, "task_title": task_title, "index": 0, "total": 1}
-        yield self.sm.ev(sid, "task", "start", payload_start)
+        yield self._trace_ev(sid, "task", "start", payload_start)
         await self.sm.broadcast(workspace_id, sid, "task", "start", payload_start)
 
         try:
@@ -630,10 +674,13 @@ class WorkflowEngine:
                 except Exception:
                     pass
                 payload_err = {"phase": phase_type, "task_id": task_id, "task_title": task_title, "error": str(result["error"])}
-                yield self.sm.ev(sid, "task", "error", payload_err)
+                yield self._trace_ev(sid, "task", "error", payload_err)
                 await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
                 yield self.sm.session_complete(sid, "failed")
-                await self.sm.finish(sid, workspace_id, "failed", str(result["error"]))
+                await self.sm.finish(
+                    sid, workspace_id, "failed", str(result["error"]),
+                    steps=self._dump_trace(sid),
+                )
             else:
                 try:
                     await self.ws_client.complete_task(workspace_id, task_id)
@@ -641,22 +688,24 @@ class WorkflowEngine:
                     pass
                 full_result = str(result)
                 payload_done = {"phase": phase_type, "task_id": task_id, "task_title": task_title, "result_summary": full_result[:200]}
-                yield self.sm.ev(sid, "task", "complete", payload_done)
+                yield self._trace_ev(sid, "task", "complete", payload_done)
                 await self.sm.broadcast(workspace_id, sid, "task", "complete", payload_done)
                 if len(full_result) > 100:
                     asyncio.create_task(_auto_index_to_rag(workspace_id, f"[{phase_type}] {task_title}", full_result))
                 yield self.sm.session_complete(sid)
-                await self.sm.finish(sid, workspace_id)
+                await self.sm.finish(sid, workspace_id, steps=self._dump_trace(sid))
         except Exception as exc:
             try:
                 await self.ws_client.update_task(workspace_id, task_id, {"status": "pending"})
             except Exception:
                 pass
             payload_err = {"phase": phase_type, "task_id": task_id, "task_title": task_title, "error": str(exc)}
-            yield self.sm.ev(sid, "task", "error", payload_err)
+            yield self._trace_ev(sid, "task", "error", payload_err)
             await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
             yield self.sm.session_complete(sid, "failed")
-            await self.sm.finish(sid, workspace_id, "failed", str(exc))
+            await self.sm.finish(
+                sid, workspace_id, "failed", str(exc), steps=self._dump_trace(sid),
+            )
 
     # ------------------------------------------------------------------
     # run_phase
@@ -667,7 +716,7 @@ class WorkflowEngine:
         if lock.locked():
             current = self._active_runs.get(workspace_id, "unknown")
             sid_skip = "skip-" + phase_type[:8]
-            yield self.sm.ev(sid_skip, "phase", "skip", {"phase": phase_type, "reason": f"Workspace busy (running: {current}). Please wait for it to finish."})
+            yield self._trace_ev(sid_skip, "phase", "skip", {"phase": phase_type, "reason": f"Workspace busy (running: {current}). Please wait for it to finish."})
             return
 
         async with lock:
@@ -690,17 +739,19 @@ class WorkflowEngine:
         yield self.sm.session_start(sid, "workflow_phase", workspace_id)
 
         payload_phase_start = {"phase": phase_type, "workspace_id": workspace_id}
-        yield self.sm.ev(sid, "phase", "start", payload_phase_start)
+        yield self._trace_ev(sid, "phase", "start", payload_phase_start)
         await self.sm.broadcast(workspace_id, sid, "phase", "start", payload_phase_start)
         await self.ws_gw.publish_agent_status(workspace_id, AgentType.PM, AgentStatus.RUNNING, detail=f"Running phase: {phase_type}")
 
         phase_id = await self.ws_client.find_phase_by_type(workspace_id, phase_type)
         if not phase_id:
             payload_skip = {"phase": phase_type, "reason": "not found"}
-            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            yield self._trace_ev(sid, "phase", "skip", payload_skip)
             await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
             yield self.sm.session_complete(sid, "cancelled")
-            await self.sm.finish(sid, workspace_id, "cancelled")
+            await self.sm.finish(
+                sid, workspace_id, "cancelled", steps=self._dump_trace(sid),
+            )
             return
 
         # Resolve agent config + governance gate BEFORE choosing execution mode
@@ -709,10 +760,12 @@ class WorkflowEngine:
 
         if not agent_cfg.get("enabled", True):
             payload_skip = {"phase": phase_type, "reason": "phase disabled in agent profile"}
-            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            yield self._trace_ev(sid, "phase", "skip", payload_skip)
             await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
             yield self.sm.session_complete(sid, "cancelled")
-            await self.sm.finish(sid, workspace_id, "cancelled")
+            await self.sm.finish(
+                sid, workspace_id, "cancelled", steps=self._dump_trace(sid),
+            )
             return
 
         desc_kw = self._descriptor_kwargs(agent_cfg)
@@ -732,10 +785,12 @@ class WorkflowEngine:
         )
         if not approved:
             payload_skip = {"phase": phase_type, "reason": "Governance gate rejected or timed out"}
-            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            yield self._trace_ev(sid, "phase", "skip", payload_skip)
             await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
             yield self.sm.session_complete(sid, "cancelled")
-            await self.sm.finish(sid, workspace_id, "cancelled")
+            await self.sm.finish(
+                sid, workspace_id, "cancelled", steps=self._dump_trace(sid),
+            )
             return
 
         # Graph mode: agent config graphId → pipeline config graphId → workspace active fallback
@@ -778,10 +833,10 @@ class WorkflowEngine:
             await self._sync_phase_task_status(workspace_id, phase_id, final_status)
 
             payload_done = {"phase": phase_type, "tasks_executed": graph_tasks, "tasks_total": graph_tasks + graph_errors, "tasks_failed": graph_errors, "source": graph_source}
-            yield self.sm.ev(sid, "phase", "complete", payload_done)
+            yield self._trace_ev(sid, "phase", "complete", payload_done)
             await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_done)
             yield self.sm.session_complete(sid)
-            await self.sm.finish(sid, workspace_id)
+            await self.sm.finish(sid, workspace_id, steps=self._dump_trace(sid))
             return
 
         # Fallback: direct agent dispatch mode (no graph executor)
@@ -789,10 +844,12 @@ class WorkflowEngine:
         pending = [t for t in tasks if t.get("status") != "completed"]
         if not pending:
             payload_skip = {"phase": phase_type, "reason": "no pending tasks"}
-            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            yield self._trace_ev(sid, "phase", "skip", payload_skip)
             await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
             yield self.sm.session_complete(sid, "cancelled")
-            await self.sm.finish(sid, workspace_id, "cancelled")
+            await self.sm.finish(
+                sid, workspace_id, "cancelled", steps=self._dump_trace(sid),
+            )
             return
 
         try:
@@ -806,7 +863,7 @@ class WorkflowEngine:
         for i, task in enumerate(pending):
             task_title = task.get("title", "Untitled")
             payload_start = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "index": i, "total": len(pending)}
-            yield self.sm.ev(sid, "task", "start", payload_start)
+            yield self._trace_ev(sid, "task", "start", payload_start)
             await self.sm.broadcast(workspace_id, sid, "task", "start", payload_start)
             await self.ws_gw.publish_log(workspace_id, "pm", f"[{phase_type}] Executing task {i+1}/{len(pending)}: {task_title}", task_id=task["id"])
 
@@ -851,7 +908,7 @@ class WorkflowEngine:
                 if isinstance(result, dict) and result.get("error"):
                     tasks_failed += 1
                     payload_err = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "error": str(result["error"])}
-                    yield self.sm.ev(sid, "task", "error", payload_err)
+                    yield self._trace_ev(sid, "task", "error", payload_err)
                     await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
                 else:
                     tasks_succeeded += 1
@@ -862,7 +919,7 @@ class WorkflowEngine:
                     result_summary = str(result)[:200]
                     upstream_results.append({"task": task_title, "result": str(result)[:1000]})
                     payload_done = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "result_summary": result_summary}
-                    yield self.sm.ev(sid, "task", "complete", payload_done)
+                    yield self._trace_ev(sid, "task", "complete", payload_done)
                     await self.sm.broadcast(workspace_id, sid, "task", "complete", payload_done)
                     full_result = str(result)
                     if len(full_result) > 100:
@@ -870,7 +927,7 @@ class WorkflowEngine:
             except Exception as exc:
                 tasks_failed += 1
                 payload_err = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "error": str(exc)}
-                yield self.sm.ev(sid, "task", "error", payload_err)
+                yield self._trace_ev(sid, "task", "error", payload_err)
                 await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
 
         final_status = PhaseStatus.COMPLETED if tasks_failed == 0 else PhaseStatus.IN_PROGRESS
@@ -880,7 +937,7 @@ class WorkflowEngine:
             pass
 
         payload_phase_done = {"phase": phase_type, "tasks_executed": tasks_succeeded, "tasks_total": len(pending), "tasks_failed": tasks_failed}
-        yield self.sm.ev(sid, "phase", "complete", payload_phase_done)
+        yield self._trace_ev(sid, "phase", "complete", payload_phase_done)
         await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_phase_done)
 
         if tasks_failed:
@@ -892,7 +949,13 @@ class WorkflowEngine:
 
         status_str = "success" if tasks_failed == 0 else "failed"
         yield self.sm.session_complete(sid, status_str)
-        await self.sm.finish(sid, workspace_id, status_str, f"{tasks_failed} task(s) failed" if tasks_failed else None)
+        await self.sm.finish(
+            sid,
+            workspace_id,
+            status_str,
+            f"{tasks_failed} task(s) failed" if tasks_failed else None,
+            steps=self._dump_trace(sid),
+        )
 
     # ------------------------------------------------------------------
     # run_project
@@ -903,7 +966,7 @@ class WorkflowEngine:
         if lock.locked():
             current = self._active_runs.get(workspace_id, "unknown")
             sid_err = "proj-err"
-            yield self.sm.ev(sid_err, "project", "error", {"error": f"Workspace busy (running: {current}). Please wait for it to finish."})
+            yield self._trace_ev(sid_err, "project", "error", {"error": f"Workspace busy (running: {current}). Please wait for it to finish."})
             return
 
         async with lock:
@@ -1039,7 +1102,7 @@ class WorkflowEngine:
         phase_order = self._phase_order_from_configs(pipeline_configs)
 
         payload_start = {"workspace_id": workspace_id, "phases": phase_order}
-        yield self.sm.ev(sid, "project", "start", payload_start)
+        yield self._trace_ev(sid, "project", "start", payload_start)
         await self.sm.broadcast(workspace_id, sid, "project", "start", payload_start)
         await self.ws_gw.publish_agent_status(workspace_id, AgentType.PM, AgentStatus.RUNNING, detail="Running full project lifecycle")
 
@@ -1049,7 +1112,7 @@ class WorkflowEngine:
             if p not in enabled_set:
                 skipped_phases.append(p)
                 skip_payload = {"phase": p, "reason": "disabled in agent profile"}
-                yield self.sm.ev(sid, "phase", "skip", skip_payload)
+                yield self._trace_ev(sid, "phase", "skip", skip_payload)
                 await self.sm.broadcast(workspace_id, sid, "phase", "skip", skip_payload)
 
         start_idx = 0
@@ -1085,7 +1148,7 @@ class WorkflowEngine:
                     except Exception:
                         pass
                     payload_proj_err = {"phase": phase_type, "error": "task failed", "task_id": failed_task_id}
-                    yield self.sm.ev(sid, "project", "error", payload_proj_err)
+                    yield self._trace_ev(sid, "project", "error", payload_proj_err)
                     await self.sm.broadcast(workspace_id, sid, "project", "error", payload_proj_err)
                     has_error = True
                     break
@@ -1100,7 +1163,7 @@ class WorkflowEngine:
             gate_passed = await self._check_quality_gate(workspace_id, phase_type, sid, configs=pipeline_configs)
             if not gate_passed:
                 payload_gate_fail = {"phase": phase_type, "error": "quality gate failed"}
-                yield self.sm.ev(sid, "project", "error", payload_gate_fail)
+                yield self._trace_ev(sid, "project", "error", payload_gate_fail)
                 await self.sm.broadcast(workspace_id, sid, "project", "error", payload_gate_fail)
                 has_error = True
                 break
@@ -1112,17 +1175,19 @@ class WorkflowEngine:
             "total_tasks": total_tasks_run,
             "success": not has_error,
         }
-        yield self.sm.ev(sid, "content", "payload", summary_payload)
+        yield self._trace_ev(sid, "content", "payload", summary_payload)
 
         payload_done = {"workspace_id": workspace_id, "success": not has_error}
-        yield self.sm.ev(sid, "project", "complete", payload_done)
+        yield self._trace_ev(sid, "project", "complete", payload_done)
         await self.sm.broadcast(workspace_id, sid, "project", "complete", payload_done)
         await self.ws_gw.publish_agent_status(workspace_id, AgentType.PM, AgentStatus.IDLE)
         await self.ws_gw.publish_log(workspace_id, "pm", "Full project lifecycle complete" if not has_error else "Project stopped due to errors", level="success" if not has_error else "error")
 
         status_str = "success" if not has_error else "failed"
         yield self.sm.session_complete(sid, status_str)
-        await self.sm.finish(sid, workspace_id, status_str)
+        await self.sm.finish(
+            sid, workspace_id, status_str, steps=self._dump_trace(sid),
+        )
 
     # ------------------------------------------------------------------
     # run_requirement
@@ -1132,7 +1197,7 @@ class WorkflowEngine:
         lock = self._get_lock(workspace_id)
         if lock.locked():
             sid_skip = "skip-req"
-            yield self.sm.ev(sid_skip, "phase", "skip", {"phase": phase_type or "?", "reason": "busy"})
+            yield self._trace_ev(sid_skip, "phase", "skip", {"phase": phase_type or "?", "reason": "busy"})
             return
 
         async with lock:
@@ -1151,7 +1216,7 @@ class WorkflowEngine:
         req = await self.ws_client.get_requirement(workspace_id, requirement_id)
         if not req:
             sid_err = "err-req"
-            yield self.sm.ev(sid_err, "task", "error", {"error": "requirement not found"})
+            yield self._trace_ev(sid_err, "task", "error", {"error": "requirement not found"})
             return
 
         phase_type = phase_type or req.get("currentPhase", "requirement")
@@ -1166,27 +1231,31 @@ class WorkflowEngine:
         yield self.sm.session_start(sid, "workflow_requirement", workspace_id)
 
         payload_start = {"phase": phase_type, "requirement_id": requirement_id, "requirement_title": req_title}
-        yield self.sm.ev(sid, "phase", "start", payload_start)
+        yield self._trace_ev(sid, "phase", "start", payload_start)
         await self.sm.broadcast(workspace_id, sid, "phase", "start", payload_start)
         await self.ws_gw.publish_agent_status(workspace_id, "pm", AgentStatus.RUNNING, detail=f"Requirement: {req_title}")
 
         phase_id = await self.ws_client.find_phase_by_type(workspace_id, phase_type)
         if not phase_id:
             payload_skip = {"phase": phase_type, "reason": "not found"}
-            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            yield self._trace_ev(sid, "phase", "skip", payload_skip)
             await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
             yield self.sm.session_complete(sid, "cancelled")
-            await self.sm.finish(sid, workspace_id, "cancelled")
+            await self.sm.finish(
+                sid, workspace_id, "cancelled", steps=self._dump_trace(sid),
+            )
             return
 
         all_tasks = req.get("tasks", [])
         pending = [t for t in all_tasks if t.get("phaseId") == phase_id and t.get("status") != "completed"]
         if not pending:
             payload_skip = {"phase": phase_type, "reason": "no pending tasks"}
-            yield self.sm.ev(sid, "phase", "skip", payload_skip)
+            yield self._trace_ev(sid, "phase", "skip", payload_skip)
             await self.sm.broadcast(workspace_id, sid, "phase", "skip", payload_skip)
             yield self.sm.session_complete(sid, "cancelled")
-            await self.sm.finish(sid, workspace_id, "cancelled")
+            await self.sm.finish(
+                sid, workspace_id, "cancelled", steps=self._dump_trace(sid),
+            )
             return
 
         try:
@@ -1220,7 +1289,7 @@ class WorkflowEngine:
         for i, task in enumerate(pending):
             task_title = task.get("title", "Untitled")
             payload_task_start = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "index": i, "total": len(pending), "requirement_id": requirement_id}
-            yield self.sm.ev(sid, "task", "start", payload_task_start)
+            yield self._trace_ev(sid, "task", "start", payload_task_start)
             await self.sm.broadcast(workspace_id, sid, "task", "start", payload_task_start)
             await self.ws_gw.publish_log(workspace_id, "pm", f"[{phase_type}] Executing task {i+1}/{len(pending)}: {task_title}", task_id=task["id"])
 
@@ -1248,13 +1317,13 @@ class WorkflowEngine:
                 if isinstance(result, dict) and result.get("error"):
                     tasks_failed += 1
                     payload_err = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "error": str(result["error"]), "requirement_id": requirement_id}
-                    yield self.sm.ev(sid, "task", "error", payload_err)
+                    yield self._trace_ev(sid, "task", "error", payload_err)
                     await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
                 else:
                     tasks_succeeded += 1
                     await self.ws_client.complete_task(workspace_id, task["id"])
                     payload_done = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "result_summary": str(result)[:200], "requirement_id": requirement_id}
-                    yield self.sm.ev(sid, "task", "complete", payload_done)
+                    yield self._trace_ev(sid, "task", "complete", payload_done)
                     await self.sm.broadcast(workspace_id, sid, "task", "complete", payload_done)
                     if result and isinstance(result, dict):
                         content = result.get("summary", str(result))
@@ -1263,7 +1332,7 @@ class WorkflowEngine:
             except Exception as exc:
                 tasks_failed += 1
                 payload_err = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "error": str(exc)[:200], "requirement_id": requirement_id}
-                yield self.sm.ev(sid, "task", "error", payload_err)
+                yield self._trace_ev(sid, "task", "error", payload_err)
                 await self.sm.broadcast(workspace_id, sid, "task", "error", payload_err)
 
         total = len(pending)
@@ -1275,7 +1344,7 @@ class WorkflowEngine:
             pass
 
         payload_phase_done = {"phase": phase_type, "tasks_executed": tasks_succeeded, "tasks_total": total, "tasks_failed": tasks_failed, "requirement_id": requirement_id}
-        yield self.sm.ev(sid, "phase", "complete", payload_phase_done)
+        yield self._trace_ev(sid, "phase", "complete", payload_phase_done)
         await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_phase_done)
 
         if tasks_failed == 0:
@@ -1284,4 +1353,10 @@ class WorkflowEngine:
 
         status_str = "success" if tasks_failed == 0 else "failed"
         yield self.sm.session_complete(sid, status_str)
-        await self.sm.finish(sid, workspace_id, status_str, f"{tasks_failed} task(s) failed" if tasks_failed else None)
+        await self.sm.finish(
+            sid,
+            workspace_id,
+            status_str,
+            f"{tasks_failed} task(s) failed" if tasks_failed else None,
+            steps=self._dump_trace(sid),
+        )

@@ -238,6 +238,7 @@ const intelligence = {
   'traces.status.success': '成功',
   'traces.status.error': '错误',
   'traces.status.running': '运行中',
+  'traces.statusFilter': '状态',
   'traces.toolCalls': '工具调用',
   'traces.totalLogsCount': '条日志',
   'traces.emptyHint': '运行工作流或输入 NLP 指令后，即可在此查看 Agent 追踪记录。',

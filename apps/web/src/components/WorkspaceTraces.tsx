@@ -7,9 +7,10 @@ import {
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
+import type { TranslationKey } from '../i18n/en'
 import type { AgentExecution } from '../types'
 import ArtifactPanel from './ArtifactPanel'
-import NativeSelect from './ui/NativeSelect'
+import FormSelect from './ui/FormSelect'
 
 type TraceStatus = 'success' | 'error' | 'running' | 'info'
 
@@ -24,7 +25,21 @@ const AGENT_META: Record<string, { label: string; color: string }> = {
   monitoring:   { label: 'Monitoring Agent',   color: 'text-cyan-400' },
 }
 
-const AGENT_FILTER_OPTIONS = ['All', 'pm', 'requirement', 'architecture', 'design', 'development', 'testing', 'cicd', 'monitoring']
+const AGENT_FILTER_OPTIONS = ['All', 'pm', 'requirement', 'architecture', 'design', 'development', 'testing', 'cicd', 'monitoring'] as const
+
+const TRACE_AGENT_TAB_TYPES = new Set<string>(AGENT_FILTER_OPTIONS.filter((o): o is Exclude<(typeof AGENT_FILTER_OPTIONS)[number], 'All'> => o !== 'All'))
+
+function agentFilterTabLabel(t: (key: TranslationKey) => string, opt: (typeof AGENT_FILTER_OPTIONS)[number]): string {
+  if (opt === 'All') return t('traces.allAgents')
+  return t(`agentTeam.agent.${opt}.name` as TranslationKey)
+}
+
+function executionAgentLabel(t: (key: TranslationKey) => string, agentType: string): string {
+  if (TRACE_AGENT_TAB_TYPES.has(agentType)) {
+    return t(`agentTeam.agent.${agentType}.name` as TranslationKey)
+  }
+  return agentType
+}
 
 function execToStatus(exec: AgentExecution): TraceStatus {
   if (exec.status === 'failed') return 'error'
@@ -51,9 +66,11 @@ function StatusIcon({ status }: { status: TraceStatus }) {
 }
 
 function ExecutionTraceRow({ exec }: { exec: AgentExecution }) {
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
   const status = execToStatus(exec)
   const meta = AGENT_META[exec.agentType] ?? { label: exec.agentType, color: 'text-text-secondary' }
+  const agentLabel = executionAgentLabel(t, exec.agentType)
   const durationMs = exec.completedAt
     ? new Date(exec.completedAt).getTime() - new Date(exec.startedAt).getTime()
     : 0
@@ -70,7 +87,7 @@ function ExecutionTraceRow({ exec }: { exec: AgentExecution }) {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className={`text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
+            <span className={`text-[11px] font-semibold ${meta.color}`}>{agentLabel}</span>
             <span className="text-[10px] font-mono text-text-tertiary truncate">{exec.intentSummary}</span>
           </div>
           <p className="text-[11px] text-text-tertiary truncate">
@@ -215,24 +232,27 @@ export default function WorkspaceTraces() {
 
       <div className="flex items-center gap-3">
         <Filter className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
-        <div className="flex items-center gap-px p-0.5 rounded-lg bg-surface-2 border border-border-subtle">
-          {AGENT_FILTER_OPTIONS.slice(0, 5).map(opt => (
+        <div className="flex items-center gap-px p-0.5 rounded-lg bg-surface-2 border border-border-subtle overflow-x-auto max-w-full shrink min-w-0">
+          {AGENT_FILTER_OPTIONS.map(opt => (
             <button
               key={opt}
+              type="button"
               onClick={() => setAgentFilter(opt)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer shrink-0
                 ${agentFilter === opt ? 'bg-surface-4 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'}`}
             >
-              {opt === 'All' ? t('traces.allAgents') : opt}
+              {agentFilterTabLabel(t, opt)}
             </button>
           ))}
         </div>
-        <NativeSelect
+        <FormSelect
           size="sm"
           fullWidth={false}
+          prefix={t('traces.statusFilter')}
           value={statusFilter}
           options={statusFilterOptions}
           onChange={v => setStatusFilter(v as TraceStatus | 'all')}
+          aria-label={t('traces.statusFilter')}
         />
       </div>
 
