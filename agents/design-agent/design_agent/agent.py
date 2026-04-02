@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
 from vibeos_agent import (
-    AgentTask,
     AgentType,
     ArtifactConfig,
     CapabilityContract,
-    RichBlock,
     SDLCAgent,
 )
 
@@ -66,7 +61,16 @@ IMPORTANT for design_image artifacts:
 - Include placeholder content that matches the actual requirement
 - Make the HTML responsive and visually polished
 
-Always prioritize usability, accessibility, and visual consistency.\
+Always prioritize usability, accessibility, and visual consistency.
+
+## Available Tools
+- workspace_create_artifact: Save your output as a named artifact. ALWAYS use this to persist deliverables (design_spec as markdown, design_image as HTML).
+- workspace_query_artifacts: Query upstream PRD and architecture artifacts for context. Use this BEFORE designing.
+- workspace_create_task: Create follow-up implementation tasks.
+- workspace_query_phases: Check current phase/task status.
+
+IMPORTANT: Call workspace_create_artifact for EACH deliverable (design_spec and design_image separately). \
+The tool automatically uploads to CDN for preview.\
 """
 
 CHAT_PROMPT = """\
@@ -100,42 +104,5 @@ class DesignAgent(SDLCAgent):
         super().__init__()
         from vibeos_agent.tools.workspace_tools import create_workspace_tools
         from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        from vibeos_agent.tools.cos_tools import create_cos_tools
-        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "design"))
+        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "design", rag_client=self.rag))
         self._static_provider.register_many(create_delegation_tools("design"))
-        self._static_provider.register_many(create_cos_tools())
-
-    async def _post_process(
-        self,
-        task: AgentTask,
-        structured: dict[str, Any],
-        rich_blocks: list[RichBlock],
-    ) -> None:
-        """Upload HTML wireframes to COS for direct browser preview."""
-        from vibeos_agent.cos import get_cos_uploader
-
-        uploader = get_cos_uploader()
-        if uploader is None:
-            return
-
-        for art in structured.get("artifacts", []):
-            if art.get("type") != "design_image":
-                continue
-            content = art.get("content", "")
-            title = art.get("title", "wireframe")
-            if not content:
-                continue
-            try:
-                url = uploader.upload_artifact(
-                    task.workspace_id, "design_image", title, content,
-                )
-                meta = json.dumps({"fileUrl": url})
-                await self._save_artifact(
-                    task.workspace_id,
-                    artifact_type="design_image",
-                    title=title,
-                    content=content,
-                    metadata=meta,
-                )
-            except Exception:
-                pass

@@ -22,12 +22,21 @@ class WSGatewayClient:
         self._http = httpx.AsyncClient(base_url=self._base, timeout=10)
 
     async def publish(self, event: dict[str, Any]) -> None:
-        resp = await self._http.post(
-            "/api/publish",
-            json=event,
-            headers={"X-Internal-Token": self._publish_secret},
-        )
-        resp.raise_for_status()
+        import logging
+        _ws_log = logging.getLogger("vibeos_agent.ws")
+        try:
+            resp = await self._http.post(
+                "/api/publish",
+                json=event,
+                headers={"X-Internal-Token": self._publish_secret},
+            )
+            if resp.status_code != 200:
+                _ws_log.warning(
+                    "ws-gateway publish %s: %s (base=%s, event=%s)",
+                    resp.status_code, resp.text[:100], self._base, event.get("type", "?"),
+                )
+        except Exception as exc:
+            _ws_log.debug("ws-gateway publish failed (non-fatal): %s", exc)
 
     async def publish_agent_status(
         self,

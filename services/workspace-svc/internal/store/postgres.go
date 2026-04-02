@@ -48,7 +48,7 @@ type Store interface {
 	ListActivities(ctx context.Context, workspaceID string, page, pageSize int) ([]models.Activity, int64, error)
 
 	CreateArtifact(ctx context.Context, artifact *models.Artifact) error
-	ListArtifactsByWorkspace(ctx context.Context, workspaceID string) ([]models.Artifact, error)
+	ListArtifactsByWorkspace(ctx context.Context, workspaceID, agentType, artifactType string) ([]models.Artifact, error)
 	ListArtifactsByExecution(ctx context.Context, workspaceID, executionID string) ([]models.Artifact, error)
 	GetArtifact(ctx context.Context, workspaceID, id string) (*models.Artifact, error)
 

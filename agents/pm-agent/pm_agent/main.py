@@ -482,8 +482,14 @@ async def run_project_direct(req: dict[str, Any]) -> StreamingResponse:
     user_message = req.get("user_message", "")
 
     async def event_gen() -> AsyncGenerator[str, None]:
-        async for evt in workflow.run_project(ws_id, user_message, start_phase=start_phase):
-            yield evt
+        import traceback as _tb
+        try:
+            async for evt in workflow.run_project(ws_id, user_message, start_phase=start_phase):
+                yield evt
+        except Exception as exc:
+            _log.error("run_project failed: %s\n%s", exc, _tb.format_exc())
+            import json as _j
+            yield f"event: project:error\ndata: {_j.dumps({'error': str(exc)})}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 

@@ -29,7 +29,13 @@ When responding, structure your output as JSON with the following shape:
     {"title": "...", "description": "..."}
   ]
 }
-Always be specific and opinionated. Justify trade-offs.\
+Always be specific and opinionated. Justify trade-offs.
+
+## Available Tools
+- workspace_create_artifact: Save your output as a named artifact. ALWAYS use this to persist deliverables (schema, api, diagram, adr).
+- workspace_query_artifacts: Query upstream requirement artifacts (PRD, user stories) for context. Use this BEFORE designing.
+- workspace_create_task: Create follow-up implementation tasks.
+- workspace_query_phases: Check current phase/task status.\
 """
 
 CHAT_PROMPT = """\
@@ -65,5 +71,5 @@ class ArchitectureAgent(SDLCAgent):
         super().__init__()
         from vibeos_agent.tools.workspace_tools import create_workspace_tools
         from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "architecture"))
+        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "architecture", rag_client=self.rag))
         self._static_provider.register_many(create_delegation_tools("architecture"))

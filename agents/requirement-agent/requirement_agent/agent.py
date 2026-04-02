@@ -41,7 +41,13 @@ When responding, structure your output as JSON with the following shape:
     {"title": "...", "description": "..."}
   ]
 }
-Always be thorough, precise, and flag any ambiguities.\
+Always be thorough, precise, and flag any ambiguities.
+
+## Available Tools
+- workspace_create_artifact: Save your output as a named artifact. ALWAYS use this to persist deliverables (clarified_requirements, user_stories, acceptance_criteria, nfr_constraints, prd_document).
+- workspace_query_artifacts: Query prior phase artifacts for context.
+- workspace_create_task: Create follow-up tasks if needed.
+- workspace_query_phases: Check current phase/task status.\
 """
 
 CHAT_PROMPT = """\
@@ -144,7 +150,7 @@ class RequirementAgent(BaseAgent):
         super().__init__()
         from vibeos_agent.tools.workspace_tools import create_workspace_tools
         from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "requirement"))
+        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "requirement", rag_client=self.rag))
         self._static_provider.register_many(create_delegation_tools("requirement"))
 
     capabilities = [

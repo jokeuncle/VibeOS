@@ -190,7 +190,16 @@ class WorkflowEngine:
             kw["agent_type"] = agent_cfg["type"]
         tools = agent_cfg.get("toolManifest")
         if tools and isinstance(tools, list) and len(tools) > 0:
-            kw["enabled_tools"] = [t.get("name", t) if isinstance(t, dict) else t for t in tools]
+            names: list[str] = []
+            for t in tools:
+                if isinstance(t, str):
+                    names.append(t)
+                elif isinstance(t, dict):
+                    n = t.get("name") or t.get("function", {}).get("name", "")
+                    if n:
+                        names.append(n)
+            if names:
+                kw["enabled_tools"] = names
         caps = agent_cfg.get("capabilities")
         if caps and isinstance(caps, dict) and caps:
             kw["capability"] = caps
@@ -386,6 +395,57 @@ class WorkflowEngine:
             "config": {"checkpointer": "memory", "recursion_limit": 25},
         }
 
+    async def _build_cross_phase_context(
+        self, workspace_id: str, completed_phases: list[str],
+    ) -> str:
+        """Build rich artifact context from completed upstream phases."""
+        sections: list[str] = []
+        phase_to_agent = {v: k for k, v in AGENT_PHASE_MAP.items()}
+        for phase in completed_phases[-3:]:
+            agent_key = phase_to_agent.get(phase, phase)
+            try:
+                artifacts = await self.ws_client.list_artifacts(workspace_id, agent_type=agent_key)
+                for art in artifacts[:5]:
+                    title = art.get("title", "untitled")
+                    art_type = art.get("type", "unknown")
+                    content = art.get("content", "")[:2000]
+                    sections.append(f"### [{phase}] {title} ({art_type})\n{content}")
+            except Exception:
+                _logger.debug("Failed to fetch artifacts for cross-phase context: %s", phase)
+        if not sections:
+            return ""
+        return "## Upstream Phase Artifacts\n\n" + "\n\n---\n\n".join(sections)
+
+    async def _fetch_upstream_artifacts_for_phase(
+        self, workspace_id: str, phase_type: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch actual artifact dicts from upstream phases for graph state injection."""
+        upstream_phases = {
+            "requirement": [],
+            "architecture": ["requirement"],
+            "design": ["requirement", "architecture"],
+            "development": ["requirement", "architecture", "design"],
+            "testing": ["development", "design"],
+        }.get(phase_type, [])
+
+        phase_to_agent = {v: k for k, v in AGENT_PHASE_MAP.items()}
+        results: list[dict[str, Any]] = []
+        for up_phase in upstream_phases:
+            agent_key = phase_to_agent.get(up_phase, up_phase)
+            try:
+                artifacts = await self.ws_client.list_artifacts(workspace_id, agent_type=agent_key)
+                for art in artifacts[:5]:
+                    results.append({
+                        "phase": up_phase,
+                        "agent_type": agent_key,
+                        "type": art.get("type", ""),
+                        "title": art.get("title", ""),
+                        "content": art.get("content", "")[:3000],
+                    })
+            except Exception:
+                _logger.debug("Failed to fetch upstream artifacts for phase %s", up_phase)
+        return results
+
     async def _execute_graph_for_phase(
         self, workspace_id: str, phase_type: str, graph_def: dict[str, Any],
         sid: str, user_message: str = "", preferred_model: str | None = None,
@@ -414,12 +474,15 @@ class WorkflowEngine:
         except Exception:
             _logger.debug("Could not load repos for graph phase %s", phase_type)
 
+        upstream_artifacts = await self._fetch_upstream_artifacts_for_phase(workspace_id, phase_type)
+
         input_state = {
             "workspace_id": workspace_id,
             "phase_type": phase_type,
             "user_message": user_message,
             "preferred_model": preferred_model or "default",
             "agent_type": _agent_for_phase(phase_type).value,
+            "upstream_artifacts": upstream_artifacts,
             **gitlab_ctx,
         }
         try:
@@ -671,15 +734,14 @@ class WorkflowEngine:
             await self.sm.finish(sid, workspace_id)
             return
 
-        # Auto-generate graph from pending tasks when GraphExecutor is available
-        tasks = await self.ws_client.get_tasks_by_phase(workspace_id, phase_id)
-        pending = [t for t in tasks if t.get("status") != "completed"]
+        # Default graph execution: use per-phase default graphs
+        from .default_graphs import DEFAULT_PHASE_GRAPHS
 
-        if pending and self.graph_executor and HAS_LANGGRAPH:
-            auto_graph = self._auto_graph_for_tasks(phase_type, pending)
+        default_graph = DEFAULT_PHASE_GRAPHS.get(phase_type)
+        if default_graph and self.graph_executor and HAS_LANGGRAPH:
             await self.ws_gw.publish_log(
                 workspace_id, "pm",
-                f"Auto-generated graph for phase {phase_type} ({len(pending)} tasks)",
+                f"Using default graph for phase: {phase_type}",
             )
             try:
                 await self.ws_client.update_phase(workspace_id, phase_id, status=PhaseStatus.IN_PROGRESS)
@@ -688,7 +750,7 @@ class WorkflowEngine:
             graph_tasks = 0
             graph_errors = 0
             async for evt in self._execute_graph_for_phase(
-                workspace_id, phase_type, auto_graph, sid, user_message,
+                workspace_id, phase_type, default_graph, sid, user_message,
                 preferred_model=preferred_model,
             ):
                 yield evt
@@ -706,7 +768,7 @@ class WorkflowEngine:
                 "tasks_executed": graph_tasks,
                 "tasks_total": graph_tasks + graph_errors,
                 "tasks_failed": graph_errors,
-                "source": "auto_graph",
+                "source": "default_graph",
             }
             yield self.sm.ev(sid, "phase", "complete", payload_done)
             await self.sm.broadcast(workspace_id, sid, "phase", "complete", payload_done)
@@ -715,6 +777,8 @@ class WorkflowEngine:
             return
 
         # Fallback: direct agent dispatch mode (no graph executor)
+        tasks = await self.ws_client.get_tasks_by_phase(workspace_id, phase_id)
+        pending = [t for t in tasks if t.get("status") != "completed"]
         if not pending:
             payload_skip = {"phase": phase_type, "reason": "no pending tasks"}
             yield self.sm.ev(sid, "phase", "skip", payload_skip)
@@ -990,8 +1054,12 @@ class WorkflowEngine:
         total_tasks_run = 0
         for phase_type in phase_order[start_idx:]:
             enriched_message = user_message
-            if phase_summaries:
-                enriched_message += "\n\nPrevious phase results:\n" + "\n".join(phase_summaries[-3:])
+            if phases_completed:
+                artifact_context = await self._build_cross_phase_context(workspace_id, phases_completed)
+                if artifact_context:
+                    enriched_message += "\n\n" + artifact_context
+                elif phase_summaries:
+                    enriched_message += "\n\nPrevious phase results:\n" + "\n".join(phase_summaries[-3:])
 
             failed_task_id: str | None = None
             phase_tasks = 0

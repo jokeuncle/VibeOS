@@ -33,9 +33,23 @@ func (s *PostgresStore) CreateArtifact(ctx context.Context, artifact *models.Art
 	).Scan(&artifact.CreatedAt, &artifact.UpdatedAt)
 }
 
-func (s *PostgresStore) ListArtifactsByWorkspace(ctx context.Context, workspaceID string) ([]models.Artifact, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+artifactCols+` FROM artifacts WHERE workspace_id = $1 ORDER BY created_at DESC`, workspaceID)
+func (s *PostgresStore) ListArtifactsByWorkspace(ctx context.Context, workspaceID, agentType, artifactType string) ([]models.Artifact, error) {
+	query := `SELECT ` + artifactCols + ` FROM artifacts WHERE workspace_id = $1`
+	args := []any{workspaceID}
+	idx := 2
+	if agentType != "" {
+		query += fmt.Sprintf(` AND agent_type = $%d`, idx)
+		args = append(args, agentType)
+		idx++
+	}
+	if artifactType != "" {
+		query += fmt.Sprintf(` AND type = $%d`, idx)
+		args = append(args, artifactType)
+		idx++
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query artifacts: %w", err)
 	}

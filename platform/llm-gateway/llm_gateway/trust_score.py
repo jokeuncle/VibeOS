@@ -76,7 +76,7 @@ class TrustScoreManager:
         pipe.hget(key, "score")
         results = await pipe.execute()
 
-        raw_score = results[3]
+        raw_score = results[2]
         current_score = float(raw_score) if raw_score else 50.0
 
         observation = 100.0 if success else 0.0

@@ -396,8 +396,8 @@ func (s *Service) CreateArtifact(ctx context.Context, wsID string, req models.Cr
 	return artifact, nil
 }
 
-func (s *Service) ListArtifactsByWorkspace(ctx context.Context, wsID string) ([]models.Artifact, error) {
-	return s.store.ListArtifactsByWorkspace(ctx, wsID)
+func (s *Service) ListArtifactsByWorkspace(ctx context.Context, wsID, agentType, artifactType string) ([]models.Artifact, error) {
+	return s.store.ListArtifactsByWorkspace(ctx, wsID, agentType, artifactType)
 }
 
 func (s *Service) ListArtifactsByExecution(ctx context.Context, wsID, execID string) ([]models.Artifact, error) {

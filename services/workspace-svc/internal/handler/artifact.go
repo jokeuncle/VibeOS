@@ -55,8 +55,10 @@ func (h *ArtifactHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *ArtifactHandler) ListByWorkspace(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
+	agentType := r.URL.Query().Get("agentType")
+	artifactType := r.URL.Query().Get("type")
 
-	artifacts, err := h.svc.ListArtifactsByWorkspace(r.Context(), wsID)
+	artifacts, err := h.svc.ListArtifactsByWorkspace(r.Context(), wsID, agentType, artifactType)
 	if err != nil {
 		h.log.Error("list artifacts failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

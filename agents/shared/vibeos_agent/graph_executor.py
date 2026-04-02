@@ -164,7 +164,9 @@ class GraphExecutor:
         "_summary": (str, ""),
         "_skill_prompt": (str, ""),
         "_awaiting_human": (bool, False),
+        "_phase_artifacts": (list, []),
         "llm_output": (str, ""),
+        "upstream_artifacts": (list, []),
     }
 
     def _build_state_type(self, schema: dict[str, StateFieldDef]) -> type:
@@ -208,6 +210,7 @@ class GraphExecutor:
         node_type = node_def.type
 
         async def _capability_node(state: dict[str, Any]) -> dict[str, Any]:
+            logger.info(">>> capability_node START: %s (cap_ref=%s)", node_def.id, cap_ref)
             cap = await self._resolve_capability(cap_ref)
             if not cap:
                 logger.warning("Capability %s not found, returning empty", cap_ref)
@@ -242,18 +245,30 @@ class GraphExecutor:
                 override_base = self._endpoint_overrides.get(agent_key, "")
                 if override_base:
                     endpoint = f"{override_base}/api/execute"
+            logger.info(">>> capability_node %s: endpoint=%s provider=%s", node_def.id, endpoint, provider)
             if not endpoint:
                 logger.warning("Capability %s has no endpoint", cap_ref)
                 return {"_last_node": node_def.id, "_error": f"capability {cap_ref} has no endpoint"}
 
             task_payload = _build_agent_task(node_def, state, node_config)
+
+            upstream_arts = state.get("upstream_artifacts")
+            if upstream_arts and isinstance(upstream_arts, list):
+                task_payload.setdefault("context", {})["phase_artifacts"] = upstream_arts
+
+            phase_arts = state.get("_phase_artifacts", [])
+            if phase_arts:
+                task_payload.setdefault("context", {})["prior_node_artifacts"] = phase_arts
+
             import httpx
             timeout = node_config.get("timeout", 300)
             try:
+                logger.info(">>> capability_node %s: calling POST %s (timeout=%ss)", node_def.id, endpoint, timeout)
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.post(endpoint, json=task_payload)
                     resp.raise_for_status()
                     result = resp.json()
+                logger.info(">>> capability_node %s: response received, status=%s", node_def.id, result.get("type","?"))
             except Exception as exc:
                 logger.error("Capability %s call failed: %s", cap_ref, exc)
                 return {"_last_node": node_def.id, "_error": str(exc)}
@@ -265,6 +280,10 @@ class GraphExecutor:
                 if summary:
                     output["_summary"] = summary
                 output["_result"] = payload
+                artifacts = payload.get("artifacts", [])
+                if artifacts:
+                    existing = list(state.get("_phase_artifacts", []))
+                    output["_phase_artifacts"] = existing + artifacts
             return output
 
         async def _llm_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -582,7 +601,14 @@ def _build_agent_task(
     if state.get("system_prompt"):
         payload["system_prompt"] = state["system_prompt"]
     if state.get("enabled_tools"):
-        payload["enabled_tools"] = state["enabled_tools"]
+        raw_tools = state["enabled_tools"]
+        if raw_tools and isinstance(raw_tools[0], dict):
+            payload["enabled_tools"] = [
+                t.get("function", {}).get("name", "") or t.get("name", "")
+                for t in raw_tools if isinstance(t, dict)
+            ]
+        else:
+            payload["enabled_tools"] = raw_tools
     if state.get("capability"):
         payload["capability"] = state["capability"]
     return payload

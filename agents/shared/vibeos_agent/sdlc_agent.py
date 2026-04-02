@@ -65,7 +65,7 @@ class SDLCAgent(BaseAgent):
 
             repo_context = await self._resolve_repo_context(task)
 
-            await _log(task.workspace_id, agent_name, "Calling LLM...", task_id=task.task_id)
+            await _log(task.workspace_id, agent_name, "Calling LLM (tool-use enabled)...", task_id=task.task_id)
             raw_reply = await self._call_llm_with_tools(
                 prompt, workspace_id=task.workspace_id, repo_context=repo_context,
                 model=task.preferred_model,
@@ -75,7 +75,7 @@ class SDLCAgent(BaseAgent):
             structured = self._extract_json(raw_reply)
 
             rich_blocks: list[RichBlock] = []
-            await self._save_structured_artifacts(task, structured, rich_blocks, agent_name)
+            self._collect_tool_rich_blocks(rich_blocks)
 
             yield self._make_event("progress", task.workspace_id, {"progress": 0.5, "detail": "Creating tasks"})
 
@@ -85,15 +85,19 @@ class SDLCAgent(BaseAgent):
 
             msg = self._make_message(
                 task.workspace_id,
-                structured.get("summary", raw_reply),
+                structured.get("summary", raw_reply[:500]),
                 rich_blocks=rich_blocks,
             )
             await self.session.append(task.workspace_id, self.agent_type, msg)
             await self.ws.publish_message(task.workspace_id, msg)
 
+            tool_artifact_count = sum(
+                1 for r in self._tool_results
+                if r.get("ok") and r.get("tool") == "workspace_create_artifact"
+            )
             await _log(
                 task.workspace_id, agent_name,
-                f"Execution complete. {len(created_tasks)} tasks created.",
+                f"Execution complete. {tool_artifact_count} artifacts saved, {len(created_tasks)} tasks created.",
                 level="success", task_id=task.task_id,
             )
 
@@ -180,55 +184,38 @@ class SDLCAgent(BaseAgent):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _save_structured_artifacts(
-        self,
-        task: AgentTask,
-        structured: dict[str, Any],
-        rich_blocks: list[RichBlock],
-        agent_name: str,
-    ) -> None:
-        _log = self.ws.publish_log
-
-        if self.artifact_configs:
-            for cfg in self.artifact_configs:
-                data = structured.get(cfg.parse_path) if cfg.parse_path else None
-                if data is None and "artifacts" in structured:
-                    for art in structured["artifacts"]:
-                        if art.get("type") == cfg.type:
-                            data = art
-                            break
-                if data is None:
-                    continue
-
-                title = data.get(cfg.title_key, cfg.type) if isinstance(data, dict) else cfg.type
-                content = data.get(cfg.content_key, json.dumps(data)) if isinstance(data, dict) else str(data)
-
+    def _collect_tool_rich_blocks(self, rich_blocks: list[RichBlock]) -> None:
+        """Build rich blocks from tool call results (artifact saves, gitlab pushes, etc.)."""
+        for r in self._tool_results:
+            if not r.get("ok"):
+                continue
+            tool = r.get("tool", "")
+            if tool == "workspace_create_artifact":
                 try:
-                    await self._save_artifact(
-                        task.workspace_id, artifact_type=cfg.type, title=title, content=content,
-                    )
-                    await _log(task.workspace_id, agent_name, f"Artifact saved: {title}", level="success", task_id=task.task_id)
-                except Exception as exc:
-                    await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
-
-                rich_blocks.append(RichBlock(
-                    type="code", language=cfg.language, content=content, metadata={"title": title},
-                ))
-        else:
-            for artifact in structured.get("artifacts", []):
-                art_title = artifact.get("title", "untitled")
-                art_type = artifact.get("type", "unknown")
-                art_content = artifact.get("content", "")
+                    data = json.loads(r.get("result", "{}"))
+                    title = data.get("title", "artifact")
+                    art_type = data.get("type", "unknown")
+                    lang_map = {
+                        cfg.type: cfg.language for cfg in self.artifact_configs
+                    } if self.artifact_configs else {}
+                    lang = lang_map.get(art_type, "text")
+                    rich_blocks.append(RichBlock(
+                        type="code", language=lang,
+                        content=f"[Artifact saved] {title} ({art_type})",
+                        metadata={"title": title, "fileUrl": data.get("fileUrl")},
+                    ))
+                except Exception:
+                    pass
+            elif tool == "gitlab_push_file":
                 try:
-                    await self._save_artifact(
-                        task.workspace_id, artifact_type=art_type, title=art_title, content=art_content,
-                    )
-                    await _log(task.workspace_id, agent_name, f"Artifact saved: {art_title}", level="success", task_id=task.task_id)
-                except Exception as exc:
-                    await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
-                rich_blocks.append(RichBlock(
-                    type="code", language="text", content=art_content, metadata={"title": art_title},
-                ))
+                    data = json.loads(r.get("result", "{}"))
+                    rich_blocks.append(RichBlock(
+                        type="code", language="text",
+                        content=f"[Pushed] {data.get('file_path', '?')}",
+                        metadata=data,
+                    ))
+                except Exception:
+                    pass
 
     async def _create_phase_tasks(
         self,

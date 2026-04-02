@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
 from .base import BaseTool
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspaceCreateTask(BaseTool):
@@ -78,29 +82,40 @@ class WorkspaceUpdateTaskStatus(BaseTool):
 
 
 class WorkspaceCreateArtifact(BaseTool):
+    """Unified artifact creation: save to workspace-svc + auto COS upload + RAG index."""
+
     name = "workspace_create_artifact"
-    display_name = "创建工件"
-    description = "Save a structured artifact (spec, code, config, etc.) to the workspace."
+    display_name = "保存产物"
+    description = (
+        "Save a structured artifact to the workspace. Automatically uploads to CDN "
+        "and indexes for retrieval. Use this for ALL deliverables: specs, code, "
+        "designs, test plans, etc."
+    )
     parameters = {
         "type": "object",
         "properties": {
             "artifact_type": {
                 "type": "string",
-                "description": "Artifact type (e.g., spec, api_schema, code, test_plan, deployment_config)",
+                "description": (
+                    "Artifact type: prd_document, clarified_requirements, user_stories, "
+                    "acceptance_criteria, nfr_constraints, schema, api, diagram, adr, "
+                    "design_spec, design_image, code, test_plan, test_code, "
+                    "deployment_config, monitoring_config"
+                ),
             },
             "title": {"type": "string", "description": "Artifact title"},
-            "content": {"type": "string", "description": "Artifact content (text, code, JSON, YAML, etc.)"},
-            "phase_type": {
+            "content": {
                 "type": "string",
-                "description": "Phase to attach the artifact to (optional)",
+                "description": "Full artifact content (markdown, code, JSON, YAML, HTML, etc.)",
             },
         },
         "required": ["artifact_type", "title", "content"],
     }
 
-    def __init__(self, ws_client: Any, agent_type: str) -> None:
+    def __init__(self, ws_client: Any, agent_type: str, rag_client: Any = None) -> None:
         self._ws = ws_client
         self._agent_type = agent_type
+        self._rag = rag_client
 
     async def execute(self, **kwargs: Any) -> str:
         workspace_id = kwargs.pop("_workspace_id", "")
@@ -108,14 +123,99 @@ class WorkspaceCreateArtifact(BaseTool):
         title = kwargs.get("title", "Untitled")
         content = kwargs.get("content", "")
 
+        file_url: str | None = None
+        metadata: dict[str, Any] = {}
+
+        try:
+            from ..cos import get_cos_uploader
+            uploader = get_cos_uploader()
+            if uploader and content:
+                file_url = uploader.upload_artifact(workspace_id, artifact_type, title, content)
+                metadata["fileUrl"] = file_url
+        except Exception:
+            logger.warning("COS upload failed for %s/%s", artifact_type, title, exc_info=True)
+
+        meta_str = json.dumps(metadata) if metadata else "{}"
         result = await self._ws.create_artifact(
             workspace_id,
             agent_type=self._agent_type,
             artifact_type=artifact_type,
             title=title,
             content=content,
+            metadata=meta_str,
         )
-        return self._json_result({"status": "saved", "artifact": result.get("data", result)})
+
+        if self._rag and content and len(content) > 100:
+            try:
+                await self._rag.index_documents(
+                    workspace_id,
+                    [{"title": title, "content": content[:8000], "doc_type": artifact_type}],
+                )
+            except Exception:
+                logger.debug("RAG index failed for artifact %s", title, exc_info=True)
+
+        artifact_data = result.get("data", result)
+        return self._json_result({
+            "status": "saved",
+            "artifact_id": artifact_data.get("id", ""),
+            "title": title,
+            "type": artifact_type,
+            "fileUrl": file_url,
+        })
+
+
+class WorkspaceQueryArtifacts(BaseTool):
+    """Query artifacts from upstream phases for context."""
+
+    name = "workspace_query_artifacts"
+    display_name = "查询产物"
+    description = (
+        "Query artifacts from the workspace to understand prior work from upstream phases. "
+        "Use this to get context from requirement docs, architecture specs, design specs, etc."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "agent_type": {
+                "type": "string",
+                "description": "Filter by agent/phase (requirement, architecture, design, development, testing)",
+            },
+            "artifact_type": {
+                "type": "string",
+                "description": "Filter by artifact type (prd_document, schema, design_spec, code, test_plan, etc.)",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max number of artifacts to return (default 5)",
+            },
+        },
+    }
+
+    def __init__(self, ws_client: Any) -> None:
+        self._ws = ws_client
+
+    async def execute(self, **kwargs: Any) -> str:
+        workspace_id = kwargs.pop("_workspace_id", "")
+        agent_type = kwargs.get("agent_type", "")
+        artifact_type = kwargs.get("artifact_type", "")
+        limit = int(kwargs.get("limit", 5))
+
+        artifacts = await self._ws.list_artifacts(
+            workspace_id, agent_type=agent_type, artifact_type=artifact_type,
+        )
+        results = []
+        for art in artifacts[:limit]:
+            content = art.get("content", "")
+            results.append({
+                "id": art.get("id", ""),
+                "type": art.get("type", ""),
+                "agent_type": art.get("agentType", ""),
+                "title": art.get("title", ""),
+                "content": content[:3000] if len(content) > 3000 else content,
+                "fileUrl": _parse_file_url(art.get("metadata")),
+                "created_at": art.get("createdAt", ""),
+            })
+        return self._json_result({"artifacts": results, "total": len(artifacts)})
 
 
 class WorkspaceQueryPhases(BaseTool):
@@ -143,11 +243,21 @@ class WorkspaceQueryPhases(BaseTool):
         return self._json_result({"phases": summary})
 
 
-def create_workspace_tools(ws_client: Any, agent_type: str) -> list[BaseTool]:
+def _parse_file_url(metadata: str | None) -> str | None:
+    if not metadata or metadata == "{}":
+        return None
+    try:
+        return json.loads(metadata).get("fileUrl")
+    except Exception:
+        return None
+
+
+def create_workspace_tools(ws_client: Any, agent_type: str, rag_client: Any = None) -> list[BaseTool]:
     """Factory: create all workspace tools with shared client."""
     return [
         WorkspaceCreateTask(ws_client),
         WorkspaceUpdateTaskStatus(ws_client),
-        WorkspaceCreateArtifact(ws_client, agent_type),
+        WorkspaceCreateArtifact(ws_client, agent_type, rag_client=rag_client),
+        WorkspaceQueryArtifacts(ws_client),
         WorkspaceQueryPhases(ws_client),
     ]

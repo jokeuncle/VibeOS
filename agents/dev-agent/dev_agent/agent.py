@@ -49,7 +49,15 @@ WORKFLOW:
 
 If GITLAB_URL or GITLAB_TOKEN are not configured, still generate the code_artifacts \
 in the JSON response so they can be saved as artifacts, but note the missing config.
-Write clean, well-structured code. Follow language idioms and best practices.\
+Write clean, well-structured code. Follow language idioms and best practices.
+
+## Available Tools
+- workspace_create_artifact: Save code artifacts. ALWAYS use this for each major deliverable.
+- workspace_query_artifacts: Query upstream PRD, architecture, and design artifacts for context. Use this BEFORE coding.
+- gitlab_push_file: Commit source code files to the project repository.
+- gitlab_create_mr: Create a merge request after committing all files.
+- workspace_create_task: Create follow-up tasks if needed.
+- workspace_query_phases: Check current phase/task status.\
 """
 
 CHAT_PROMPT = """\
@@ -85,7 +93,7 @@ class DevelopmentAgent(SDLCAgent):
         from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
         from vibeos_agent.tools.dev_tools import create_dev_tools
         from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "development"))
+        self._static_provider.register_many(create_workspace_tools(self.workspace_svc, "development", rag_client=self.rag))
         self._static_provider.register_many(create_gitlab_tools())
         self._static_provider.register_many(create_dev_tools(self.llm))
         self._static_provider.register_many(create_delegation_tools("development"))

@@ -239,6 +239,7 @@ class WorkspaceClient:
         *,
         execution_id: str | None = None,
         agent_type: str | None = None,
+        artifact_type: str | None = None,
     ) -> list[dict[str, Any]]:
         if execution_id:
             url = f"/api/workspaces/{workspace_id}/executions/{execution_id}/artifacts"
@@ -248,6 +249,8 @@ class WorkspaceClient:
             params: dict[str, str] = {}
             if agent_type:
                 params["agentType"] = agent_type
+            if artifact_type:
+                params["type"] = artifact_type
             resp = await self._http.get(url, params=params)
         resp.raise_for_status()
         data = resp.json()

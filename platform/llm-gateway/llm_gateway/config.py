@@ -35,7 +35,13 @@ class Settings:
         if self.dashscope_api_key:
             models.append("qwen-plus")
         if self.volcengine_api_key:
-            models.append(self.llm_model)
+            from .router import MODEL_REGISTRY
+            volc_models = [n for n, p in MODEL_REGISTRY.items() if p.provider == "volcengine"]
+            for m in volc_models:
+                if m not in models:
+                    models.append(m)
+            if self.llm_model not in models:
+                models.append(self.llm_model)
         return models
 
     @property
