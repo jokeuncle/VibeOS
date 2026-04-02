@@ -21,6 +21,7 @@ from .models import (
     AgentType,
     CapabilityContract,
     Message,
+    PhaseContract,
     RichBlock,
 )
 from .registry import AgentManifest, CapabilityDef, RegistryClient
@@ -53,6 +54,68 @@ AGENT_PHASE_MAP: dict[str, str] = {
     "testing": "testing",
     "cicd": "deployment",
     "monitoring": "monitoring",
+}
+
+# Static phase contracts: input/output artifact specs per phase.
+# Runtime values (require_approval, graph_id, etc.) are merged from
+# the ``agents`` DB table by ``WorkflowEngine.resolve_phase_contract()``.
+PHASE_CONTRACTS: dict[str, PhaseContract] = {
+    "requirement": PhaseContract(
+        phase_type="requirement",
+        agent_type="requirement",
+        upstream_phases=[],
+        required_artifact_types=[],
+        default_graph_key="requirement",
+        expected_artifact_types=["prd", "user_stories", "acceptance_criteria"],
+    ),
+    "architecture": PhaseContract(
+        phase_type="architecture",
+        agent_type="architecture",
+        upstream_phases=["requirement"],
+        required_artifact_types=["prd", "user_stories"],
+        default_graph_key="architecture",
+        expected_artifact_types=["architecture_doc", "adr", "tech_stack"],
+    ),
+    "design": PhaseContract(
+        phase_type="design",
+        agent_type="design",
+        upstream_phases=["requirement", "architecture"],
+        required_artifact_types=["prd", "architecture_doc"],
+        default_graph_key="design",
+        expected_artifact_types=["wireframe", "ui_spec", "component_spec"],
+    ),
+    "development": PhaseContract(
+        phase_type="development",
+        agent_type="development",
+        upstream_phases=["requirement", "architecture", "design"],
+        required_artifact_types=["architecture_doc", "ui_spec"],
+        default_graph_key="development",
+        expected_artifact_types=["source_code", "api_impl"],
+    ),
+    "testing": PhaseContract(
+        phase_type="testing",
+        agent_type="testing",
+        upstream_phases=["development", "design"],
+        required_artifact_types=["source_code"],
+        default_graph_key="testing",
+        expected_artifact_types=["test_suite", "test_report"],
+    ),
+    "deployment": PhaseContract(
+        phase_type="deployment",
+        agent_type="cicd",
+        upstream_phases=["development", "testing"],
+        required_artifact_types=["source_code", "test_report"],
+        default_graph_key="deployment",
+        expected_artifact_types=["pipeline_config", "deploy_manifest"],
+    ),
+    "monitoring": PhaseContract(
+        phase_type="monitoring",
+        agent_type="monitoring",
+        upstream_phases=["deployment"],
+        required_artifact_types=["deploy_manifest"],
+        default_graph_key="monitoring",
+        expected_artifact_types=["alert_rules", "dashboard_config"],
+    ),
 }
 
 

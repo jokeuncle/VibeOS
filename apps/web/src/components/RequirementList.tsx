@@ -12,11 +12,12 @@ import type { Requirement, RequirementStatus } from '../types'
 import type { PhaseType } from '../types'
 
 const STATUS_COLORS: Record<RequirementStatus, { bar: string; pill: string }> = {
-  draft:       { bar: 'bg-surface-4',   pill: 'bg-surface-3 text-text-tertiary' },
-  designing:   { bar: 'bg-accent',      pill: 'bg-accent/15 text-accent' },
-  ready:       { bar: 'bg-success',     pill: 'bg-success/15 text-success' },
-  in_progress: { bar: 'bg-accent',      pill: 'bg-accent/15 text-accent' },
-  completed:   { bar: 'bg-success',     pill: 'bg-success/15 text-success' },
+  draft:              { bar: 'bg-surface-4',   pill: 'bg-surface-3 text-text-tertiary' },
+  designing:          { bar: 'bg-accent',      pill: 'bg-accent/15 text-accent' },
+  ready:              { bar: 'bg-success',     pill: 'bg-success/15 text-success' },
+  in_progress:        { bar: 'bg-accent',      pill: 'bg-accent/15 text-accent' },
+  awaiting_approval:  { bar: 'bg-warning',     pill: 'bg-warning/15 text-warning' },
+  completed:          { bar: 'bg-success',     pill: 'bg-success/15 text-success' },
 }
 
 const PRIORITY_COLORS: Record<string, string> = {

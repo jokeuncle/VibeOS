@@ -16,6 +16,7 @@ const requirement = {
   'requirement.status.designing': 'Designing',
   'requirement.status.ready': 'Ready',
   'requirement.status.in_progress': 'In Progress',
+  'requirement.status.awaiting_approval': 'Awaiting Approval',
   'requirement.status.completed': 'Completed',
   'requirement.publish': 'Publish Requirement',
   'requirement.publishDesc': 'Design complete. Publish to start execution.',

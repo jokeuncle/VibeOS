@@ -51,6 +51,15 @@ export default function RequirementDetail() {
     return set
   }, [workspace?.agents])
 
+  const agentConfigs = useMemo(() => {
+    const agents = workspace?.agents ?? []
+    const map: Record<string, { requireApproval?: boolean; qualityGate?: string }> = {}
+    for (const a of agents) {
+      map[a.type] = { requireApproval: a.requireApproval, qualityGate: a.qualityGate }
+    }
+    return map
+  }, [workspace?.agents])
+
   const phaseMeta = PHASE_META[selectedPhase]
   const nlpDescriptor = useMemo<NlpContextDescriptor | null>(() => {
     if (!req) return null
@@ -123,6 +132,8 @@ export default function RequirementDetail() {
       gs.getState().loadRequirementDetail(activeWorkspaceId, req.id)
       gs.getState().refreshActiveWorkspace()
       setSelectedPhase(nextPhaseType)
+      // Trigger pipeline: run next phase through WorkflowEngine
+      gs.getState().runRequirement(req.id, nextPhaseType, `Advance to ${nextPhaseType} phase`)
     } catch { addToast({ type: 'error', message: 'Failed to advance phase' }) }
   }
 
@@ -240,6 +251,7 @@ export default function RequirementDetail() {
           <RequirementDetailWorkTab
             reqTitle={req.title}
             reqCurrentPhase={req.currentPhase}
+            reqStatus={req.status}
             iteration={iteration}
             selectedPhase={selectedPhase}
             setSelectedPhase={setSelectedPhase}
@@ -250,6 +262,7 @@ export default function RequirementDetail() {
             phaseDone={phaseDone}
             sendNLPMessageStream={sendNLPMessageStream}
             disabledPhases={disabledPhases}
+            agentConfigs={agentConfigs}
             t={t}
           />
         </Tabs.Content>

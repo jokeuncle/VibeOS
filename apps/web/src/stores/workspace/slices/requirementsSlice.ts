@@ -104,6 +104,21 @@ export function buildRequirementsSlice(set: SetState, get: GetState) {
         console.error('Failed to reset requirement phase:', e)
       }
     },
+
+    patchRequirementStatus: (wsId: string, reqId: string, status: string) => {
+      set((s) => ({
+        workspaces: patchWorkspace(s.workspaces, wsId, (w) => ({
+          ...w,
+          requirements: (w.requirements ?? []).map((r) =>
+            r.id === reqId ? { ...r, status: status as import('../../../types').RequirementStatus } : r,
+          ),
+        })),
+        requirementDetail:
+          s.requirementDetail?.id === reqId
+            ? { ...s.requirementDetail, status: status as import('../../../types').RequirementStatus }
+            : s.requirementDetail,
+      }))
+    },
   } satisfies Pick<
     WorkspaceState,
     | 'activeRequirementId'
@@ -114,5 +129,6 @@ export function buildRequirementsSlice(set: SetState, get: GetState) {
     | 'updateRequirement'
     | 'deleteRequirement'
     | 'resetRequirementPhase'
+    | 'patchRequirementStatus'
   >
 }

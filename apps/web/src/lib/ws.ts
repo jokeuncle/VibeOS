@@ -192,8 +192,16 @@ function handleWSEvent(event: Record<string, any>) {
       useWorkspaceStore.setState({ workflowRunning: false })
     }
 
+    // Phase awaiting approval — update requirement status in store
+    if (eventType === 'phase:awaiting_approval') {
+      const p = payload
+      if (p.requirement_id && activeWsId) {
+        store.patchRequirementStatus?.(activeWsId, p.requirement_id, 'awaiting_approval')
+      }
+    }
+
     const workflowEventTypes = [
-      'phase:start', 'phase:complete', 'phase:skip',
+      'phase:start', 'phase:complete', 'phase:skip', 'phase:awaiting_approval',
       'task:start', 'task:complete', 'task:error',
       'project:start', 'project:complete', 'project:error',
     ]
@@ -253,6 +261,32 @@ function handleWSEvent(event: Record<string, any>) {
       time: new Date().toISOString(),
       workspaceId: wsId,
       approvalKey: p.approval_key,
+    })
+  }
+
+  // Phase-level approval request (stop-and-go pipeline)
+  if (eventType === 'phase:awaiting_approval') {
+    const p = event.payload || event
+    addNotification({
+      title: `Phase requires approval: ${p.phase || 'unknown'}`,
+      description: p.requirement_title
+        ? `Requirement "${p.requirement_title}" is waiting for approval to proceed`
+        : 'Pipeline paused — approve to continue',
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+      approvalKey: p.approval_key,
+    })
+  }
+
+  // Graph node-level approval request
+  if (eventType === 'graph:node_awaiting_approval') {
+    const p = event.payload || event
+    addNotification({
+      title: `Node requires approval: ${p.node || 'unknown'}`,
+      description: p.summary ? `Review: ${p.summary.slice(0, 120)}` : 'A graph node is awaiting human review',
+      time: new Date().toISOString(),
+      workspaceId: wsId,
+      approvalKey: p.thread_id ? `graph:${p.thread_id}:${p.node}` : undefined,
     })
   }
 

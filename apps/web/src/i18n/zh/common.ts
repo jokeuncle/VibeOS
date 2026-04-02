@@ -149,6 +149,8 @@ const common = {
   'common.save': '保存',
   'common.saving': '保存中…',
   'common.cancel': '取消',
+  'common.approve': '批准',
+  'common.reject': '拒绝',
   'common.refresh': '刷新',
 }
 

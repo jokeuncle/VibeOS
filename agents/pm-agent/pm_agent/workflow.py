@@ -22,12 +22,14 @@ import httpx
 
 from vibeos_agent import (
     AGENT_PHASE_MAP,
+    PHASE_CONTRACTS,
     AgentStatus,
     AgentTask,
     AgentType,
     GraphExecutor,
     HAS_LANGGRAPH,
     LLMGatewayClient,
+    PhaseContract,
     PhaseStatus,
     RegistryClient,
     WSGatewayClient,
@@ -1057,6 +1059,7 @@ class WorkflowEngine:
         })
 
         gate_lower = gate_expr.strip().lower()
+
         if gate_lower == "manual":
             approval_key = f"qg:{workspace_id}:{phase_type}"
             event = asyncio.Event()
@@ -1083,12 +1086,121 @@ class WorkflowEngine:
             passed = self._approval_results.pop(approval_key, False)
             return passed
 
+        if gate_lower == "artifact_check":
+            return await self._quality_gate_artifact_check(
+                workspace_id, phase_type, sid,
+            )
+
+        if gate_lower == "llm_review":
+            return await self._quality_gate_llm_review(
+                workspace_id, phase_type, sid,
+            )
+
         await self.ws_gw.publish({
             "type": "quality_gate:passed",
             "workspaceId": workspace_id,
             "payload": {**payload, "result": "auto_pass"},
         })
         return True
+
+    async def _quality_gate_artifact_check(
+        self, workspace_id: str, phase_type: str, sid: str,
+    ) -> bool:
+        """Verify that expected artifact types were produced for the phase."""
+        contract = await self.resolve_phase_contract(workspace_id, phase_type)
+        if not contract.expected_artifact_types:
+            return True
+
+        try:
+            arts = await self.ws_client.query_artifacts(workspace_id, phase=phase_type)
+        except Exception:
+            arts = []
+
+        produced_types = {a.get("type", "") for a in arts} if arts else set()
+        missing = [t for t in contract.expected_artifact_types if t not in produced_types]
+
+        if missing:
+            self._trace_ev(sid, "quality_gate", "fail", {
+                "phase": phase_type, "gate": "artifact_check",
+                "missing_artifacts": missing,
+            })
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"Quality gate failed for {phase_type}: missing artifacts {missing}",
+                level="warn",
+            )
+            await self.ws_gw.publish({
+                "type": "quality_gate:failed",
+                "workspaceId": workspace_id,
+                "payload": {"phase": phase_type, "gate": "artifact_check", "missing": missing},
+            })
+            return False
+
+        await self.ws_gw.publish({
+            "type": "quality_gate:passed",
+            "workspaceId": workspace_id,
+            "payload": {"phase": phase_type, "gate": "artifact_check", "result": "all_present"},
+        })
+        return True
+
+    async def _quality_gate_llm_review(
+        self, workspace_id: str, phase_type: str, sid: str,
+    ) -> bool:
+        """Use the LLM gateway to review phase artifacts for quality."""
+        try:
+            arts = await self.ws_client.query_artifacts(workspace_id, phase=phase_type)
+        except Exception:
+            arts = []
+
+        if not arts:
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"LLM quality gate for {phase_type}: no artifacts to review, auto-pass",
+                level="info",
+            )
+            return True
+
+        arts_summary = "\n\n".join(
+            f"### {a.get('title', 'Untitled')} ({a.get('type', '?')})\n{a.get('content', '')[:1500]}"
+            for a in arts[:5]
+        )
+
+        prompt = (
+            f"Review the following artifacts from the '{phase_type}' phase of a software project.\n"
+            f"Determine if the quality is sufficient to proceed to the next phase.\n"
+            f"Respond with ONLY 'PASS' or 'FAIL' on the first line, followed by a brief explanation.\n\n"
+            f"{arts_summary}"
+        )
+
+        try:
+            result = await self.llm.chat(
+                [{"role": "user", "content": prompt}],
+                temperature=0.1,
+            )
+            reply = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            first_line = reply.strip().split("\n")[0].strip().upper()
+            passed = first_line.startswith("PASS")
+
+            event_type = "quality_gate:passed" if passed else "quality_gate:failed"
+            await self.ws_gw.publish({
+                "type": event_type,
+                "workspaceId": workspace_id,
+                "payload": {
+                    "phase": phase_type, "gate": "llm_review",
+                    "result": "pass" if passed else "fail",
+                    "review": reply[:500],
+                },
+            })
+            if not passed:
+                await self.ws_gw.publish_log(
+                    workspace_id, "pm",
+                    f"LLM quality gate failed for {phase_type}: {reply[:200]}",
+                    level="warn",
+                )
+            return passed
+        except Exception as exc:
+            logger.warning("LLM quality gate error for %s: %s", phase_type, exc)
+            return True  # fail open on LLM error
 
     async def _run_project_inner(self, workspace_id: str, user_message: str = "", *, start_phase: str | None = None) -> AsyncIterator[str]:
         sid = await self.sm.create(
@@ -1359,4 +1471,277 @@ class WorkflowEngine:
             status_str,
             f"{tasks_failed} task(s) failed" if tasks_failed else None,
             steps=self._dump_trace(sid),
+        )
+
+    # ------------------------------------------------------------------
+    # resolve_phase_contract
+    # ------------------------------------------------------------------
+
+    async def resolve_phase_contract(
+        self, workspace_id: str, phase_type: str,
+    ) -> PhaseContract:
+        """Merge static PHASE_CONTRACTS with runtime agent config from DB."""
+        static = PHASE_CONTRACTS.get(phase_type)
+        if not static:
+            return PhaseContract(phase_type=phase_type, agent_type=phase_type)
+        contract = static.model_copy()
+
+        agent_type = _agent_for_phase(phase_type)
+        agent_cfg = await self._resolve_agent_config(workspace_id, agent_type.value)
+        if agent_cfg:
+            contract.enabled = agent_cfg.get("enabled", True)
+            contract.require_approval = agent_cfg.get("requireApproval", False)
+            contract.quality_gate = agent_cfg.get("qualityGate")
+            contract.trust_threshold = float(agent_cfg.get("trustThreshold", 50.0))
+            contract.preferred_model = agent_cfg.get("preferredModel")
+            if agent_cfg.get("graphId"):
+                contract.graph_id = agent_cfg["graphId"]
+
+        return contract
+
+    # ------------------------------------------------------------------
+    # run_requirement_pipeline  (phase-level stop-and-go)
+    # ------------------------------------------------------------------
+
+    async def run_requirement_pipeline(
+        self,
+        workspace_id: str,
+        requirement_id: str,
+        user_message: str = "",
+        *,
+        start_phase: str | None = None,
+        approved_phase: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Run a requirement through SDLC phases with stop-and-go approval.
+
+        Cascades automatically until hitting a phase whose agent has
+        ``requireApproval = true``, then stops and emits
+        ``phase:awaiting_approval``.  Resume by calling again with
+        ``approved_phase`` set to the approved phase.
+        """
+        lock = self._get_lock(workspace_id)
+        if lock.locked():
+            current = self._active_runs.get(workspace_id, "unknown")
+            yield self._trace_ev("skip-pipeline", "phase", "skip", {
+                "reason": f"Workspace busy ({current})",
+            })
+            return
+
+        async with lock:
+            self._active_runs[workspace_id] = f"pipeline:{requirement_id}"
+            try:
+                async for evt in self._run_requirement_pipeline_inner(
+                    workspace_id, requirement_id, user_message,
+                    start_phase=start_phase,
+                    approved_phase=approved_phase,
+                ):
+                    yield evt
+            finally:
+                self._active_runs.pop(workspace_id, None)
+                try:
+                    await self.ws_gw.publish_agent_status(
+                        workspace_id, "pm", AgentStatus.IDLE,
+                    )
+                except Exception:
+                    pass
+
+    async def _run_requirement_pipeline_inner(
+        self,
+        workspace_id: str,
+        requirement_id: str,
+        user_message: str,
+        *,
+        start_phase: str | None = None,
+        approved_phase: str | None = None,
+    ) -> AsyncIterator[str]:
+        req = await self.ws_client.get_requirement(workspace_id, requirement_id)
+        if not req:
+            yield self._trace_ev("err-pipe", "task", "error", {
+                "error": "requirement not found",
+            })
+            return
+
+        req_title = req.get("title", "Untitled")
+        current_phase = start_phase or req.get("currentPhase", "requirement")
+
+        sid = await self.sm.create(
+            "workflow_requirement_pipeline", workspace_id,
+            user_message=user_message,
+            intent_type="execute_requirement_pipeline",
+            intent_summary=f"{req_title} — pipeline from {current_phase}",
+            agent_type="pm", triggered_by="workflow",
+            requirement_id=requirement_id,
+        )
+        yield self.sm.session_start(sid, "workflow_requirement_pipeline", workspace_id)
+        await self.ws_gw.publish_agent_status(
+            workspace_id, "pm", AgentStatus.RUNNING,
+            detail=f"Pipeline: {req_title}",
+        )
+
+        start_idx = 0
+        if current_phase in DEFAULT_PHASE_ORDER:
+            start_idx = DEFAULT_PHASE_ORDER.index(current_phase)
+
+        phases_completed: list[str] = []
+        for phase_type in DEFAULT_PHASE_ORDER[start_idx:]:
+            contract = await self.resolve_phase_contract(workspace_id, phase_type)
+
+            if not contract.enabled:
+                skip_payload = {
+                    "phase": phase_type, "reason": "disabled",
+                    "requirement_id": requirement_id,
+                }
+                yield self._trace_ev(sid, "phase", "skip", skip_payload)
+                await self.sm.broadcast(
+                    workspace_id, sid, "phase", "skip", skip_payload,
+                )
+                continue
+
+            # Phase-level approval gate: stop if approval required and
+            # this phase was not explicitly approved by the caller.
+            if contract.require_approval and phase_type != approved_phase:
+                await_payload = {
+                    "phase": phase_type,
+                    "requirement_id": requirement_id,
+                    "requirement_title": req_title,
+                    "approval_key": f"phase:{workspace_id}:{requirement_id}:{phase_type}",
+                }
+                yield self._trace_ev(
+                    sid, "phase", "awaiting_approval", await_payload,
+                )
+                await self.sm.broadcast(
+                    workspace_id, sid, "phase", "awaiting_approval",
+                    await_payload,
+                )
+                try:
+                    await self.ws_client.update_requirement(
+                        workspace_id, requirement_id,
+                        current_phase=phase_type,
+                        status="awaiting_approval",
+                    )
+                except Exception:
+                    pass
+
+                await self.ws_gw.publish_log(
+                    workspace_id, "pm",
+                    f"Pipeline paused: phase '{phase_type}' requires approval",
+                    level="warn",
+                )
+                yield self.sm.session_complete(sid, "paused")
+                await self.sm.finish(
+                    sid, workspace_id, "paused",
+                    f"Awaiting approval for phase: {phase_type}",
+                    steps=self._dump_trace(sid),
+                )
+                return  # STOP — user must re-trigger with approved_phase
+
+            # Execute the phase for this requirement
+            phase_ok = True
+            async for evt in self._run_requirement_inner(
+                workspace_id, requirement_id, user_message, phase_type,
+            ):
+                yield evt
+                if "task:error" in evt:
+                    phase_ok = False
+
+            if not phase_ok:
+                yield self.sm.session_complete(sid, "failed")
+                await self.sm.finish(
+                    sid, workspace_id, "failed",
+                    steps=self._dump_trace(sid),
+                )
+                return
+
+            phases_completed.append(phase_type)
+
+            # Post-phase quality gate
+            agent_cfg = await self._resolve_agent_config(
+                workspace_id, _agent_for_phase(phase_type).value,
+            )
+            gate_passed = await self._check_quality_gate(
+                workspace_id, phase_type, sid, agent_cfg=agent_cfg,
+            )
+            if not gate_passed:
+                yield self._trace_ev(sid, "phase", "error", {
+                    "phase": phase_type,
+                    "error": "quality gate failed",
+                    "requirement_id": requirement_id,
+                })
+                yield self.sm.session_complete(sid, "failed")
+                await self.sm.finish(
+                    sid, workspace_id, "failed",
+                    f"Quality gate failed for {phase_type}",
+                    steps=self._dump_trace(sid),
+                )
+                return
+
+            # Look ahead: should we auto-continue or stop?
+            next_idx = DEFAULT_PHASE_ORDER.index(phase_type) + 1
+            while next_idx < len(DEFAULT_PHASE_ORDER):
+                next_contract = await self.resolve_phase_contract(
+                    workspace_id, DEFAULT_PHASE_ORDER[next_idx],
+                )
+                if not next_contract.enabled:
+                    next_idx += 1
+                    continue
+                if next_contract.require_approval:
+                    next_phase = DEFAULT_PHASE_ORDER[next_idx]
+                    try:
+                        await self.ws_client.update_requirement(
+                            workspace_id, requirement_id,
+                            current_phase=next_phase,
+                            status="awaiting_approval",
+                        )
+                    except Exception:
+                        pass
+                    await_payload = {
+                        "phase": next_phase,
+                        "requirement_id": requirement_id,
+                        "requirement_title": req_title,
+                        "approval_key": f"phase:{workspace_id}:{requirement_id}:{next_phase}",
+                    }
+                    yield self._trace_ev(
+                        sid, "phase", "awaiting_approval", await_payload,
+                    )
+                    await self.sm.broadcast(
+                        workspace_id, sid, "phase", "awaiting_approval",
+                        await_payload,
+                    )
+                    await self.ws_gw.publish_log(
+                        workspace_id, "pm",
+                        f"Pipeline paused before '{next_phase}' (requires approval). "
+                        f"Completed: {', '.join(phases_completed)}",
+                        level="warn",
+                    )
+                    yield self.sm.session_complete(sid, "paused")
+                    await self.sm.finish(
+                        sid, workspace_id, "paused",
+                        f"Awaiting approval for phase: {next_phase}",
+                        steps=self._dump_trace(sid),
+                    )
+                    return  # STOP
+                break  # next phase auto-continues
+            else:
+                break  # no more phases in the order
+
+        # All reachable phases completed
+        try:
+            await self.ws_client.update_requirement(
+                workspace_id, requirement_id, status="completed",
+            )
+        except Exception:
+            pass
+
+        yield self._trace_ev(sid, "project", "complete", {
+            "requirement_id": requirement_id,
+            "phases_completed": phases_completed,
+        })
+        await self.sm.broadcast(workspace_id, sid, "project", "complete", {
+            "requirement_id": requirement_id,
+            "phases_completed": phases_completed,
+        })
+
+        yield self.sm.session_complete(sid)
+        await self.sm.finish(
+            sid, workspace_id, steps=self._dump_trace(sid),
         )

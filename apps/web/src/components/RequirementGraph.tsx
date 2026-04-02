@@ -11,6 +11,7 @@ const STATUS_FILL: Record<RequirementStatus, string> = {
   designing: 'var(--color-accent)',
   ready: 'var(--color-success)',
   in_progress: 'var(--color-accent)',
+  awaiting_approval: 'var(--color-warning)',
   completed: 'var(--color-success)',
 }
 
@@ -58,7 +59,7 @@ export default function RequirementGraph() {
     const PAD = 40
 
     const columns: Record<RequirementStatus, Requirement[]> = {
-      draft: [], designing: [], ready: [], in_progress: [], completed: [],
+      draft: [], designing: [], ready: [], in_progress: [], awaiting_approval: [], completed: [],
     }
     requirements.forEach(r => columns[r.status].push(r))
 

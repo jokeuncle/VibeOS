@@ -6,5 +6,6 @@ export const REQUIREMENT_STATUS_ORDER: RequirementStatus[] = [
   'designing',
   'ready',
   'in_progress',
+  'awaiting_approval',
   'completed',
 ]

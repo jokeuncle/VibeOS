@@ -301,11 +301,15 @@ const (
 	WSEventExecutionUpdate   = "execution:update"
 	WSEventExecutionComplete = "execution:complete"
 
-	WSEventGraphStart        = "graph:start"
-	WSEventGraphNodeStart    = "graph:node_start"
-	WSEventGraphNodeComplete = "graph:node_complete"
-	WSEventGraphComplete     = "graph:complete"
-	WSEventGraphError        = "graph:error"
+	WSEventGraphStart               = "graph:start"
+	WSEventGraphNodeStart           = "graph:node_start"
+	WSEventGraphNodeComplete        = "graph:node_complete"
+	WSEventGraphNodeAwaitApproval   = "graph:node_awaiting_approval"
+	WSEventGraphResume              = "graph:resume"
+	WSEventGraphComplete            = "graph:complete"
+	WSEventGraphError               = "graph:error"
+
+	WSEventPhaseAwaitApproval = "phase:awaiting_approval"
 
 	WSEventTrustDegraded = "trust:degraded"
 )

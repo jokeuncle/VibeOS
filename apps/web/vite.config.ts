@@ -29,6 +29,14 @@ export default defineConfig({
         target: 'http://localhost:8040',
         changeOrigin: true,
       },
+      '/api/workflow/run-requirement': {
+        target: 'http://localhost:8040',
+        changeOrigin: true,
+      },
+      '/api/workflow/run-project': {
+        target: 'http://localhost:8040',
+        changeOrigin: true,
+      },
       // Platform services (workspace-scoped UIs; avoid clashing with workspace-svc `/api/*`)
       '/svc/llm': {
         target: 'http://localhost:8030',

@@ -65,6 +65,7 @@ const phase = {
   'phase.status.pending': '待开始',
   'phase.status.completed': '已完成',
   'phase.status.skipped': '已跳过',
+  'phase.status.awaitingApproval': '待审批',
 
   'phase.iteration': '第',
   'phase.noPhaseSelected': '点击上方阶段查看详情',

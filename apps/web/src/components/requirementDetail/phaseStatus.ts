@@ -2,14 +2,15 @@ import type { PhaseType, Task } from '../../types'
 import type { TranslationKey } from '../../i18n/en'
 import { PHASE_ORDER, getTaskTypeInfo } from './phaseMeta'
 
-export type PhaseDisplayStatus = 'pending' | 'active' | 'idle' | 'completed' | 'rework'
+export type PhaseDisplayStatus = 'pending' | 'active' | 'idle' | 'completed' | 'rework' | 'awaiting_approval'
 
 export const PHASE_STATUS_UI: Record<PhaseDisplayStatus, { dot: string; label: TranslationKey; labelColor: string }> = {
-  pending:   { dot: 'bg-surface-4',            label: 'phase.status.pending',   labelColor: 'text-text-tertiary' },
-  active:    { dot: 'bg-accent animate-pulse',  label: 'phase.status.active',    labelColor: 'text-accent' },
-  idle:      { dot: 'bg-warning',              label: 'phase.status.idle',      labelColor: 'text-warning' },
-  completed: { dot: 'bg-success',              label: 'phase.status.completed', labelColor: 'text-success' },
-  rework:    { dot: 'bg-warning animate-pulse', label: 'phase.status.rework',    labelColor: 'text-warning' },
+  pending:            { dot: 'bg-surface-4',            label: 'phase.status.pending',           labelColor: 'text-text-tertiary' },
+  active:             { dot: 'bg-accent animate-pulse',  label: 'phase.status.active',            labelColor: 'text-accent' },
+  idle:               { dot: 'bg-warning',              label: 'phase.status.idle',              labelColor: 'text-warning' },
+  completed:          { dot: 'bg-success',              label: 'phase.status.completed',         labelColor: 'text-success' },
+  rework:             { dot: 'bg-warning animate-pulse', label: 'phase.status.rework',            labelColor: 'text-warning' },
+  awaiting_approval:  { dot: 'bg-warning animate-pulse', label: 'phase.status.awaitingApproval',  labelColor: 'text-warning' },
 }
 
 export const PHASE_CHECKLIST: Record<PhaseType, string[]> = {
@@ -40,9 +41,16 @@ export function getPhaseDrawerSections(phase: PhaseType, task: Task, t: (k: any)
 
 export function getPhaseDisplayStatus(
   phaseType: PhaseType, currentPhase: PhaseType, tasks: Task[], iteration: number,
+  requirementStatus?: string,
 ): PhaseDisplayStatus {
   const phaseIdx   = PHASE_ORDER.indexOf(phaseType)
   const currentIdx = PHASE_ORDER.indexOf(currentPhase)
+
+  // If the requirement is awaiting approval and this is the current phase
+  if (requirementStatus === 'awaiting_approval' && phaseType === currentPhase) {
+    return 'awaiting_approval'
+  }
+
   if (phaseIdx > currentIdx) return 'pending'
   const hasInProgress = tasks.some(t => t.status === 'in_progress')
   const allDone       = tasks.length > 0 && tasks.every(t => t.status === 'completed')

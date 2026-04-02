@@ -491,6 +491,33 @@ async def run_project_direct(req: dict[str, Any]) -> StreamingResponse:
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
+@app.post("/api/workflow/run-requirement")
+async def run_requirement_pipeline_direct(req: dict[str, Any]) -> StreamingResponse:
+    """Trigger the requirement pipeline with phase-level stop-and-go."""
+    workflow: WorkflowEngine = app.state.workflow
+    ws_id = req.get("workspace_id", "")
+    requirement_id = req.get("requirement_id", "")
+    start_phase = req.get("start_phase")
+    approved_phase = req.get("approved_phase")
+    user_message = req.get("user_message", "")
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        import traceback as _tb
+        try:
+            async for evt in workflow.run_requirement_pipeline(
+                ws_id, requirement_id, user_message,
+                start_phase=start_phase,
+                approved_phase=approved_phase,
+            ):
+                yield evt
+        except Exception as exc:
+            _log.error("run_requirement_pipeline failed: %s\n%s", exc, _tb.format_exc())
+            import json as _j
+            yield f"event: project:error\ndata: {_j.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "pm-agent"}

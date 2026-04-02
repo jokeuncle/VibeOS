@@ -16,6 +16,7 @@ const requirement = {
   'requirement.status.designing': '设计中',
   'requirement.status.ready': '已就绪',
   'requirement.status.in_progress': '进行中',
+  'requirement.status.awaiting_approval': '待审批',
   'requirement.status.completed': '已完成',
   'requirement.publish': '发布需求',
   'requirement.publishDesc': '需求设计完成，确认发布后开始执行',

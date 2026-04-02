@@ -65,7 +65,11 @@ function StatusIcon({ status }: { status: TraceStatus }) {
   return <Info className="w-3.5 h-3.5 text-text-tertiary" />
 }
 
-function ExecutionTraceRow({ exec }: { exec: AgentExecution }) {
+function ExecutionTraceRow({ exec, requirementName, onRequirementClick }: {
+  exec: AgentExecution
+  requirementName?: string
+  onRequirementClick?: (reqId: string) => void
+}) {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
   const status = execToStatus(exec)
@@ -90,10 +94,24 @@ function ExecutionTraceRow({ exec }: { exec: AgentExecution }) {
             <span className={`text-[11px] font-semibold ${meta.color}`}>{agentLabel}</span>
             <span className="text-[10px] font-mono text-text-tertiary truncate">{exec.intentSummary}</span>
           </div>
-          <p className="text-[11px] text-text-tertiary truncate">
-            {exec.triggeredBy} &middot; {exec.intentType}
-            {exec.errorMessage && ` — ${exec.errorMessage}`}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] text-text-tertiary truncate">
+              {exec.triggeredBy} &middot; {exec.intentType}
+              {exec.errorMessage && ` — ${exec.errorMessage}`}
+            </p>
+            {requirementName && exec.requirementId && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRequirementClick?.(exec.requirementId!)
+                }}
+                className="shrink-0 text-[9px] font-medium text-accent/80 bg-accent/8 px-1.5 py-0.5 rounded hover:bg-accent/15 transition-colors cursor-pointer"
+              >
+                {requirementName}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3 shrink-0 text-[10px] font-mono text-text-tertiary">
@@ -165,6 +183,19 @@ export default function WorkspaceTraces() {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const executions = useWorkspaceStore((s) => s.executions)
   const fetchExecutions = useWorkspaceStore((s) => s.fetchExecutions)
+  const workspaces = useWorkspaceStore((s) => s.workspaces)
+  const setActiveRequirement = useWorkspaceStore((s) => s.setActiveRequirement)
+
+  const workspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const requirements = workspace?.requirements ?? []
+
+  const reqNameMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const r of requirements) {
+      map[r.id] = r.title
+    }
+    return map
+  }, [requirements])
 
   useEffect(() => {
     if (activeWorkspaceId && !activeWorkspaceId.startsWith('ws-temp-')) {
@@ -174,6 +205,22 @@ export default function WorkspaceTraces() {
 
   const [agentFilter, setAgentFilter] = useState('All')
   const [statusFilter, setStatusFilter] = useState<TraceStatus | 'all'>('all')
+  const [reqFilter, setReqFilter] = useState('all')
+
+  const reqFilterOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [{ value: 'all', label: t('traces.allRequirements' as TranslationKey) }]
+    const seen = new Set<string>()
+    for (const exec of executions) {
+      if (exec.requirementId && !seen.has(exec.requirementId)) {
+        seen.add(exec.requirementId)
+        opts.push({
+          value: exec.requirementId,
+          label: reqNameMap[exec.requirementId] || exec.requirementId.slice(0, 8),
+        })
+      }
+    }
+    return opts
+  }, [executions, reqNameMap, t])
 
   const statusFilterOptions: { value: TraceStatus | 'all'; label: string }[] = [
     { value: 'all',     label: t('traces.status.all') },
@@ -186,9 +233,10 @@ export default function WorkspaceTraces() {
     return executions.filter(exec => {
       if (agentFilter !== 'All' && exec.agentType !== agentFilter) return false
       if (statusFilter !== 'all' && execToStatus(exec) !== statusFilter) return false
+      if (reqFilter !== 'all' && exec.requirementId !== reqFilter) return false
       return true
     })
-  }, [executions, agentFilter, statusFilter])
+  }, [executions, agentFilter, statusFilter, reqFilter])
 
   const errorCount = executions.filter(e => e.status === 'failed').length
 
@@ -257,6 +305,17 @@ export default function WorkspaceTraces() {
           onChange={v => setStatusFilter(v as TraceStatus | 'all')}
           aria-label={t('traces.statusFilter')}
         />
+        {reqFilterOptions.length > 1 && (
+          <FormSelect
+            size="sm"
+            fullWidth={false}
+            prefix={t('traces.requirementFilter' as TranslationKey)}
+            value={reqFilter}
+            options={reqFilterOptions}
+            onChange={v => setReqFilter(v)}
+            aria-label={t('traces.requirementFilter' as TranslationKey)}
+          />
+        )}
       </div>
 
       <div className="space-y-2">
@@ -269,7 +328,14 @@ export default function WorkspaceTraces() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-[12px] text-text-tertiary">{t('traces.noResults')}</div>
         ) : (
-          filtered.map(exec => <ExecutionTraceRow key={exec.id} exec={exec} />)
+          filtered.map(exec => (
+            <ExecutionTraceRow
+              key={exec.id}
+              exec={exec}
+              requirementName={exec.requirementId ? reqNameMap[exec.requirementId] : undefined}
+              onRequirementClick={(reqId) => setActiveRequirement(reqId)}
+            />
+          ))
         )}
       </div>
 

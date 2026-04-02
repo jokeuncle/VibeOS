@@ -187,3 +187,44 @@ class CapabilityContract(BaseModel):
     supports_vision: bool = False
     preferred_model: str | None = None
     fallback_models: list[str] = Field(default_factory=list)
+
+
+class ApprovalStatus(StrEnum):
+    """Tracks whether a phase is waiting for human approval."""
+    NONE = "none"
+    AWAITING = "awaiting_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class PhaseContract(BaseModel):
+    """Binds a SDLC phase to its agent config, graph, and I/O contracts.
+
+    The PhaseContract is the central abstraction connecting agent
+    configuration (control plane) with graph orchestration (execution plane).
+    Static defaults live in ``PHASE_CONTRACTS``; runtime values are merged
+    from the ``agents`` DB table via ``resolve_phase_contract()``.
+    """
+    phase_type: str
+    agent_type: str
+
+    # Input contract: which upstream phases and artifact types are needed
+    upstream_phases: list[str] = Field(default_factory=list)
+    required_artifact_types: list[str] = Field(default_factory=list)
+
+    # Execution binding
+    graph_id: str | None = None
+    default_graph_key: str = ""
+    execution_mode: str = "graph"  # "graph" | "dispatch" | "skip"
+
+    # Output contract: what this phase is expected to produce
+    expected_artifact_types: list[str] = Field(default_factory=list)
+
+    # Approval (resolved from agent config at runtime)
+    require_approval: bool = False
+    quality_gate: str | None = None  # "manual" | "artifact_check" | "llm_review"
+    trust_threshold: float = 50.0
+
+    # Runtime agent profile (populated by resolve_phase_contract)
+    enabled: bool = True
+    preferred_model: str | None = None

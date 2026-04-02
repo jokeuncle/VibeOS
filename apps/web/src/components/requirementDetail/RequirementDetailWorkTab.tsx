@@ -11,6 +11,7 @@ type TFn = (k: any) => string
 export function RequirementDetailWorkTab({
   reqTitle,
   reqCurrentPhase,
+  reqStatus,
   iteration,
   selectedPhase,
   setSelectedPhase,
@@ -21,10 +22,12 @@ export function RequirementDetailWorkTab({
   phaseDone,
   sendNLPMessageStream,
   disabledPhases,
+  agentConfigs,
   t,
 }: {
   reqTitle: string
   reqCurrentPhase: PhaseType
+  reqStatus?: string
   iteration: number
   selectedPhase: PhaseType
   setSelectedPhase: (p: PhaseType) => void
@@ -35,6 +38,7 @@ export function RequirementDetailWorkTab({
   phaseDone: number
   sendNLPMessageStream: (msg: string) => void
   disabledPhases?: Set<PhaseType>
+  agentConfigs?: Record<string, { requireApproval?: boolean; qualityGate?: string }>
   t: TFn
 }) {
   const meta = PHASE_META[selectedPhase]
@@ -52,23 +56,30 @@ export function RequirementDetailWorkTab({
           {t('phase.title')}
         </h4>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-1.5">
-          {PHASE_ORDER.map((ph) => (
-            <PhaseMatrixCard
-              key={ph}
-              phaseType={ph}
-              tasks={getTasksForPhase(ph)}
-              artifacts={getArtsForPhase(ph)}
-              currentPhase={reqCurrentPhase}
-              iteration={iteration}
-              isSelected={selectedPhase === ph}
-              disabled={disabledPhases?.has(ph)}
-              onClick={() => {
-                setSelectedPhase(ph)
-                setDrawerTask(null)
-              }}
-              t={t}
-            />
-          ))}
+          {PHASE_ORDER.map((ph) => {
+            const agentType = PHASE_META[ph].agentType
+            const cfg = agentConfigs?.[agentType]
+            return (
+              <PhaseMatrixCard
+                key={ph}
+                phaseType={ph}
+                tasks={getTasksForPhase(ph)}
+                artifacts={getArtsForPhase(ph)}
+                currentPhase={reqCurrentPhase}
+                iteration={iteration}
+                isSelected={selectedPhase === ph}
+                disabled={disabledPhases?.has(ph)}
+                requirementStatus={reqStatus}
+                requireApproval={cfg?.requireApproval}
+                qualityGate={cfg?.qualityGate}
+                onClick={() => {
+                  setSelectedPhase(ph)
+                  setDrawerTask(null)
+                }}
+                t={t}
+              />
+            )
+          })}
         </div>
       </motion.div>
 

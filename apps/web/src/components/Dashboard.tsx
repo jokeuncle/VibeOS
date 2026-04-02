@@ -16,6 +16,7 @@ const REQ_CHIP_VALUE: Record<RequirementStatus, { emphasis: 'muted' | 'accentSof
   designing: { emphasis: 'accentSoft' },
   ready: { emphasis: 'warning' },
   in_progress: { emphasis: 'accent' },
+  awaiting_approval: { emphasis: 'warning' },
   completed: { emphasis: 'success' },
 }
 
@@ -162,6 +163,7 @@ export default function Dashboard({ phases, agents }: { phases: Phase[]; agents:
       designing: 0,
       ready: 0,
       in_progress: 0,
+      awaiting_approval: 0,
       completed: 0,
     }
     for (const r of requirements) {

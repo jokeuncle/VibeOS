@@ -739,6 +739,21 @@ export const approvalApi = {
     }),
 }
 
+export const workflowApi = {
+  runRequirementPipeline: (params: {
+    workspace_id: string
+    requirement_id: string
+    start_phase?: string
+    approved_phase?: string
+    user_message?: string
+  }) =>
+    fetch('/api/workflow/run-requirement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+}
+
 // ---------------------------------------------------------------------------
 // Global Registry API (intents, task templates, capabilities)
 // ---------------------------------------------------------------------------

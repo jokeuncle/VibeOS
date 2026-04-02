@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Check } from 'lucide-react'
-import { useRef, useEffect } from 'react'
+import { Bell, Check, CheckCircle2, XCircle } from 'lucide-react'
+import { useRef, useEffect, useCallback, useState } from 'react'
 import { useUIStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
+import { approvalApi } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 import { preventMouseDownFocus } from '../lib/preventMouseFocus'
@@ -15,6 +16,92 @@ function timeAgo(dateStr: string, t: (k: TranslationKey) => string) {
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}${t('time.hAgo')}`
   return `${Math.floor(hrs / 24)}${t('time.dAgo')}`
+}
+
+function NotificationItem({
+  notification: n,
+  onRead,
+  t,
+}: {
+  notification: import('../stores/ui').Notification
+  onRead: () => void
+  t: (k: TranslationKey) => string
+}) {
+  const [resolving, setResolving] = useState(false)
+  const [resolved, setResolved] = useState<'approved' | 'rejected' | null>(null)
+  const { addToast } = useUIStore()
+
+  const handleResolve = useCallback(
+    async (approved: boolean, e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (!n.approvalKey || resolving) return
+      setResolving(true)
+      try {
+        await approvalApi.resolve(n.approvalKey, approved)
+        setResolved(approved ? 'approved' : 'rejected')
+        addToast({
+          type: approved ? 'success' : 'info',
+          message: approved ? 'Approved successfully' : 'Rejected',
+        })
+      } catch {
+        addToast({ type: 'error', message: 'Failed to resolve approval' })
+      } finally {
+        setResolving(false)
+      }
+    },
+    [n.approvalKey, resolving, addToast],
+  )
+
+  return (
+    <button
+      onClick={onRead}
+      className={`w-full text-left px-4 py-3 flex gap-3 cursor-pointer transition-colors hover:bg-surface-3 ${
+        n.read ? 'opacity-50' : ''
+      }`}
+    >
+      <div className="mt-0.5 shrink-0">
+        {n.read ? (
+          <Check className="w-3.5 h-3.5 text-text-tertiary" />
+        ) : (
+          <div className="w-2 h-2 rounded-full bg-accent mt-1" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-text-primary leading-relaxed">{n.title}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-[10px] text-text-tertiary">{n.description}</span>
+          <span className="text-[10px] text-text-tertiary/50">{timeAgo(n.time, t)}</span>
+        </div>
+
+        {n.approvalKey && !resolved && (
+          <div className="flex gap-2 mt-2">
+            <button
+              disabled={resolving}
+              onClick={(e) => handleResolve(true, e)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-success/15 text-success text-[10px] font-medium hover:bg-success/25 transition-colors disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              {t('common.approve' as TranslationKey)}
+            </button>
+            <button
+              disabled={resolving}
+              onClick={(e) => handleResolve(false, e)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-danger/15 text-danger text-[10px] font-medium hover:bg-danger/25 transition-colors disabled:opacity-50"
+            >
+              <XCircle className="w-3 h-3" />
+              {t('common.reject' as TranslationKey)}
+            </button>
+          </div>
+        )}
+
+        {resolved && (
+          <div className={`mt-2 text-[10px] font-medium ${resolved === 'approved' ? 'text-success' : 'text-danger'}`}>
+            {resolved === 'approved' ? '✓ Approved' : '✗ Rejected'}
+          </div>
+        )}
+      </div>
+    </button>
+  )
 }
 
 export default function NotificationPanel() {
@@ -83,34 +170,18 @@ export default function NotificationPanel() {
                 </div>
               ) : (
                 notifications.map((n) => (
-                  <button
+                  <NotificationItem
                     key={n.id}
-                    onClick={() => {
+                    notification={n}
+                    onRead={() => {
                       markNotificationRead(n.id)
                       if (n.workspaceId) {
                         setActiveWorkspace(n.workspaceId)
                         setNotificationsOpen(false)
                       }
                     }}
-                    className={`w-full text-left px-4 py-3 flex gap-3 cursor-pointer transition-colors hover:bg-surface-3 ${
-                      n.read ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <div className="mt-0.5 shrink-0">
-                      {n.read ? (
-                        <Check className="w-3.5 h-3.5 text-text-tertiary" />
-                      ) : (
-                        <div className="w-2 h-2 rounded-full bg-accent mt-1" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-text-primary leading-relaxed">{n.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-text-tertiary">{n.description}</span>
-                        <span className="text-[10px] text-text-tertiary/50">{timeAgo(n.time, t)}</span>
-                      </div>
-                    </div>
-                  </button>
+                    t={t}
+                  />
                 ))
               )}
             </div>

@@ -145,6 +145,7 @@ export interface WorkspaceState {
   deleteRequirement: (wsId: string, reqId: string) => void
   runRequirement: (reqId: string, phaseType?: string, userMessage?: string) => void
   resetRequirementPhase: (reqId: string, phaseType: string) => void
+  patchRequirementStatus: (wsId: string, reqId: string, status: string) => void
   loadRequirementDetail: (wsId: string, reqId: string) => void
 
   loadOlderMessages: (scope?: MessageScope) => void

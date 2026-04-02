@@ -65,6 +65,7 @@ const phase = {
   'phase.status.pending': 'Pending',
   'phase.status.completed': 'Done',
   'phase.status.skipped': 'Skipped',
+  'phase.status.awaitingApproval': 'Awaiting Approval',
 
   'phase.iteration': 'Run',
   'phase.noPhaseSelected': 'Select a phase above to view details',

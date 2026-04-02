@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 try:
     from langgraph.graph import StateGraph, END as LG_END
     from langgraph.graph.message import add_messages
+    from langgraph.checkpoint.memory import MemorySaver
 
     HAS_LANGGRAPH = True
 except ImportError:
@@ -347,7 +348,12 @@ class GraphExecutor:
                 return {"_last_node": node_def.id, "_error": str(exc)}
 
         async def _human_node(state: dict[str, Any]) -> dict[str, Any]:
-            return {"_last_node": node_def.id, "_awaiting_human": True}
+            upstream = _get_upstream_context(state)
+            return {
+                "_last_node": node_def.id,
+                "_awaiting_human": True,
+                "_summary": upstream[:2000] if upstream else "",
+            }
 
         async def _intent_node(state: dict[str, Any]) -> dict[str, Any]:
             intent_name = node_config.get("intent_name", cap_ref)
@@ -517,15 +523,29 @@ class GraphExecutor:
     # Compile & Execute
     # ------------------------------------------------------------------
 
-    async def compile(self, graph_def: dict[str, Any]) -> Any:
-        """Parse graph_def and compile to a LangGraph CompiledGraph."""
+    async def compile(
+        self,
+        graph_def: dict[str, Any],
+        *,
+        checkpointer: Any | None = None,
+    ) -> Any:
+        """Parse graph_def and compile to a LangGraph CompiledGraph.
+
+        When the graph contains ``human_in_loop`` nodes, they are
+        registered as ``interrupt_before`` points.  A checkpointer is
+        required for interrupt support; if none is supplied and interrupts
+        are needed, an in-memory ``MemorySaver`` is created automatically.
+        """
         parsed = ParsedGraphDef.from_dict(graph_def)
         state_type = self._build_state_type(parsed.state_schema)
         graph = StateGraph(state_type)
 
+        interrupt_nodes: list[str] = []
         for node_def in parsed.nodes:
             fn = self._make_node_fn(node_def)
             graph.add_node(node_def.id, fn)
+            if node_def.type == "human_in_loop":
+                interrupt_nodes.append(node_def.id)
 
         nodes_with_conditional = set()
         for edge in parsed.edges:
@@ -553,8 +573,15 @@ class GraphExecutor:
         elif parsed.nodes:
             graph.set_entry_point(parsed.nodes[0].id)
 
+        compile_kwargs: dict[str, Any] = {}
+        if interrupt_nodes:
+            if checkpointer is None:
+                checkpointer = MemorySaver()
+            compile_kwargs["checkpointer"] = checkpointer
+            compile_kwargs["interrupt_before"] = interrupt_nodes
+
         recursion_limit = parsed.config.get("recursion_limit", 25)
-        compiled = graph.compile()
+        compiled = graph.compile(**compile_kwargs)
         compiled.recursion_limit = recursion_limit
         return compiled
 
@@ -562,21 +589,35 @@ class GraphExecutor:
         self,
         graph_def: dict[str, Any],
         input_state: dict[str, Any] | None = None,
+        *,
+        thread_id: str | None = None,
+        checkpointer: Any | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Compile and execute a graph, yielding SSE-compatible event dicts."""
-        compiled = await self.compile(graph_def)
+        """Compile and execute a graph, yielding SSE-compatible event dicts.
+
+        When the graph contains ``human_in_loop`` nodes, execution pauses
+        before them and yields a ``graph:node_awaiting_approval`` event.
+        Call ``resume()`` with the same ``thread_id`` to continue.
+        """
+        compiled = await self.compile(graph_def, checkpointer=checkpointer)
         initial = input_state or {}
+        tid = thread_id or uuid.uuid4().hex
+        run_config = {"configurable": {"thread_id": tid}}
 
         parsed = ParsedGraphDef.from_dict(graph_def)
+        human_nodes = {n.id for n in parsed.nodes if n.type == "human_in_loop"}
         known_keys = set(self._INTERNAL_FIELDS) | set(parsed.state_schema)
         extra = {k: v for k, v in initial.items() if k not in known_keys}
         if extra:
             initial["_passthrough"] = extra
 
-        yield {"event": "graph:start", "data": {"nodes": [n["id"] for n in graph_def.get("nodes", [])]}}
+        yield {"event": "graph:start", "data": {
+            "nodes": [n["id"] for n in graph_def.get("nodes", [])],
+            "thread_id": tid,
+        }}
 
         try:
-            async for event in compiled.astream(initial, stream_mode="updates"):
+            async for event in compiled.astream(initial, run_config, stream_mode="updates"):
                 for node_name, node_output in event.items():
                     yield {
                         "event": "graph:node_complete",
@@ -587,7 +628,81 @@ class GraphExecutor:
             yield {"event": "graph:error", "data": {"error": str(exc)}}
             return
 
-        yield {"event": "graph:complete", "data": {}}
+        # Check if the graph was interrupted at a human_in_loop node
+        if human_nodes and hasattr(compiled, "get_state"):
+            try:
+                snapshot = compiled.get_state(run_config)
+                pending = snapshot.next if snapshot else ()
+                if pending:
+                    paused_node = pending[0] if pending else ""
+                    yield {
+                        "event": "graph:node_awaiting_approval",
+                        "data": {
+                            "thread_id": tid,
+                            "node": paused_node,
+                            "summary": (snapshot.values or {}).get("_summary", ""),
+                        },
+                    }
+                    return  # graph is paused, don't emit complete
+            except Exception:
+                logger.debug("Could not check interrupt state", exc_info=True)
+
+        yield {"event": "graph:complete", "data": {"thread_id": tid}}
+
+    async def resume(
+        self,
+        graph_def: dict[str, Any],
+        thread_id: str,
+        *,
+        checkpointer: Any | None = None,
+        update_state: dict[str, Any] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Resume a paused graph from its checkpoint.
+
+        Called after a ``human_in_loop`` node has been approved.  Yields
+        the same event stream as ``execute()``.
+        """
+        compiled = await self.compile(graph_def, checkpointer=checkpointer)
+        run_config = {"configurable": {"thread_id": thread_id}}
+
+        parsed = ParsedGraphDef.from_dict(graph_def)
+        human_nodes = {n.id for n in parsed.nodes if n.type == "human_in_loop"}
+
+        yield {"event": "graph:resume", "data": {"thread_id": thread_id}}
+
+        try:
+            async for event in compiled.astream(
+                update_state, run_config, stream_mode="updates",
+            ):
+                for node_name, node_output in event.items():
+                    yield {
+                        "event": "graph:node_complete",
+                        "data": {"node": node_name, "output": node_output},
+                    }
+        except Exception as exc:
+            logger.error("Graph resume error: %s", exc)
+            yield {"event": "graph:error", "data": {"error": str(exc)}}
+            return
+
+        if human_nodes and hasattr(compiled, "get_state"):
+            try:
+                snapshot = compiled.get_state(run_config)
+                pending = snapshot.next if snapshot else ()
+                if pending:
+                    paused_node = pending[0] if pending else ""
+                    yield {
+                        "event": "graph:node_awaiting_approval",
+                        "data": {
+                            "thread_id": thread_id,
+                            "node": paused_node,
+                            "summary": (snapshot.values or {}).get("_summary", ""),
+                        },
+                    }
+                    return
+            except Exception:
+                logger.debug("Could not check interrupt state after resume", exc_info=True)
+
+        yield {"event": "graph:complete", "data": {"thread_id": thread_id}}
 
 
 # ---------------------------------------------------------------------------

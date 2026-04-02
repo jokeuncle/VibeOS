@@ -1,14 +1,16 @@
-import { FileText, MessageSquare, RefreshCw, Ban } from 'lucide-react'
+import { FileText, MessageSquare, RefreshCw, Ban, Lock, Shield } from 'lucide-react'
 import type { Artifact, PhaseType, Task } from '../../types'
 import { PHASE_META } from './phaseMeta'
 import { getPhaseDisplayStatus, PHASE_STATUS_UI } from './phaseStatus'
 
-export function PhaseMatrixCard({ phaseType, tasks, artifacts, currentPhase, iteration, isSelected, disabled, onClick, t }: {
+export function PhaseMatrixCard({ phaseType, tasks, artifacts, currentPhase, iteration, isSelected, disabled, requirementStatus, requireApproval, qualityGate, onClick, t }: {
   phaseType: PhaseType; tasks: Task[]; artifacts: Artifact[]; currentPhase: PhaseType
-  iteration: number; isSelected: boolean; disabled?: boolean; onClick: () => void; t: (k: any) => string
+  iteration: number; isSelected: boolean; disabled?: boolean
+  requirementStatus?: string; requireApproval?: boolean; qualityGate?: string
+  onClick: () => void; t: (k: any) => string
 }) {
   const meta     = PHASE_META[phaseType]
-  const status   = getPhaseDisplayStatus(phaseType, currentPhase, tasks, iteration)
+  const status   = getPhaseDisplayStatus(phaseType, currentPhase, tasks, iteration, requirementStatus)
   const statusUi = PHASE_STATUS_UI[status]
   const done = tasks.filter(t2 => t2.status === 'completed').length
 
@@ -17,14 +19,15 @@ export function PhaseMatrixCard({ phaseType, tasks, artifacts, currentPhase, ite
     : isSelected
       ? 'bg-accent/[0.07] border-accent/40 shadow-sm'
       : {
-          active:    'bg-surface-2/40 border-accent/25 hover:border-accent/35',
-          idle:      'bg-surface-2/40 border-warning/20 hover:border-border-default',
-          completed: 'bg-surface-2/40 border-border-subtle hover:border-border-default',
-          rework:    'bg-surface-2/40 border-warning/25 hover:border-border-default',
-          pending:   'bg-surface-2/25 border-border-subtle hover:border-border-default',
+          active:             'bg-surface-2/40 border-accent/25 hover:border-accent/35',
+          idle:               'bg-surface-2/40 border-warning/20 hover:border-border-default',
+          completed:          'bg-surface-2/40 border-border-subtle hover:border-border-default',
+          rework:             'bg-surface-2/40 border-warning/25 hover:border-border-default',
+          pending:            'bg-surface-2/25 border-border-subtle hover:border-border-default',
+          awaiting_approval:  'bg-warning/[0.06] border-warning/30 hover:border-warning/40',
         }[status]
 
-  const iconColor = isSelected ? 'text-accent' : disabled ? 'text-text-tertiary' : status === 'active' ? 'text-accent' : status === 'completed' ? 'text-success' : status === 'pending' ? 'text-text-tertiary' : 'text-text-secondary'
+  const iconColor = isSelected ? 'text-accent' : disabled ? 'text-text-tertiary' : status === 'active' ? 'text-accent' : status === 'completed' ? 'text-success' : status === 'awaiting_approval' ? 'text-warning' : status === 'pending' ? 'text-text-tertiary' : 'text-text-secondary'
 
   return (
     <button type="button" onClick={onClick} className={`relative text-left p-2.5 rounded-lg border transition-all cursor-pointer ${cardClass}`}>
@@ -54,6 +57,21 @@ export function PhaseMatrixCard({ phaseType, tasks, artifacts, currentPhase, ite
           {tasks.length > 0 ? `${done}/${tasks.length}` : '—'}
         </span>
       </div>
+      {/* Approval / quality gate indicators */}
+      {!disabled && (requireApproval || qualityGate) && (
+        <div className="flex items-center gap-1.5 mt-1">
+          {requireApproval && (
+            <span className="flex items-center gap-0.5 text-[8px] text-warning/80" title="Requires approval">
+              <Lock className="w-2.5 h-2.5" />
+            </span>
+          )}
+          {qualityGate && (
+            <span className="flex items-center gap-0.5 text-[8px] text-text-tertiary" title={`Gate: ${qualityGate}`}>
+              <Shield className="w-2.5 h-2.5" />
+            </span>
+          )}
+        </div>
+      )}
       {!isSelected && artifacts.length > 0 && (
         <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 text-[9px] text-text-tertiary">
           <FileText className="w-2.5 h-2.5" />{artifacts.length}

@@ -149,6 +149,8 @@ const common = {
   'common.save': 'Save',
   'common.saving': 'Saving…',
   'common.cancel': 'Cancel',
+  'common.approve': 'Approve',
+  'common.reject': 'Reject',
   'common.refresh': 'Refresh',
 } as const
 

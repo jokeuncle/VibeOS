@@ -22,6 +22,7 @@ const PHASE_ICON: Record<PhaseType, ReactNode> = {
 const COLUMNS: { status: RequirementStatus; labelKey: string; headerClass: string; dotClass: string }[] = [
   { status: 'draft', labelKey: 'requirement.status.draft', headerClass: 'bg-surface-2', dotClass: 'bg-surface-4' },
   { status: 'in_progress', labelKey: 'requirement.status.in_progress', headerClass: 'bg-accent/5', dotClass: 'bg-accent' },
+  { status: 'awaiting_approval', labelKey: 'requirement.status.awaiting_approval', headerClass: 'bg-warning/5', dotClass: 'bg-warning' },
   { status: 'completed', labelKey: 'requirement.status.completed', headerClass: 'bg-success/5', dotClass: 'bg-success' },
 ]
 
