@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -25,6 +24,7 @@ from .middleware.session_mw import SessionMiddleware, TokenBudget
 from .middleware.ws_status import WSStatusMiddleware
 from .models import AgentEvent, AgentType
 from .session import SessionManager
+from .tool_loop import run_tool_loop_stream
 from .tools.provider import ToolManager
 
 logger = logging.getLogger(__name__)
@@ -219,137 +219,28 @@ class ConversationEngine:
     async def _agentic_terminal(
         self, ctx: InvocationContext
     ) -> AsyncIterator[AgentEvent]:
-        """Terminal handler: LLM + tool ReAct loop with streaming."""
+        """Terminal handler: delegates to the unified streaming tool loop."""
         messages = self._build_messages(ctx)
         tool_schemas = await self._tool_manager.get_schemas()
         if not tool_schemas:
-            tool_schemas = None
+            tool_schemas = []
 
-        full_reply = ""
+        full_reply_parts: list[str] = []
+        async for evt in run_tool_loop_stream(
+            messages,
+            llm=self._llm,
+            tool_manager=self._tool_manager,
+            tool_schemas=tool_schemas,
+            max_iterations=self._max_iterations,
+            workspace_id=ctx.workspace_id,
+            agent_type=ctx.agent_type,
+            collect_results=ctx.tool_results,
+        ):
+            if evt.type == "content_delta":
+                full_reply_parts.append(evt.payload.get("delta", ""))
+            yield evt
 
-        def _evt(etype: str, **payload: Any) -> AgentEvent:
-            return AgentEvent(
-                type=etype,
-                agent_type=ctx.agent_type,
-                workspace_id=ctx.workspace_id,
-                payload=payload,
-            )
-
-        for iteration in range(self._max_iterations):
-            content_parts: list[str] = []
-            tool_calls_acc: list[dict[str, Any]] = []
-
-            async for chunk in self._llm.chat_stream(
-                messages, tools=tool_schemas
-            ):
-                choice = chunk.get("choices", [{}])[0]
-                delta = choice.get("delta", {})
-
-                if delta.get("tool_calls"):
-                    for tc in delta["tool_calls"]:
-                        idx = tc.get("index", 0)
-                        while len(tool_calls_acc) <= idx:
-                            tool_calls_acc.append({
-                                "id": "", "type": "function",
-                                "function": {"name": "", "arguments": ""},
-                            })
-                        if tc.get("id"):
-                            tool_calls_acc[idx]["id"] = tc["id"]
-                        fn = tc.get("function", {})
-                        if fn.get("name"):
-                            tool_calls_acc[idx]["function"]["name"] = fn["name"]
-                        if fn.get("arguments"):
-                            tool_calls_acc[idx]["function"]["arguments"] += fn["arguments"]
-
-                content = delta.get("content", "") or ""
-                if content:
-                    content_parts.append(content)
-                    if not tool_calls_acc:
-                        full_reply += content
-                        yield _evt("content_delta", delta=content)
-
-            if tool_calls_acc:
-                buffered = "".join(content_parts) if content_parts else None
-                messages.append({
-                    "role": "assistant",
-                    "content": buffered,
-                    "tool_calls": tool_calls_acc,
-                })
-                for evt in await self._execute_tool_calls(
-                    tool_calls_acc, ctx, messages
-                ):
-                    yield evt
-                continue
-
-            joined = "".join(content_parts)
-            remaining = joined[len(full_reply):]
-            if remaining:
-                full_reply += remaining
-                yield _evt("content_delta", delta=remaining)
-            break
-
-        ctx.reply = full_reply
-
-    async def _execute_tool_calls(
-        self,
-        tool_calls: list[dict[str, Any]],
-        ctx: InvocationContext,
-        messages: list[dict[str, Any]],
-    ) -> list[AgentEvent]:
-        """Execute tool calls and append results to messages. Returns events."""
-        events: list[AgentEvent] = []
-
-        def _evt(etype: str, **payload: Any) -> AgentEvent:
-            return AgentEvent(
-                type=etype,
-                agent_type=ctx.agent_type,
-                workspace_id=ctx.workspace_id,
-                payload=payload,
-            )
-
-        for tc in tool_calls:
-            fn = tc.get("function", {})
-            name = fn.get("name", "")
-            call_id = tc.get("id", "") or f"call_{name}_{uuid.uuid4().hex[:8]}"
-            raw_args = fn.get("arguments", "{}")
-
-            try:
-                args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-            except json.JSONDecodeError:
-                args = {}
-
-            display_name = await self._tool_manager.get_display_name(name)
-
-            events.append(_evt(
-                "tool_start", tool=name, call_id=call_id,
-                display_name=display_name,
-                arguments=_truncate_dict(args, 2000),
-            ))
-
-            args["_workspace_id"] = ctx.workspace_id
-            t0 = time.monotonic()
-            result = await self._tool_manager.execute(name, args)
-            duration_ms = int((time.monotonic() - t0) * 1000)
-
-            ctx.tool_results.append({
-                "tool": name, "ok": result.ok,
-                "result": result.output[:500] if result.output else "",
-            })
-
-            events.append(_evt(
-                "tool_result", tool=name, call_id=call_id,
-                display_name=display_name,
-                ok=result.ok, output=result.output[:3000],
-                duration_ms=duration_ms,
-            ))
-
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.get("id", ""),
-                "content": result.output,
-            })
-
-        return events
+        ctx.reply = "".join(full_reply_parts)
 
     def _build_messages(self, ctx: InvocationContext) -> list[dict[str, Any]]:
         system = ctx.enriched_prompt or ctx.system_prompt
@@ -438,22 +329,6 @@ class ConversationEngine:
             ]
 
         return [_sse("content", "payload", {"payload": payload}, sid)]
-
-
-def _truncate_dict(d: dict[str, Any], max_chars: int = 2000) -> dict[str, Any]:
-    """Shallow-truncate dict values so the JSON repr stays within *max_chars*."""
-    out: dict[str, Any] = {}
-    budget = max_chars
-    for k, v in d.items():
-        if k.startswith("_"):
-            continue
-        s = json.dumps(v, ensure_ascii=False, default=str)
-        if len(s) > budget:
-            out[k] = s[:budget] + "…"
-            break
-        out[k] = v
-        budget -= len(s)
-    return out
 
 
 def _sse(category: str, action: str, payload: dict[str, Any], sid: str) -> str:

@@ -3,6 +3,9 @@
 Both ``BaseAgent._call_llm_with_tools`` and ``ConversationEngine._agentic_terminal``
 delegate tool execution to helpers in this module, eliminating the duplicated
 tool-call processing logic.
+
+The optional ``ws_notify`` callback pushes tool events through the WebSocket
+gateway for real-time observability in the frontend.
 """
 
 from __future__ import annotations
@@ -11,12 +14,14 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable, Awaitable
 
 from .models import AgentEvent, AgentType
 from .tools.provider import ToolManager
 
 logger = logging.getLogger(__name__)
+
+WSNotifyFn = Callable[[AgentEvent], Awaitable[None]]
 
 
 def _truncate(s: str, limit: int = 3000) -> str:
@@ -40,6 +45,7 @@ async def execute_tool_calls(
     workspace_id: str = "",
     agent_type: AgentType | str = "",
     collect_results: list[dict[str, Any]] | None = None,
+    ws_notify: WSNotifyFn | None = None,
 ) -> list[AgentEvent]:
     """Execute a batch of tool_calls, append results to *messages*,
     and return ``AgentEvent`` list for WS/SSE forwarding.
@@ -69,11 +75,17 @@ async def execute_tool_calls(
 
         display_name = await tool_manager.get_display_name(name)
 
-        events.append(_evt(
+        start_evt = _evt(
             "tool_start", tool=name, call_id=call_id,
             display_name=display_name,
             arguments=_truncate_dict(args),
-        ))
+        )
+        events.append(start_evt)
+        if ws_notify:
+            try:
+                await ws_notify(start_evt)
+            except Exception:
+                logger.debug("ws_notify tool_start failed", exc_info=True)
 
         args["_workspace_id"] = workspace_id
         t0 = time.monotonic()
@@ -86,12 +98,18 @@ async def execute_tool_calls(
                 "result": result.output[:500] if result.output else "",
             })
 
-        events.append(_evt(
+        result_evt = _evt(
             "tool_result", tool=name, call_id=call_id,
             display_name=display_name,
             ok=result.ok, output=_truncate(result.output),
             duration_ms=duration_ms,
-        ))
+        )
+        events.append(result_evt)
+        if ws_notify:
+            try:
+                await ws_notify(result_evt)
+            except Exception:
+                logger.debug("ws_notify tool_result failed", exc_info=True)
 
         messages.append({
             "role": "tool",
@@ -114,6 +132,7 @@ async def run_tool_loop(
     model: str | None = None,
     llm_kw: dict[str, Any] | None = None,
     collect_results: list[dict[str, Any]] | None = None,
+    ws_notify: WSNotifyFn | None = None,
 ) -> str:
     """Non-streaming tool loop: iterate until the LLM produces a final text.
 
@@ -136,6 +155,7 @@ async def run_tool_loop(
             workspace_id=workspace_id,
             agent_type=agent_type,
             collect_results=collect_results,
+            ws_notify=ws_notify,
         )
 
     for msg in reversed(messages):
@@ -157,6 +177,7 @@ async def run_tool_loop_stream(
     agent_type: AgentType | str = "",
     model: str | None = None,
     collect_results: list[dict[str, Any]] | None = None,
+    ws_notify: WSNotifyFn | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """Streaming tool loop: yields content deltas and tool events."""
 
@@ -213,6 +234,7 @@ async def run_tool_loop_stream(
                 workspace_id=workspace_id,
                 agent_type=agent_type,
                 collect_results=collect_results,
+                ws_notify=ws_notify,
             )
             for evt in events:
                 yield evt
