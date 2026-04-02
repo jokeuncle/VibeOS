@@ -230,7 +230,7 @@ const intelligence = {
   'traces.title': '追踪',
   'traces.desc': 'Agent 推理历史——此工作空间内所有需求的 LLM 调用、工具链和决策路径。',
   'traces.totalExecutions': '总执行次数',
-  'traces.totalTokens': '总 Token',
+  'traces.activeRuns': '进行中',
   'traces.errors': '错误',
   'traces.noResults': '没有符合当前筛选条件的追踪记录。',
   'traces.allAgents': '所有 Agent',

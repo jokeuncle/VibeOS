@@ -230,7 +230,7 @@ const intelligence = {
   'traces.title': 'Traces',
   'traces.desc': 'Agent reasoning history — LLM calls, tool chains, and decision paths across all requirements in this workspace.',
   'traces.totalExecutions': 'Total executions',
-  'traces.totalTokens': 'Total tokens',
+  'traces.activeRuns': 'Active now',
   'traces.errors': 'Errors',
   'traces.noResults': 'No traces match the current filter.',
   'traces.allAgents': 'All agents',

@@ -8,7 +8,6 @@ import {
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import type { AgentExecution } from '../types'
-import type { TranslationKey } from '../i18n/en'
 import ArtifactPanel from './ArtifactPanel'
 import NativeSelect from './ui/NativeSelect'
 
@@ -175,7 +174,12 @@ export default function WorkspaceTraces() {
 
   const stats = [
     { label: t('traces.totalExecutions'), value: executions.length.toString(), icon: Activity, color: 'text-text-primary' },
-    { label: t('traces.totalTokens'),     value: `${executions.filter(e => e.status === 'running' || e.status === 'queued').length} ${t('agent.active' as TranslationKey)}`, icon: Zap, color: 'text-accent' },
+    {
+      label: t('traces.activeRuns'),
+      value: String(executions.filter(e => e.status === 'running' || e.status === 'queued').length),
+      icon: Zap,
+      color: 'text-accent',
+    },
     { label: t('traces.errors'),          value: errorCount.toString(), icon: AlertCircle, color: errorCount > 0 ? 'text-danger' : 'text-text-tertiary' },
   ]
 

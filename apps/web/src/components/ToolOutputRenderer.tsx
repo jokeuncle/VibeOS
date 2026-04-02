@@ -100,35 +100,38 @@ function JsonValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
   return <span className="text-text-tertiary">{String(value)}</span>
 }
 
-function JsonTreeView({ text }: { text: string }) {
+function JsonTreeView({ text, comfortable }: { text: string; comfortable?: boolean }) {
   const parsed = useMemo(() => {
     try { return JSON.parse(text) } catch { return null }
   }, [text])
 
-  if (parsed === null) return <PlainView text={text} />
+  if (parsed === null) return <PlainView text={text} comfortable={comfortable} />
 
+  const maxH = comfortable ? 'max-h-[min(70vh,28rem)]' : 'max-h-64'
   return (
-    <div className="text-[10px] font-mono leading-relaxed bg-surface-2/30 rounded-md px-2 py-1.5 max-h-64 overflow-y-auto">
+    <div className={`text-[10px] font-mono leading-relaxed bg-surface-2/30 rounded-md px-2 py-1.5 overflow-y-auto ${maxH}`}>
       <JsonValue value={parsed} />
     </div>
   )
 }
 
-function PlainView({ text }: { text: string }) {
+function PlainView({ text, comfortable }: { text: string; comfortable?: boolean }) {
   const lines = text.split('\n')
-  const truncated = lines.length > 12
+  const truncated = !comfortable && lines.length > 12
   const display = truncated ? lines.slice(0, 12).join('\n') + '\n…' : text
+  const maxH = comfortable ? 'max-h-[min(70vh,28rem)]' : 'max-h-64'
 
   return (
-    <pre className="text-[10px] font-mono text-text-secondary leading-relaxed whitespace-pre-wrap break-all bg-surface-2/30 rounded-md px-2 py-1.5 max-h-64 overflow-y-auto">
+    <pre className={`text-[10px] font-mono text-text-secondary leading-relaxed whitespace-pre-wrap break-all bg-surface-2/30 rounded-md px-2 py-1.5 overflow-y-auto ${maxH}`}>
       {display}
     </pre>
   )
 }
 
-function MarkdownView({ text }: { text: string }) {
+function MarkdownView({ text, comfortable }: { text: string; comfortable?: boolean }) {
+  const maxH = comfortable ? 'max-h-[min(70vh,28rem)]' : 'max-h-64'
   return (
-    <div className="bg-surface-2/30 rounded-md px-2.5 py-1.5 max-h-64 overflow-y-auto tool-output-md">
+    <div className={`bg-surface-2/30 rounded-md px-2.5 py-1.5 overflow-y-auto tool-output-md ${maxH}`}>
       <MarkdownContent text={text} />
     </div>
   )
@@ -148,22 +151,26 @@ function ErrorView({ text }: { text: string }) {
 export function ToolOutputRenderer({
   text,
   isError = false,
+  /** Larger scroll area, no plain-text line cap — for artifact panels etc. */
+  variant = 'compact',
 }: {
   text: string
   isError?: boolean
+  variant?: 'compact' | 'comfortable'
 }) {
   if (isError) return <ErrorView text={text} />
 
   const format = detectFormat(text)
+  const comfortable = variant === 'comfortable'
 
   return (
     <div className="relative group/output">
       <div className="absolute top-1 right-1 opacity-0 group-hover/output:opacity-100 transition-opacity z-10">
         <CopyButton text={text} />
       </div>
-      {format === 'json' && <JsonTreeView text={text} />}
-      {format === 'markdown' && <MarkdownView text={text} />}
-      {format === 'plain' && <PlainView text={text} />}
+      {format === 'json' && <JsonTreeView text={text} comfortable={comfortable} />}
+      {format === 'markdown' && <MarkdownView text={text} comfortable={comfortable} />}
+      {format === 'plain' && <PlainView text={text} comfortable={comfortable} />}
     </div>
   )
 }

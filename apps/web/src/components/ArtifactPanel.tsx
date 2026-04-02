@@ -9,6 +9,8 @@ import { useT } from '../i18n'
 import { workspaceApi } from '../lib/api'
 import type { Artifact } from '../types'
 import type { TranslationKey } from '../i18n/en'
+import { MarkdownContent } from './MessageMarkdown'
+import { ToolOutputRenderer } from './ToolOutputRenderer'
 
 const ICON_MAP: Record<string, typeof FileCode2> = {
   schema: Database,
@@ -66,7 +68,13 @@ function RenderedContent({ artifact }: { artifact: Artifact }) {
 
   if (artType === 'adr' || artType === 'markdown' || artType === 'prd_document'
       || artType === 'design_spec' || artType === 'test_plan') {
-    return <MarkdownView text={content} />
+    return (
+      <div className="rounded-lg border border-border-subtle overflow-hidden">
+        <div className="bg-surface-2/30 px-2.5 py-1.5 max-h-[min(70vh,28rem)] overflow-y-auto tool-output-md">
+          <MarkdownContent text={content} />
+        </div>
+      </div>
+    )
   }
 
   if (artType === 'diagram' || artType === 'mermaid') {
@@ -76,9 +84,9 @@ function RenderedContent({ artifact }: { artifact: Artifact }) {
           <Network className="w-3 h-3 text-text-tertiary" />
           <span className="text-[10px] font-mono text-text-tertiary">mermaid</span>
         </div>
-        <pre className="p-3 bg-surface-2/50 overflow-x-auto rounded-b-lg">
-          <code className="text-[11px] font-mono text-text-primary leading-relaxed whitespace-pre">{content}</code>
-        </pre>
+        <div className="rounded-b-lg border-x border-b border-border-subtle border-t-0 overflow-hidden bg-surface-2/20 p-3">
+          <ToolOutputRenderer text={content} variant="comfortable" />
+        </div>
       </div>
     )
   }
@@ -90,77 +98,11 @@ function RenderedContent({ artifact }: { artifact: Artifact }) {
         <Code2 className="w-3 h-3 text-text-tertiary" />
         <span className="text-[10px] font-mono text-text-tertiary">{lang}</span>
       </div>
-      <pre className="p-3 bg-surface-2/50 overflow-x-auto rounded-b-lg max-h-80">
-        <code className="text-[11px] font-mono text-text-primary leading-relaxed whitespace-pre">{content}</code>
-      </pre>
+      <div className="rounded-b-lg border-x border-b border-border-subtle border-t-0 overflow-hidden bg-surface-2/20 p-3">
+        <ToolOutputRenderer text={content} variant="comfortable" />
+      </div>
     </div>
   )
-}
-
-function MarkdownView({ text }: { text: string }) {
-  const lines = text.split('\n')
-  const elements: React.ReactNode[] = []
-
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i]
-    const trimmed = line.trimStart()
-
-    if (trimmed.startsWith('```')) {
-      const lang = trimmed.slice(3).trim()
-      const codeLines: string[] = []
-      i++
-      while (i < lines.length && !lines[i].trimStart().startsWith('```')) {
-        codeLines.push(lines[i])
-        i++
-      }
-      elements.push(
-        <div key={i} className="rounded-lg border border-border-subtle overflow-hidden my-2">
-          {lang && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-surface-3 border-b border-border-subtle">
-              <Code2 className="w-3 h-3 text-text-tertiary" />
-              <span className="text-[10px] font-mono text-text-tertiary">{lang}</span>
-            </div>
-          )}
-          <pre className="p-3 bg-surface-2/50 overflow-x-auto">
-            <code className="text-[11px] font-mono leading-relaxed whitespace-pre">{codeLines.join('\n')}</code>
-          </pre>
-        </div>
-      )
-      i++
-      continue
-    }
-
-    if (trimmed.startsWith('### ')) {
-      elements.push(<h4 key={i} className="text-xs font-bold text-text-primary mt-3 mb-1">{trimmed.slice(4)}</h4>)
-    } else if (trimmed.startsWith('## ')) {
-      elements.push(<h3 key={i} className="text-sm font-bold text-text-primary mt-3 mb-1">{trimmed.slice(3)}</h3>)
-    } else if (trimmed.startsWith('# ')) {
-      elements.push(<h2 key={i} className="text-base font-bold text-text-primary mt-4 mb-1">{trimmed.slice(2)}</h2>)
-    } else if (/^[-*]\s/.test(trimmed)) {
-      elements.push(
-        <div key={i} className="flex gap-2 pl-2">
-          <span className="text-text-tertiary shrink-0">•</span>
-          <span className="text-xs text-text-primary/90 leading-relaxed">{trimmed.slice(2)}</span>
-        </div>
-      )
-    } else if (/^\d+\.\s/.test(trimmed)) {
-      const num = trimmed.match(/^(\d+)\./)?.[1]
-      elements.push(
-        <div key={i} className="flex gap-2 pl-2">
-          <span className="text-text-tertiary shrink-0 text-xs font-mono">{num}.</span>
-          <span className="text-xs text-text-primary/90 leading-relaxed">{trimmed.replace(/^\d+\.\s/, '')}</span>
-        </div>
-      )
-    } else if (trimmed === '') {
-      elements.push(<div key={i} className="h-2" />)
-    } else {
-      elements.push(<p key={i} className="text-xs text-text-primary/90 leading-relaxed">{trimmed}</p>)
-    }
-    i++
-  }
-
-  return <div className="space-y-1">{elements}</div>
 }
 
 const LANG_MAP: Record<string, string> = {
