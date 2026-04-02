@@ -55,7 +55,7 @@ export default function RequirementDetail() {
     const agents = workspace?.agents ?? []
     const map: Record<string, { requireApproval?: boolean; qualityGate?: string }> = {}
     for (const a of agents) {
-      map[a.type] = { requireApproval: a.requireApproval, qualityGate: a.qualityGate }
+      map[a.type] = { requireApproval: a.requireApproval, qualityGate: a.qualityGate ?? undefined }
     }
     return map
   }, [workspace?.agents])

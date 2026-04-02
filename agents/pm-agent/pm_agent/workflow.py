@@ -1112,7 +1112,8 @@ class WorkflowEngine:
             return True
 
         try:
-            arts = await self.ws_client.query_artifacts(workspace_id, phase=phase_type)
+            agent_type = _agent_for_phase(phase_type).value
+            arts = await self.ws_client.list_artifacts(workspace_id, agent_type=agent_type)
         except Exception:
             arts = []
 
@@ -1148,7 +1149,8 @@ class WorkflowEngine:
     ) -> bool:
         """Use the LLM gateway to review phase artifacts for quality."""
         try:
-            arts = await self.ws_client.query_artifacts(workspace_id, phase=phase_type)
+            agent_type = _agent_for_phase(phase_type).value
+            arts = await self.ws_client.list_artifacts(workspace_id, agent_type=agent_type)
         except Exception:
             arts = []
 

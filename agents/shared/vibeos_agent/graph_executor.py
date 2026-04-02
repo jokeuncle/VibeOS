@@ -148,6 +148,7 @@ class GraphExecutor:
         self._tool_manager = tool_manager
         self._endpoint_overrides = endpoint_overrides or {}
         self._capability_cache: dict[str, dict[str, Any]] = {}
+        self._checkpointers: dict[str, Any] = {}  # thread_id -> checkpointer
 
     async def _resolve_capability(self, ref: str) -> dict[str, Any] | None:
         if ref in self._capability_cache:
@@ -599,9 +600,17 @@ class GraphExecutor:
         before them and yields a ``graph:node_awaiting_approval`` event.
         Call ``resume()`` with the same ``thread_id`` to continue.
         """
+        tid = thread_id or uuid.uuid4().hex
+
+        # Reuse or create checkpointer so resume() can find it
+        if checkpointer is None:
+            checkpointer = self._checkpointers.get(tid)
+        if checkpointer is None:
+            checkpointer = MemorySaver()
+        self._checkpointers[tid] = checkpointer
+
         compiled = await self.compile(graph_def, checkpointer=checkpointer)
         initial = input_state or {}
-        tid = thread_id or uuid.uuid4().hex
         run_config = {"configurable": {"thread_id": tid}}
 
         parsed = ParsedGraphDef.from_dict(graph_def)
@@ -647,6 +656,8 @@ class GraphExecutor:
             except Exception:
                 logger.debug("Could not check interrupt state", exc_info=True)
 
+        # Completed — clean up checkpointer
+        self._checkpointers.pop(tid, None)
         yield {"event": "graph:complete", "data": {"thread_id": tid}}
 
     async def resume(
@@ -662,6 +673,16 @@ class GraphExecutor:
         Called after a ``human_in_loop`` node has been approved.  Yields
         the same event stream as ``execute()``.
         """
+        # Retrieve the checkpointer that was used during execute()
+        if checkpointer is None:
+            checkpointer = self._checkpointers.get(thread_id)
+        if checkpointer is None:
+            logger.error("No checkpointer found for thread %s — cannot resume", thread_id)
+            yield {"event": "graph:error", "data": {
+                "error": f"No checkpoint for thread {thread_id}",
+            }}
+            return
+
         compiled = await self.compile(graph_def, checkpointer=checkpointer)
         run_config = {"configurable": {"thread_id": thread_id}}
 
@@ -702,6 +723,8 @@ class GraphExecutor:
             except Exception:
                 logger.debug("Could not check interrupt state after resume", exc_info=True)
 
+        # Completed — clean up checkpointer
+        self._checkpointers.pop(thread_id, None)
         yield {"event": "graph:complete", "data": {"thread_id": thread_id}}
 
 

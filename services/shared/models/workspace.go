@@ -63,11 +63,12 @@ const (
 type RequirementStatus string
 
 const (
-	RequirementDraft      RequirementStatus = "draft"
-	RequirementDesigning  RequirementStatus = "designing"
-	RequirementReady      RequirementStatus = "ready"
-	RequirementInProgress RequirementStatus = "in_progress"
-	RequirementCompleted  RequirementStatus = "completed"
+	RequirementDraft             RequirementStatus = "draft"
+	RequirementDesigning         RequirementStatus = "designing"
+	RequirementReady             RequirementStatus = "ready"
+	RequirementInProgress        RequirementStatus = "in_progress"
+	RequirementAwaitingApproval  RequirementStatus = "awaiting_approval"
+	RequirementCompleted         RequirementStatus = "completed"
 )
 
 type RelationType string
