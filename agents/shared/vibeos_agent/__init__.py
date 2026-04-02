@@ -45,11 +45,12 @@ from .sandbox_agent import SandboxAgent
 from .sdlc_agent import ArtifactConfig, SDLCAgent
 from .skills import Skill, SkillRegistry, SkillToolProvider
 from .user_context import UserContext, UserContextClient
+from .conversation import ConversationEngine, ConversationRequest
 from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
 from .session import SessionManager
 from .sse import sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
 from .telemetry import get_meter, get_tracer, init_telemetry
-from .tools import BaseTool, MCPServerConfig, MCPToolProvider, StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider
+from .tools import BaseTool, MCPServerConfig, MCPToolProvider, StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider, create_pm_tools
 
 __all__ = [
     "Activity",
@@ -67,6 +68,8 @@ __all__ = [
     "CapabilityDef",
     "ClientContainer",
     "Config",
+    "ConversationEngine",
+    "ConversationRequest",
     "GraphExecutor",
     "HAS_LANGGRAPH",
     "IntentDef",
@@ -103,6 +106,7 @@ __all__ = [
     "MCPServerConfig",
     "MCPToolProvider",
     "create_agent_app",
+    "create_pm_tools",
     "get_meter",
     "get_tracer",
     "init_telemetry",

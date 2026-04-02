@@ -26,7 +26,10 @@ class InvocationContext:
     workspace_id: str
     agent_type: AgentType
     user_message: str
-    mode: str = "chat"  # "chat" | "chat_stream" | "task"
+    mode: str = "conversation"
+
+    locale: str = "auto"
+    target_agent: str | None = None
 
     system_prompt: str = ""
     enriched_prompt: str | None = None

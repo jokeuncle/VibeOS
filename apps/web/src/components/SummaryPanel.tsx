@@ -138,7 +138,7 @@ export default function SummaryPanel() {
 
       const conversationContext = agentMessages.slice(-10).map((m) => m.content.slice(0, 500)).join('\n---\n')
 
-      const resp = await fetch('/api/nlp/stream', {
+      const resp = await fetch('/api/conversation/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

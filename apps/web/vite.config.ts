@@ -8,22 +8,9 @@ export default defineConfig({
     port: 3000,
     open: true,
     proxy: {
-      '/api/nlp': {
+      '/api/conversation': {
         target: 'http://localhost:8040',
         changeOrigin: true,
-      },
-      '/api/workflow': {
-        target: 'http://localhost:8040',
-        changeOrigin: true,
-      },
-      '/api/agents': {
-        target: 'http://localhost:8040',
-        changeOrigin: true,
-        rewrite: (path) => {
-          // /api/agents/{type}/chat/stream -> /api/chat/{type}/stream
-          // /api/agents/{type}/chat -> /api/chat/{type}
-          return path.replace(/^\/api\/agents\/([^/]+)\/chat(\/stream)?$/, '/api/chat/$1$2')
-        },
       },
       '/api/feedback': {
         target: 'http://localhost:8040',
@@ -34,6 +21,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api/capabilities': {
+        target: 'http://localhost:8040',
+        changeOrigin: true,
+      },
+      '/api/workflow/approve': {
         target: 'http://localhost:8040',
         changeOrigin: true,
       },

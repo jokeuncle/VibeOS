@@ -457,83 +457,21 @@ export const gitlabCredentialApi = {
     ).then(unwrap),
 }
 
-/**
- * @deprecated Use ExecutionSession.run() directly with workflow endpoint URLs.
- * Kept temporarily for any external callers; will be removed in a future release.
- */
-export const workflowApi = {
-  runTask: (workspaceId: string, taskId: string, userMessage = '') =>
-    streamSSE('/api/workflow/run-task', {
+export const conversationApi = {
+  stream: (workspaceId: string, message: string, options?: {
+    locale?: string
+    context?: Record<string, unknown>
+    targetAgent?: string
+    graphId?: string
+  }) =>
+    streamSSE('/api/conversation/stream', {
       workspace_id: workspaceId,
-      task_id: taskId,
-      user_message: userMessage,
+      message,
+      ...(options?.locale ? { locale: options.locale } : {}),
+      ...(options?.context && Object.keys(options.context).length > 0 ? { context: options.context } : {}),
+      ...(options?.targetAgent ? { target_agent: options.targetAgent } : {}),
+      ...(options?.graphId ? { graph_id: options.graphId } : {}),
     }),
-
-  runPhase: (workspaceId: string, phaseType: string, userMessage = '') =>
-    streamSSE('/api/workflow/run-phase', {
-      workspace_id: workspaceId,
-      phase_type: phaseType,
-      user_message: userMessage,
-    }),
-
-  runProject: (workspaceId: string, userMessage = '', startPhase?: string) =>
-    streamSSE('/api/workflow/run-project', {
-      workspace_id: workspaceId,
-      user_message: userMessage,
-      start_phase: startPhase,
-    }),
-
-  runRequirement: (wsId: string, reqId: string, phaseType?: string, userMessage?: string) =>
-    streamSSE('/api/workflow/run-requirement', {
-      workspace_id: wsId,
-      requirement_id: reqId,
-      phase_type: phaseType,
-      user_message: userMessage || '',
-    }),
-}
-
-export const agentApi = {
-  classify: (message: string) =>
-    request<{
-      intent: string
-      summary: string
-      target_agent: string
-      confidence: number
-      is_ambiguous: boolean
-      intent_label: { zh?: string; en?: string }
-      agent_label: { zh?: string; en?: string }
-      alternatives: { intent: string; summary: string; target_agent: string; intent_label: { zh?: string; en?: string } }[]
-      slots?: Record<string, unknown>
-    }>('/api/nlp/classify', {
-      method: 'POST',
-      body: JSON.stringify({ message }),
-    }),
-
-  nlp: (workspaceId: string, message: string, context?: Record<string, unknown>) =>
-    request<{
-      intent: string
-      summary: string
-      target_agent: string
-      result: any
-      slots?: Record<string, unknown>
-    }>('/api/nlp', {
-      method: 'POST',
-      body: JSON.stringify({
-        workspace_id: workspaceId,
-        message,
-        ...(context && Object.keys(context).length > 0 ? { context } : {}),
-      }),
-    }),
-
-  chat: (agentType: string, workspaceId: string, message: string) =>
-    request<{ reply: string; rich_blocks: any[] }>(
-      `/api/agents/${agentType}/chat`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ workspace_id: workspaceId, message }),
-      },
-    ),
-
 }
 
 export interface SSEEvent {
@@ -581,114 +519,6 @@ export async function* streamSSE(
         yield { event: eventName, data: joined }
       }
     }
-  }
-}
-
-function mapNLPResultToMessage(
-  resp: { intent: string; summary: string; target_agent: string; result: any },
-  sessionId: string,
-): Message {
-  const richBlocks: RichBlock[] = []
-  const result = resp.result || {}
-
-  if (result.payload) {
-    const payload = result.payload
-
-    for (const art of payload.artifacts || []) {
-      richBlocks.push({
-        type: 'code',
-        title: art.title,
-        language: art.type === 'diagram' ? 'text' : art.type === 'adr' ? 'markdown' : art.type,
-        code: art.content,
-      })
-    }
-
-    for (const t of payload.created_tasks || []) {
-      richBlocks.push({
-        type: 'task_card',
-        taskTitle: t.title || t.data?.title,
-        taskStatus: 'pending',
-      })
-    }
-  }
-
-  const content =
-    result.payload?.summary || result.error || resp.summary || 'Request processed.'
-
-  return {
-    id: crypto.randomUUID(),
-    role: 'agent',
-    content,
-    richBlocks: richBlocks.length > 0 ? richBlocks : undefined,
-    agentType: resp.target_agent as AgentType,
-    timestamp: new Date().toISOString(),
-    sessionId,
-    contextType: 'workspace' as const,
-  }
-}
-
-function mapAgentChatToMessage(
-  resp: { reply: string; rich_blocks: any[] },
-  agentType: string,
-): Message {
-  const richBlocks: RichBlock[] = []
-
-  let content = resp.reply || ''
-
-  // Parse rich_blocks from the response payload
-  if (resp.rich_blocks?.length) {
-    for (const rb of resp.rich_blocks) {
-      if (rb.type === 'code') {
-        richBlocks.push({
-          type: 'code',
-          title: rb.metadata?.title || rb.title,
-          language: rb.language,
-          code: rb.content || rb.code,
-        })
-      } else if (rb.type === 'task_card') {
-        richBlocks.push({
-          type: 'task_card',
-          taskTitle: rb.content || rb.taskTitle,
-          taskStatus: 'pending',
-        })
-      }
-    }
-  }
-
-  // Also try to parse structured JSON from the reply text
-  if (richBlocks.length === 0) {
-    try {
-      const parsed = JSON.parse(content)
-      content = parsed.summary || content
-
-      for (const art of parsed.artifacts || []) {
-        richBlocks.push({
-          type: 'code',
-          title: art.title,
-          language: art.type === 'diagram' ? 'text' : art.type,
-          code: art.content,
-        })
-      }
-      for (const t of parsed.tasks || []) {
-        richBlocks.push({
-          type: 'task_card',
-          taskTitle: t.title,
-          taskStatus: 'pending',
-        })
-      }
-    } catch {
-      // reply is plain text
-    }
-  }
-
-  return {
-    id: crypto.randomUUID(),
-    role: 'agent',
-    content,
-    richBlocks: richBlocks.length > 0 ? richBlocks : undefined,
-    agentType: agentType as AgentType,
-    timestamp: new Date().toISOString(),
-    contextType: 'agent_dm' as const,
   }
 }
 
@@ -1223,4 +1053,4 @@ export const extApi = {
     }).then(unwrap),
 }
 
-export { mapNLPResultToMessage, mapAgentChatToMessage }
+
