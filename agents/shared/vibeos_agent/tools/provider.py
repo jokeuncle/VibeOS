@@ -113,27 +113,37 @@ class ToolManager:
     def __init__(self) -> None:
         self._providers: list[ToolProvider] = []
         self._tool_index: dict[str, ToolProvider] = {}
+        self._display_name_cache: dict[str, str] = {}
 
     def register_provider(self, provider: ToolProvider) -> None:
         self._providers.append(provider)
 
     def remove_providers(self, key_prefix: str) -> None:
         """Remove all providers whose provider_key starts with *key_prefix*."""
+        removed_tools = {
+            k for k, v in self._tool_index.items()
+            if v.provider_key.startswith(key_prefix)
+        }
         self._providers = [p for p in self._providers if not p.provider_key.startswith(key_prefix)]
         self._tool_index = {
             k: v for k, v in self._tool_index.items()
             if not v.provider_key.startswith(key_prefix)
         }
+        for name in removed_tools:
+            self._display_name_cache.pop(name, None)
 
     async def refresh_index(self) -> None:
         """Rebuild the name -> provider lookup from all providers."""
         self._tool_index.clear()
+        self._display_name_cache.clear()
         for provider in self._providers:
             try:
                 descriptors = await provider.list_tools()
                 for desc in descriptors:
                     if desc.name not in self._tool_index:
                         self._tool_index[desc.name] = provider
+                    if desc.display_name and desc.name not in self._display_name_cache:
+                        self._display_name_cache[desc.name] = desc.display_name
             except Exception:
                 logger.warning(
                     "Failed to list tools from provider %s",
@@ -190,12 +200,8 @@ class ToolManager:
         return result
 
     async def get_display_name(self, tool_name: str) -> str:
-        """Resolve the display_name for *tool_name* from the owning provider."""
-        for provider in self._providers:
-            try:
-                for desc in await provider.list_tools():
-                    if desc.name == tool_name:
-                        return desc.display_name or ""
-            except Exception:
-                pass
-        return ""
+        """Resolve the display_name for *tool_name*, using cache when available."""
+        if tool_name in self._display_name_cache:
+            return self._display_name_cache[tool_name]
+        await self.refresh_index()
+        return self._display_name_cache.get(tool_name, "")

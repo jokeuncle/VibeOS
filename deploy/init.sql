@@ -137,6 +137,7 @@ CREATE TABLE chat_messages (
     role VARCHAR(16) NOT NULL,
     content TEXT NOT NULL,
     rich_blocks JSONB,
+    segments JSONB,
     agent_type VARCHAR(32),
     requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

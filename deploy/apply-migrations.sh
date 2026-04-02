@@ -22,6 +22,7 @@ MIGRATIONS=(
   "015_registry_seed.sql"
   "016_agent_descriptor.sql"
   "017_unified_capability_registry.sql"
+  "019_chat_segments.sql"
 )
 
 run_psql() {

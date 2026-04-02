@@ -71,6 +71,7 @@ export function parseToolResult(data: any): Partial<ToolInvocation> & { id: stri
     output: data.output,
     error: data.status === 'error' ? data.output : undefined,
     durationMs: data.duration_ms,
+    ...(data.display_name ? { displayName: data.display_name } : {}),
   }
 }
 
