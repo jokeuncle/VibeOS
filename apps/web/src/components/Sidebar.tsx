@@ -12,6 +12,10 @@ import { useUIStore } from '../stores/ui'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 
+/** Must match `motion.aside` width — CommandBar anchors to the main pane using these. */
+export const SIDEBAR_WIDTH_COLLAPSED = 48
+export const SIDEBAR_WIDTH_EXPANDED = 200
+
 type ViewMode =
   | 'dashboard'
   | 'requirements'
@@ -135,7 +139,7 @@ export default function Sidebar() {
       <div className="flex shrink-0 flex-col self-stretch min-h-0">
         <motion.aside
           initial={false}
-          animate={{ width: collapsed ? 48 : 200 }}
+          animate={{ width: collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED }}
           transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
           className="flex-1 min-h-0 flex flex-col py-3 overflow-hidden border-r border-border-subtle bg-surface-1/40"
         >

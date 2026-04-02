@@ -100,35 +100,19 @@ export default function WorkspaceView() {
   const inReqDetail = currentViewMode === 'requirements' && !!activeRequirementId
   const showReqToolbar = currentViewMode === 'requirements' && !activeRequirementId
 
-  const wideWorkspaceViews =
-    currentViewMode === 'requirements' ||
-    currentViewMode === 'knowledgeBase' ||
-    currentViewMode === 'projectMemory' ||
-    currentViewMode === 'techKnowledge' ||
-    currentViewMode === 'pipeline' ||
-    currentViewMode === 'agentTeam' ||
-    currentViewMode === 'extensions' ||
-    currentViewMode === 'integrations' ||
-    currentViewMode === 'context' ||
-    currentViewMode === 'execution' ||
-    currentViewMode === 'traces' ||
-    currentViewMode === 'budget'
-  const maxW = currentViewMode === 'pipeline'
-    ? 'max-w-none'
-    : wideWorkspaceViews
-      ? 'max-w-5xl'
-      : 'max-w-3xl'
-
-  const isPipeline = currentViewMode === 'pipeline'
+  /** Full-bleed layout: pipeline / visual orchestration only; other sidebar views share one content width. */
+  const isPipelineLayout =
+    currentViewMode === 'pipeline' || currentViewMode === 'controlCenter'
+  const contentMaxW = isPipelineLayout ? 'max-w-none' : 'max-w-6xl'
 
   return (
     <motion.main
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className={`flex-1 min-h-0 ${isPipeline ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}
+      className={`flex-1 min-h-0 ${isPipelineLayout ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}
     >
-      <div className={isPipeline ? 'flex-1 min-h-0 flex flex-col w-full' : `mx-auto px-8 pt-6 pb-24 ${maxW}`}>
+      <div className={isPipelineLayout ? 'flex-1 min-h-0 flex flex-col w-full' : `mx-auto px-8 pt-6 pb-24 ${contentMaxW}`}>
           {/* Breadcrumb when viewing requirement detail */}
           {inReqDetail && (
             <div className="flex items-center gap-2 mb-5">
@@ -228,7 +212,7 @@ export default function WorkspaceView() {
             </div>
           )}
 
-          <div className={isPipeline ? 'flex-1 min-h-0 flex flex-col min-w-0' : 'space-y-6 pb-8'}>
+          <div className={isPipelineLayout ? 'flex-1 min-h-0 flex flex-col min-w-0' : 'space-y-6 pb-8'}>
             <ViewContent />
           </div>
       </div>

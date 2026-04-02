@@ -12,7 +12,7 @@ import WorkspaceHome from './components/WorkspaceHome'
 import ConversationThread from './components/ConversationThread'
 import WorkspaceView from './components/WorkspaceView'
 import WorkspaceTabs from './components/WorkspaceTabs'
-import Sidebar from './components/Sidebar'
+import Sidebar, { SIDEBAR_WIDTH_COLLAPSED, SIDEBAR_WIDTH_EXPANDED } from './components/Sidebar'
 import CommandPalette from './components/CommandPalette'
 import SettingsPanel from './components/SettingsPanel'
 import TaskDetail from './components/TaskDetail'
@@ -35,6 +35,7 @@ export default function App() {
     setShortcutsOpen,
     commandPaletteOpen,
     settingsOpen,
+    sidebarCollapsed,
   } = useUIStore()
   const { locale } = useI18nStore()
   const restoreSession = useAuthStore((s) => s.restoreSession)
@@ -169,11 +170,27 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-6 pb-2 pt-1 sm:px-10">
+        <motion.div
+          className="pointer-events-none absolute bottom-0 right-0 z-30 flex justify-center px-6 pb-2 pt-1 sm:px-10"
+          initial={false}
+          animate={{
+            left: activeWorkspaceId
+              ? sidebarCollapsed
+                ? SIDEBAR_WIDTH_COLLAPSED
+                : SIDEBAR_WIDTH_EXPANDED
+              : 0,
+          }}
+          transition={{
+            type: 'spring',
+            stiffness: 420,
+            damping: 34,
+            mass: 0.9,
+          }}
+        >
           <div className="pointer-events-auto w-full max-w-2xl">
             <CommandBar />
           </div>
-        </div>
+        </motion.div>
       </div>
 
       <Dock />
