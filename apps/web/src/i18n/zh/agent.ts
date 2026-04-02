@@ -127,6 +127,9 @@ const agent = {
   'artifact.filterAll': '所有阶段',
   'artifact.loading': '加载中…',
   'artifact.diagram': '图表',
+  'artifact.download': '下载',
+  'artifact.preview': '预览',
+  'artifact.openInTab': '在新标签页打开',
 
   'summary.title': '摘要',
   'summary.conversations': '对话摘要',

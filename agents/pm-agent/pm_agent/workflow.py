@@ -394,12 +394,33 @@ class WorkflowEngine:
             yield self.sm.ev(sid, "phase", "skip", {"phase": phase_type, "reason": "GraphExecutor not available"})
             return
         await self._ensure_mcp_providers(workspace_id)
+
+        gitlab_ctx: dict[str, Any] = {}
+        try:
+            repos = await self.ws_client.get_repos_for_phase(workspace_id, phase_type)
+            primary = next((r for r in repos if r.get("isPrimary")), repos[0] if repos else None)
+            if primary:
+                strategy = primary.get("branchStrategy", "feature")
+                default_branch = primary.get("branchDefault", "main")
+                gitlab_ctx = {
+                    "gitlab_repos": repos,
+                    "gitlab_primary_project": primary.get("projectId"),
+                    "gitlab_primary_url": primary.get("gitlabUrl"),
+                    "gitlab_branch_strategy": strategy,
+                    "gitlab_branch_default": default_branch,
+                    "gitlab_branch": resolve_branch_name(phase_type, strategy, default_branch),
+                    "gitlab_credential_id": primary.get("credentialId"),
+                }
+        except Exception:
+            _logger.debug("Could not load repos for graph phase %s", phase_type)
+
         input_state = {
             "workspace_id": workspace_id,
             "phase_type": phase_type,
             "user_message": user_message,
             "preferred_model": preferred_model or "default",
             "agent_type": _agent_for_phase(phase_type).value,
+            **gitlab_ctx,
         }
         try:
             async for event in self.graph_executor.execute(graph_def, input_state):

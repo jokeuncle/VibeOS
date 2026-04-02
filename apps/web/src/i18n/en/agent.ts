@@ -125,6 +125,9 @@ const agent = {
   'artifact.filterAll': 'All phases',
   'artifact.loading': 'Loading…',
   'artifact.diagram': 'Diagram',
+  'artifact.download': 'Download',
+  'artifact.preview': 'Preview',
+  'artifact.openInTab': 'Open in new tab',
 
   'summary.title': 'Summaries',
   'summary.conversations': 'Conversation Summaries',

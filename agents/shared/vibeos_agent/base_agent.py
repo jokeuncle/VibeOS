@@ -859,6 +859,37 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             return ""
         return "## Related Requirements Context\n\n" + "\n\n---\n\n".join(sections)
 
+    def _cos_upload_artifact(
+        self,
+        workspace_id: str,
+        artifact_type: str,
+        title: str,
+        content: str,
+        metadata: str = "{}",
+    ) -> str:
+        """Try uploading artifact content to COS; merge fileUrl into metadata.
+
+        Returns the (possibly enriched) metadata JSON string.
+        Failures are logged but never propagated.
+        """
+        from .cos import get_cos_uploader
+
+        uploader = get_cos_uploader()
+        if uploader is None or not content:
+            return metadata
+
+        try:
+            url = uploader.upload_artifact(workspace_id, artifact_type, title, content)
+            meta_dict = json.loads(metadata) if metadata and metadata != "{}" else {}
+            meta_dict["fileUrl"] = url
+            return json.dumps(meta_dict)
+        except Exception:
+            logger.warning(
+                "COS upload failed for artifact %s/%s — skipping",
+                artifact_type, title, exc_info=True,
+            )
+            return metadata
+
     async def _save_artifact(
         self,
         workspace_id: str,
@@ -869,7 +900,8 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         execution_id: str | None = None,
         metadata: str = "{}",
     ) -> dict[str, Any]:
-        """Persist an artifact to workspace-svc and auto-index to RAG."""
+        """Persist an artifact to workspace-svc, auto-upload to COS, and index to RAG."""
+        merged_meta = self._cos_upload_artifact(workspace_id, artifact_type, title, content, metadata)
         result = await self.workspace_svc.create_artifact(
             workspace_id,
             agent_type=_enum_val(self.agent_type),
@@ -877,7 +909,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             title=title,
             content=content,
             execution_id=execution_id,
-            metadata=metadata,
+            metadata=merged_meta,
         )
         if len(content) > 100:
             await self._auto_index_artifact(workspace_id, title, content, artifact_type)
@@ -905,6 +937,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         metadata: str = "{}",
     ) -> dict[str, Any]:
         """Upsert an artifact via its execution provenance."""
+        merged_meta = self._cos_upload_artifact(workspace_id, artifact_type, title, content, metadata)
         result = await self.workspace_svc.upsert_artifact(
             workspace_id,
             agent_type=_enum_val(self.agent_type),
@@ -912,7 +945,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             title=title,
             content=content,
             execution_id=execution_id,
-            metadata=metadata,
+            metadata=merged_meta,
         )
         if self.rag and content and len(content) > 100:
             try:

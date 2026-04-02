@@ -473,6 +473,21 @@ async def handle_approval(req: dict[str, Any]) -> dict[str, Any]:
     return {"status": "ok", "approved": req.get("approved")}
 
 
+@app.post("/api/workflow/run-project")
+async def run_project_direct(req: dict[str, Any]) -> StreamingResponse:
+    """Direct workflow trigger — bypasses LLM tool calling."""
+    workflow: WorkflowEngine = app.state.workflow
+    ws_id = req.get("workspace_id", "")
+    start_phase = req.get("start_phase", "requirement")
+    user_message = req.get("user_message", "")
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        async for evt in workflow.run_project(ws_id, user_message, start_phase=start_phase):
+            yield evt
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "pm-agent"}

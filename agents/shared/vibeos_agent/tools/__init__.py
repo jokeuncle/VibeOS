@@ -1,6 +1,7 @@
 """VibeOS Tool Framework -- extensible tool registry for agent function calling."""
 
 from .base import MOCK_EXTERNAL, BaseTool, ToolResult
+from .cos_tools import create_cos_tools
 from .mcp_provider import MCPServerConfig, MCPToolProvider
 from .pm_tools import create_pm_tools
 from .provider import StaticToolProvider, ToolDescriptor, ToolManager, ToolProvider
@@ -17,5 +18,6 @@ __all__ = [
     "ToolProvider",
     "ToolRegistry",
     "ToolResult",
+    "create_cos_tools",
     "create_pm_tools",
 ]

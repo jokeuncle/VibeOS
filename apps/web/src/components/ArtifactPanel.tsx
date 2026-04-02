@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FileCode2, FileText, Database, Network, ChevronDown, ChevronRight, Copy, Check, Code2 } from 'lucide-react'
+import {
+  FileCode2, FileText, Database, Network, ChevronDown, ChevronRight,
+  Copy, Check, Code2, Download, ExternalLink, Image as ImageIcon,
+} from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
 import { workspaceApi } from '../lib/api'
@@ -13,13 +16,56 @@ const ICON_MAP: Record<string, typeof FileCode2> = {
   code: FileCode2,
   adr: FileText,
   diagram: Network,
+  design_image: ImageIcon,
+  design_spec: FileText,
+  test_code: FileCode2,
+  test_plan: FileText,
+  prd_document: FileText,
+}
+
+function parseFileUrl(metadata: string | undefined): string | null {
+  if (!metadata || metadata === '{}') return null
+  try {
+    const parsed = JSON.parse(metadata)
+    return parsed.fileUrl || null
+  } catch {
+    return null
+  }
 }
 
 function RenderedContent({ artifact }: { artifact: Artifact }) {
+  const t = useT()
   const artType = artifact.type
   const content = artifact.content || ''
+  const fileUrl = parseFileUrl(artifact.metadata)
 
-  if (artType === 'adr' || artType === 'markdown') {
+  if (artType === 'design_image' && fileUrl) {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-lg border border-border-subtle overflow-hidden bg-white">
+          <iframe
+            src={fileUrl}
+            title={artifact.title}
+            className="w-full border-0"
+            style={{ height: 360 }}
+            sandbox="allow-same-origin"
+          />
+        </div>
+        <a
+          href={fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"
+        >
+          <ExternalLink className="w-3 h-3" />
+          {t('artifact.openInTab' as TranslationKey)}
+        </a>
+      </div>
+    )
+  }
+
+  if (artType === 'adr' || artType === 'markdown' || artType === 'prd_document'
+      || artType === 'design_spec' || artType === 'test_plan') {
     return <MarkdownView text={content} />
   }
 
@@ -123,6 +169,7 @@ const LANG_MAP: Record<string, string> = {
   code: 'typescript',
   adr: 'markdown',
   diagram: 'mermaid',
+  test_code: 'typescript',
 }
 
 function ArtifactCard({ artifact }: { artifact: Artifact }) {
@@ -130,6 +177,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const Icon = ICON_MAP[artifact.type] || FileText
+  const fileUrl = parseFileUrl(artifact.metadata)
 
   function handleCopy() {
     navigator.clipboard.writeText(artifact.content).catch(() => {})
@@ -152,6 +200,11 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
             {artifact.type} &middot; {artifact.agentType} &middot; v{artifact.version}
           </div>
         </div>
+        {fileUrl && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-medium shrink-0">
+            CDN
+          </span>
+        )}
         {expanded
           ? <ChevronDown className="w-4 h-4 text-text-tertiary shrink-0" />
           : <ChevronRight className="w-4 h-4 text-text-tertiary shrink-0" />
@@ -167,7 +220,32 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
             className="overflow-hidden"
           >
             <div className="border-t border-border-subtle px-4 py-3">
-              <div className="flex items-center justify-end mb-2">
+              <div className="flex items-center justify-end gap-1 mb-2">
+                {fileUrl && (
+                  <a
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-tertiary hover:text-text-secondary rounded-md hover:bg-surface-3 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-3 h-3" />
+                    {t('artifact.download' as TranslationKey)}
+                  </a>
+                )}
+                {fileUrl && (
+                  <a
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-tertiary hover:text-text-secondary rounded-md hover:bg-surface-3 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    {t('artifact.openInTab' as TranslationKey)}
+                  </a>
+                )}
                 <button
                   onClick={handleCopy}
                   className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-tertiary hover:text-text-secondary rounded-md hover:bg-surface-3 transition-colors cursor-pointer"

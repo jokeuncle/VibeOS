@@ -48,6 +48,7 @@ const REGISTRY = new Map<string, ToolDisplay>([
   ['feishu_send_message',        { label: '发送飞书消息',  icon: Send }],
   ['feishu_create_task',         { label: '创建飞书任务',  icon: ClipboardList }],
   ['feishu_upload_doc',          { label: '上传飞书文档',  icon: Upload }],
+  ['cos_upload_file',            { label: '上传到 CDN',   icon: Upload }],
 ])
 
 const FALLBACK: ToolDisplay = { label: '', icon: Wrench }

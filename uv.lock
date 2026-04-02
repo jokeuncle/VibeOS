@@ -659,6 +659,28 @@ wheels = [
 ]
 
 [[package]]
+name = "cos-python-sdk-v5"
+version = "1.9.41"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "crcmod" },
+    { name = "pycryptodome" },
+    { name = "requests" },
+    { name = "six" },
+    { name = "xmltodict" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/38/c0029f413f51238aa2319715f45d74bcae931768e36c7e4604b02f407c6c/cos_python_sdk_v5-1.9.41.tar.gz", hash = "sha256:68f4be7d8fe27a1d186b3159b93c622816e398effdc236eddd442b86db592b82", size = 102625, upload-time = "2026-01-06T07:00:11.692Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/aa/2f/ead3fb551509fdc94e4a42093b770e3de2827ff7227570165df5e35c2a3e/cos_python_sdk_v5-1.9.41-py3-none-any.whl", hash = "sha256:f465aae43a4ba3f1caa8caeaca838d0395932f6848e89d6dde2807725e3c88a0", size = 98285, upload-time = "2026-01-06T06:43:02.754Z" },
+]
+
+[[package]]
+name = "crcmod"
+version = "1.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/b0/e595ce2a2527e169c3bcd6c33d2473c1918e0b7f6826a043ca1245dd4e5b/crcmod-1.7.tar.gz", hash = "sha256:dc7051a0db5f2bd48665a990d3ec1cc305a466a77358ca4492826f41f283601e", size = 89670, upload-time = "2010-06-27T14:35:29.538Z" }
+
+[[package]]
 name = "cryptography"
 version = "46.0.6"
 source = { registry = "https://pypi.org/simple" }
@@ -7472,6 +7494,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+cos = [
+    { name = "cos-python-sdk-v5" },
+]
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -7488,12 +7513,15 @@ graph = [
     { name = "langgraph-checkpoint" },
 ]
 tools = [
+    { name = "cos-python-sdk-v5" },
     { name = "lark-oapi" },
     { name = "python-gitlab" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "cos-python-sdk-v5", marker = "extra == 'cos'" },
+    { name = "cos-python-sdk-v5", marker = "extra == 'tools'" },
     { name = "httpx" },
     { name = "langgraph", marker = "extra == 'graph'", specifier = ">=0.2" },
     { name = "langgraph-checkpoint", marker = "extra == 'graph'", specifier = ">=2.0" },
@@ -7507,7 +7535,7 @@ requires-dist = [
     { name = "redis", extras = ["hiredis"] },
     { name = "ruff", marker = "extra == 'dev'" },
 ]
-provides-extras = ["gitlab", "feishu", "graph", "tools", "dev"]
+provides-extras = ["gitlab", "feishu", "graph", "cos", "tools", "dev"]
 
 [[package]]
 name = "watchfiles"
@@ -7680,6 +7708,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/79/d9/7cfd5a312760ac4dd8bf0184a6ee9e43c33e47f3dadc303032ce012b8fa3/wrapt-1.17.3-cp314-cp314t-win_amd64.whl", hash = "sha256:73d496de46cd2cdbdbcce4ae4bcdb4afb6a11234a1df9c085249d55166b95116", size = 41334, upload-time = "2025-08-12T05:53:14.178Z" },
     { url = "https://files.pythonhosted.org/packages/46/78/10ad9781128ed2f99dbc474f43283b13fea8ba58723e98844367531c18e9/wrapt-1.17.3-cp314-cp314t-win_arm64.whl", hash = "sha256:f38e60678850c42461d4202739f9bf1e3a737c7ad283638251e79cc49effb6b6", size = 38471, upload-time = "2025-08-12T05:52:57.784Z" },
     { url = "https://files.pythonhosted.org/packages/1f/f6/a933bd70f98e9cf3e08167fc5cd7aaaca49147e48411c0bd5ae701bb2194/wrapt-1.17.3-py3-none-any.whl", hash = "sha256:7171ae35d2c33d326ac19dd8facb1e82e5fd04ef8c6c0e394d7af55a55051c22", size = 23591, upload-time = "2025-08-12T05:53:20.674Z" },
+]
+
+[[package]]
+name = "xmltodict"
+version = "1.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/70/80f3b7c10d2630aa66414bf23d210386700aa390547278c789afa994fd7e/xmltodict-1.0.4.tar.gz", hash = "sha256:6d94c9f834dd9e44514162799d344d815a3a4faec913717a9ecbfa5be1bb8e61", size = 26124, upload-time = "2026-02-22T02:21:22.074Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/34/98a2f52245f4d47be93b580dae5f9861ef58977d73a79eb47c58f1ad1f3a/xmltodict-1.0.4-py3-none-any.whl", hash = "sha256:a4a00d300b0e1c59fc2bfccb53d7b2e88c32f200df138a0dd2229f842497026a", size = 13580, upload-time = "2026-02-22T02:21:21.039Z" },
 ]
 
 [[package]]

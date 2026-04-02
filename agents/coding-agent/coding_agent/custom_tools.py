@@ -116,7 +116,7 @@ class ArtifactExecutor(ToolExecutor[ArtifactAction, ArtifactObservation]):
         self, action: ArtifactAction, conversation: Any = None,
     ) -> ArtifactObservation:
         body = {
-            "agent_type": "coding",
+            "agentType": "development",
             "type": action.artifact_type,
             "title": action.title,
             "content": action.content,

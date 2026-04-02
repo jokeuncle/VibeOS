@@ -17,5 +17,6 @@ dependencies = [
 gitlab = ["python-gitlab"]
 feishu = ["lark-oapi"]
 graph = ["langgraph>=0.2", "langgraph-checkpoint>=2.0"]
-tools = ["python-gitlab", "lark-oapi"]
+cos = ["cos-python-sdk-v5"]
+tools = ["python-gitlab", "lark-oapi", "cos-python-sdk-v5"]
 dev = ["pytest", "pytest-asyncio", "ruff"]
