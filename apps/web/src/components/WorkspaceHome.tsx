@@ -203,9 +203,8 @@ export default function WorkspaceHome() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
-      {/* No extra bottom padding when the assistant is open — it is `absolute` and should overlay
-          without reflowing `my-auto` centering (which previously “pushed” the grid upward). */}
-      <div className="flex-1 flex flex-col items-center px-8 overflow-y-auto pb-4">
+      {/* Bottom padding clears the app-level floating CommandBar */}
+      <div className="flex-1 flex flex-col items-center px-8 overflow-y-auto pb-24">
         <div className="my-auto py-16 w-full flex flex-col items-center">
         <motion.div
           initial={{ opacity: 0, y: -20 }}

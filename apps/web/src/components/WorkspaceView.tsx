@@ -128,7 +128,7 @@ export default function WorkspaceView() {
       transition={{ duration: 0.3 }}
       className={`flex-1 min-h-0 ${isPipeline ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}
     >
-      <div className={isPipeline ? 'flex-1 min-h-0 flex flex-col w-full' : `mx-auto px-8 py-6 ${maxW}`}>
+      <div className={isPipeline ? 'flex-1 min-h-0 flex flex-col w-full' : `mx-auto px-8 pt-6 pb-24 ${maxW}`}>
           {/* Breadcrumb when viewing requirement detail */}
           {inReqDetail && (
             <div className="flex items-center gap-2 mb-5">

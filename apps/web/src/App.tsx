@@ -35,10 +35,7 @@ export default function App() {
     setShortcutsOpen,
     commandPaletteOpen,
     settingsOpen,
-    viewMode,
   } = useUIStore()
-
-  const isPipeline = viewMode === 'pipeline'
   const { locale } = useI18nStore()
   const restoreSession = useAuthStore((s) => s.restoreSession)
   const authToken = useAuthStore((s) => s.token)
@@ -128,7 +125,7 @@ export default function App() {
       <TitleBar />
       <WorkspaceTabs />
 
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
         <AnimatePresence mode="wait">
           {activeWorkspaceId ? (
             <motion.div
@@ -146,7 +143,7 @@ export default function App() {
                   <WorkspaceView />
 
                   {/* ConversationThread: floats above content */}
-                  <div className={`pointer-events-none absolute inset-x-0 z-20 flex justify-center px-6 sm:px-10 ${isPipeline ? 'bottom-16 pb-2' : 'bottom-0 pb-3 sm:pb-4'}`}>
+                  <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center px-6 pb-2 sm:px-10">
                     <div className="pointer-events-auto w-full max-w-2xl">
                       <ConversationThread
                         context="workspace"
@@ -155,20 +152,7 @@ export default function App() {
                       />
                     </div>
                   </div>
-
-                  {/* CommandBar: absolute overlay in pipeline mode, normal flow otherwise */}
-                  {isPipeline && (
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-0 z-30 w-full max-w-2xl px-6 pb-2 pt-1 sm:px-10">
-                      <CommandBar />
-                    </div>
-                  )}
                 </div>
-
-                {!isPipeline && (
-                  <div className="shrink-0 bg-gradient-to-t from-surface-0 via-surface-0/95 to-transparent px-6 pb-3 pt-4 sm:px-10">
-                    <CommandBar />
-                  </div>
-                )}
               </div>
             </motion.div>
           ) : (
@@ -185,11 +169,11 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {!activeWorkspaceId && (
-          <div className="shrink-0 px-6 pb-3 sm:px-10 sm:pb-4">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-6 pb-2 pt-1 sm:px-10">
+          <div className="pointer-events-auto w-full max-w-2xl">
             <CommandBar />
           </div>
-        )}
+        </div>
       </div>
 
       <Dock />
