@@ -115,7 +115,14 @@ class GitLabCreateIssue(BaseTool):
         "required": ["project_id", "title"],
     }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def mock(self, **kwargs: Any) -> str:
+        return self._json_result({
+            "status": "created",
+            "mock": True,
+            "issue": {"id": 1, "web_url": f"https://gitlab.example.com/mock/issues/1", "title": kwargs.get("title", "")},
+        })
+
+    async def _execute(self, **kwargs: Any) -> str:  # noqa: F811
         project_id = kwargs["project_id"]
         title = kwargs["title"]
         description = kwargs.get("description", "")
@@ -153,7 +160,18 @@ class GitLabCreateMR(BaseTool):
         "required": ["project_id", "source_branch", "title"],
     }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def mock(self, **kwargs: Any) -> str:
+        return self._json_result({
+            "status": "created",
+            "mock": True,
+            "merge_request": {
+                "id": 1,
+                "web_url": f"https://gitlab.example.com/mock/merge_requests/1",
+                "title": kwargs.get("title", ""),
+            },
+        })
+
+    async def _execute(self, **kwargs: Any) -> str:
         project_id = kwargs["project_id"]
         source = kwargs["source_branch"]
         target = kwargs.get("target_branch", "main")
@@ -191,7 +209,16 @@ class GitLabListPipelines(BaseTool):
         "required": ["project_id"],
     }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def mock(self, **kwargs: Any) -> str:
+        return self._json_result({
+            "mock": True,
+            "pipelines": [
+                {"id": 100, "status": "success", "ref": kwargs.get("ref", "main"),
+                 "web_url": "https://gitlab.example.com/mock/pipelines/100", "created_at": "2025-01-01T00:00:00Z"},
+            ],
+        })
+
+    async def _execute(self, **kwargs: Any) -> str:
         project_id = kwargs["project_id"]
         ref = kwargs.get("ref")
         limit = kwargs.get("limit", 5)
@@ -250,7 +277,16 @@ class GitLabPushFile(BaseTool):
         "required": ["project_id", "file_path", "content", "commit_message"],
     }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def mock(self, **kwargs: Any) -> str:
+        return self._json_result({
+            "status": "committed",
+            "mock": True,
+            "action": "created",
+            "file_path": kwargs.get("file_path", "unknown"),
+            "branch": kwargs.get("branch", "main"),
+        })
+
+    async def _execute(self, **kwargs: Any) -> str:
         project_id = kwargs["project_id"]
         file_path = kwargs["file_path"]
         content = kwargs["content"]

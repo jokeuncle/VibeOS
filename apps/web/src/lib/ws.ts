@@ -156,6 +156,16 @@ function handleWSEvent(event: Record<string, any>) {
     } else if (eventType === 'task:error' && event.task_id) {
       store.patchTaskStatus(event.workspaceId, event.task_id, 'pending')
     }
+
+    const workflowEventTypes = [
+      'phase:start', 'phase:complete', 'phase:skip',
+      'task:start', 'task:complete', 'task:error',
+      'project:start', 'project:complete', 'project:error',
+    ]
+    if (workflowEventTypes.includes(eventType)) {
+      const [category, action] = eventType.split(':')
+      store.appendWorkflowEvent({ category, action, data: event, sid: sid || '' })
+    }
   }
 
   // Notifications

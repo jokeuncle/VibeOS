@@ -84,6 +84,10 @@ export function buildWorkflowSlice(set: SetState, get: GetState) {
     workflowRunning: false,
     workflowEvents: [] as UnifiedEvent[],
 
+    appendWorkflowEvent: (event: UnifiedEvent) => {
+      set((s) => ({ workflowEvents: [...s.workflowEvents, event] }))
+    },
+
     runTask: (taskId: string) => {
       runViaConversation(set, get, `Run task ${taskId}`)
     },
@@ -110,7 +114,7 @@ export function buildWorkflowSlice(set: SetState, get: GetState) {
     },
   } satisfies Pick<
     WorkspaceState,
-    | 'workflowRunning' | 'workflowEvents'
+    | 'workflowRunning' | 'workflowEvents' | 'appendWorkflowEvent'
     | 'runTask' | 'runPhase' | 'runProject' | 'runRequirement'
   >
 }

@@ -97,6 +97,7 @@ export interface WorkspaceState {
 
   workflowRunning: boolean
   workflowEvents: UnifiedEvent[]
+  appendWorkflowEvent: (event: UnifiedEvent) => void
   runTask: (taskId: string) => void
   runPhase: (phaseType: string, userMessage?: string) => void
   runProject: (userMessage?: string) => void

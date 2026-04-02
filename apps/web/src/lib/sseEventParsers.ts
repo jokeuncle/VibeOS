@@ -152,3 +152,19 @@ registerBlockParser('warning', (data) => ({
   errorSeverity: 'warning',
   errorMessage: data.message,
 }))
+
+registerBlockParser('project_summary', (data) => ({
+  type: 'project_summary',
+  content: [
+    data.success ? 'Project completed successfully.' : 'Project stopped with errors.',
+    `Phases completed: ${(data.phases_completed ?? []).join(', ') || 'none'}`,
+    data.phases_skipped?.length ? `Phases skipped: ${data.phases_skipped.join(', ')}` : '',
+    `Total tasks: ${data.total_tasks ?? 0}`,
+  ].filter(Boolean).join('\n'),
+  metadata: {
+    phases_completed: data.phases_completed,
+    phases_skipped: data.phases_skipped,
+    total_tasks: data.total_tasks,
+    success: data.success,
+  },
+}))

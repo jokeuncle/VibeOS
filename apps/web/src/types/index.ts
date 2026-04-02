@@ -460,6 +460,7 @@ export interface RichBlock {
     | 'execution_timeline'
     | 'nlp_action'
     | 'execution_result'
+    | 'project_summary'
   title?: string
   description?: string
   actions?: RichAction[]

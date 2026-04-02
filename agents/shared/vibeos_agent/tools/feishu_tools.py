@@ -53,7 +53,15 @@ class FeishuSendMessage(BaseTool):
         "required": ["receive_id", "content"],
     }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def mock(self, **kwargs: Any) -> str:
+        return self._json_result({
+            "mock": True,
+            "message_id": "mock_msg_001",
+            "status": "sent",
+            "receive_id": kwargs.get("receive_id", ""),
+        })
+
+    async def _execute(self, **kwargs: Any) -> str:
         import asyncio
         import json as _json
         receive_id = kwargs["receive_id"]
@@ -104,7 +112,15 @@ class FeishuCreateTask(BaseTool):
         "required": ["summary"],
     }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def mock(self, **kwargs: Any) -> str:
+        return self._json_result({
+            "mock": True,
+            "task_id": "mock_task_001",
+            "summary": kwargs.get("summary", ""),
+            "status": "created",
+        })
+
+    async def _execute(self, **kwargs: Any) -> str:
         import asyncio
 
         summary = kwargs["summary"]
@@ -152,7 +168,15 @@ class FeishuUploadDoc(BaseTool):
         "required": ["title", "content"],
     }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def mock(self, **kwargs: Any) -> str:
+        return self._json_result({
+            "mock": True,
+            "document_id": "mock_doc_001",
+            "title": kwargs.get("title", ""),
+            "status": "created",
+        })
+
+    async def _execute(self, **kwargs: Any) -> str:
         import asyncio
         import json as _json
 

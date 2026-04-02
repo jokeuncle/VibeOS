@@ -5,10 +5,14 @@ import { useRegisterNlpContext } from '../hooks/useNlpContext'
 import { PIPELINE_COMMANDS, type NlpContextDescriptor } from '../lib/nlpContext'
 import ControlCenter from './ControlCenter/ControlCenter'
 import GraphToolbar from './ControlCenter/GraphToolbar'
+import WorkflowControls from './WorkflowControls'
 
 export default function WorkspacePipeline() {
   const t = useT()
-  const { activeWorkspaceId } = useWorkspaceStore()
+  const { activeWorkspaceId, workspaces } = useWorkspaceStore()
+
+  const ws = activeWorkspaceId ? workspaces[activeWorkspaceId] : undefined
+  const phases = ws?.phases ?? []
 
   const nlpDesc: NlpContextDescriptor | null = activeWorkspaceId ? {
     id: 'view:pipeline',
@@ -37,6 +41,12 @@ export default function WorkspacePipeline() {
           </div>
         </div>
       </div>
+
+      {phases.length > 0 && (
+        <div className="shrink-0 px-5 py-3 border-b border-border-subtle">
+          <WorkflowControls phases={phases} />
+        </div>
+      )}
 
       <div className="flex-1 min-h-0">
         <ControlCenter hideHeader />

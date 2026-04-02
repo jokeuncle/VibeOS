@@ -601,7 +601,6 @@ class WorkflowEngine:
             intent=f"execute_{phase_type}", description=f"Phase: {phase_type}",
             user_message=user_message,
             context={"phase_type": phase_type},
-            trust_threshold=agent_cfg.get("trustThreshold", 50.0),
             **desc_kw,
         )
         require_approval = agent_cfg.get("requireApproval", False)
@@ -710,6 +709,7 @@ class WorkflowEngine:
 
         tasks_succeeded = 0
         tasks_failed = 0
+        upstream_results: list[dict[str, Any]] = []
         for i, task in enumerate(pending):
             task_title = task.get("title", "Untitled")
             payload_start = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "index": i, "total": len(pending)}
@@ -736,11 +736,20 @@ class WorkflowEngine:
                     "gitlab_credential_id": primary.get("credentialId"),
                 }
 
+            task_context: dict[str, Any] = {
+                "task_title": task_title,
+                "task_description": task.get("description", ""),
+                "phase_type": phase_type,
+                **gitlab_ctx,
+            }
+            if upstream_results:
+                task_context["upstream_results"] = upstream_results[-3:]
+
             agent_task = AgentTask(
                 task_id=task["id"], workspace_id=workspace_id,
                 intent=f"execute_{phase_type}", description=task_title,
                 user_message=user_message or task.get("description", ""),
-                context={"task_title": task_title, "task_description": task.get("description", ""), "phase_type": phase_type, **gitlab_ctx},
+                context=task_context,
                 **desc_kw,
             )
 
@@ -758,6 +767,7 @@ class WorkflowEngine:
                     except Exception:
                         pass
                     result_summary = str(result)[:200]
+                    upstream_results.append({"task": task_title, "result": str(result)[:1000]})
                     payload_done = {"phase": phase_type, "task_id": task["id"], "task_title": task_title, "result_summary": result_summary}
                     yield self.sm.ev(sid, "task", "complete", payload_done)
                     await self.sm.broadcast(workspace_id, sid, "task", "complete", payload_done)
@@ -940,15 +950,34 @@ class WorkflowEngine:
         await self.sm.broadcast(workspace_id, sid, "project", "start", payload_start)
         await self.ws_gw.publish_agent_status(workspace_id, AgentType.PM, AgentStatus.RUNNING, detail="Running full project lifecycle")
 
+        enabled_set = set(phase_order)
+        skipped_phases: list[str] = []
+        for p in DEFAULT_PHASE_ORDER:
+            if p not in enabled_set:
+                skipped_phases.append(p)
+                skip_payload = {"phase": p, "reason": "disabled in agent profile"}
+                yield self.sm.ev(sid, "phase", "skip", skip_payload)
+                await self.sm.broadcast(workspace_id, sid, "phase", "skip", skip_payload)
+
         start_idx = 0
         if start_phase and start_phase in phase_order:
             start_idx = phase_order.index(start_phase)
 
         has_error = False
+        phase_summaries: list[str] = []
+        phases_completed: list[str] = []
+        total_tasks_run = 0
         for phase_type in phase_order[start_idx:]:
+            enriched_message = user_message
+            if phase_summaries:
+                enriched_message += "\n\nPrevious phase results:\n" + "\n".join(phase_summaries[-3:])
+
             failed_task_id: str | None = None
-            async for event_str in self._run_phase_inner(workspace_id, phase_type, user_message, pipeline_configs=pipeline_configs):
+            phase_tasks = 0
+            async for event_str in self._run_phase_inner(workspace_id, phase_type, enriched_message, pipeline_configs=pipeline_configs):
                 yield event_str
+                if "task:complete" in event_str:
+                    phase_tasks += 1
                 if "task:error" in event_str:
                     import json as _json
                     try:
@@ -967,6 +996,10 @@ class WorkflowEngine:
                 await self._recover_after_project_error(workspace_id, phase_type, failed_task_id)
                 break
 
+            phases_completed.append(phase_type)
+            total_tasks_run += phase_tasks
+            phase_summaries.append(f"- {phase_type}: {phase_tasks} task(s) completed")
+
             gate_passed = await self._check_quality_gate(workspace_id, phase_type, sid, configs=pipeline_configs)
             if not gate_passed:
                 payload_gate_fail = {"phase": phase_type, "error": "quality gate failed"}
@@ -974,6 +1007,15 @@ class WorkflowEngine:
                 await self.sm.broadcast(workspace_id, sid, "project", "error", payload_gate_fail)
                 has_error = True
                 break
+
+        summary_payload = {
+            "blockType": "project_summary",
+            "phases_completed": phases_completed,
+            "phases_skipped": skipped_phases,
+            "total_tasks": total_tasks_run,
+            "success": not has_error,
+        }
+        yield self.sm.ev(sid, "content", "payload", summary_payload)
 
         payload_done = {"workspace_id": workspace_id, "success": not has_error}
         yield self.sm.ev(sid, "project", "complete", payload_done)
