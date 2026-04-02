@@ -391,56 +391,6 @@ class WorkflowEngine:
             return await self._fetch_graph_by_id(workspace_id, graph_id)
         return await self._fetch_workspace_graph(workspace_id)
 
-    @staticmethod
-    def _auto_graph_for_tasks(
-        phase_type: str, tasks: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Generate a sequential capability graph from pending tasks.
-
-        Each task becomes a capability node targeting the phase's domain agent.
-        """
-        agent_type = _agent_for_phase(phase_type)
-        agent_key = agent_type.value
-        cap_ref_map: dict[str, str] = {
-            "requirement": "requirement.analyze",
-            "architecture": "architecture.design",
-            "design": "design.ui",
-            "development": "development.code_gen",
-            "testing": "testing.run",
-            "deployment": "cicd.pipeline",
-            "monitoring": "monitoring.setup",
-        }
-        cap_ref = cap_ref_map.get(phase_type, f"{agent_key}.{agent_key}")
-
-        nodes = [
-            {
-                "id": t["id"],
-                "type": "capability",
-                "capability_ref": cap_ref,
-                "config": {
-                    "task_title": t.get("title", "Untitled"),
-                    "task_description": t.get("description", ""),
-                    "timeout": 300,
-                },
-            }
-            for t in tasks
-        ]
-        edges: list[dict[str, str]] = []
-        if nodes:
-            edges.append({"source": "__start__", "target": nodes[0]["id"]})
-            for i in range(len(nodes) - 1):
-                edges.append({"source": nodes[i]["id"], "target": nodes[i + 1]["id"]})
-            edges.append({"source": nodes[-1]["id"], "target": "__end__"})
-
-        return {
-            "nodes": nodes,
-            "edges": edges,
-            "state_schema": {
-                "messages": {"type": "list", "reducer": "append"},
-            },
-            "config": {"checkpointer": "memory", "recursion_limit": 25},
-        }
-
     async def _build_cross_phase_context(
         self, workspace_id: str, completed_phases: list[str],
     ) -> str:
@@ -495,6 +445,7 @@ class WorkflowEngine:
     async def _execute_graph_for_phase(
         self, workspace_id: str, phase_type: str, graph_def: dict[str, Any],
         sid: str, user_message: str = "", preferred_model: str | None = None,
+        phase_id: str | None = None,
     ) -> AsyncIterator[str]:
         if not self.graph_executor:
             yield self._trace_ev(sid, "phase", "skip", {"phase": phase_type, "reason": "GraphExecutor not available"})
@@ -538,6 +489,21 @@ class WorkflowEngine:
             "upstream_artifacts": upstream_artifacts,
             **gitlab_ctx,
         }
+
+        if not phase_id:
+            phase_id = await self.ws_client.find_phase_by_type(workspace_id, phase_type)
+
+        # Pre-fetch task list to avoid N+1 HTTP calls per node
+        task_by_node: dict[str, dict[str, Any]] = {}
+        if phase_id:
+            try:
+                tasks = await self.ws_client.get_tasks_by_phase(workspace_id, phase_id)
+                task_by_node = {
+                    t["graphNodeId"]: t for t in tasks if t.get("graphNodeId")
+                }
+            except Exception:
+                _logger.debug("Failed to pre-fetch tasks for phase %s", phase_id)
+
         try:
             async for event in self.graph_executor.execute(graph_def, input_state):
                 evt_type = event.get("event", "")
@@ -546,12 +512,29 @@ class WorkflowEngine:
                     output = data.get("output", {})
                     node_error = output.get("_error", "") if isinstance(output, dict) else ""
                     node_id = data.get("node", "")
+
+                    task_id = node_id
+                    task_title = node_id
+                    linked_task = task_by_node.get(node_id)
+                    if linked_task:
+                        task_id = linked_task["id"]
+                        task_title = linked_task.get("title", node_id)
+                        try:
+                            if node_error:
+                                await self.ws_client.update_task(
+                                    workspace_id, task_id, {"status": "in_progress"},
+                                )
+                            else:
+                                await self.ws_client.complete_task(workspace_id, task_id)
+                        except Exception:
+                            _logger.debug("Failed to update task %s status", task_id)
+
                     if node_error:
-                        payload = {"phase": phase_type, "task_id": node_id, "task_title": node_id, "error": node_error[:500], "source": "graph"}
+                        payload = {"phase": phase_type, "task_id": task_id, "task_title": task_title, "error": node_error[:500], "source": "graph"}
                         yield self._trace_ev(sid, "task", "error", payload)
                         await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
                     else:
-                        payload = {"phase": phase_type, "task_id": node_id, "task_title": node_id, "result_summary": str(output)[:200], "source": "graph"}
+                        payload = {"phase": phase_type, "task_id": task_id, "task_title": task_title, "result_summary": str(output)[:200], "source": "graph"}
                         yield self._trace_ev(sid, "task", "complete", payload)
                         await self.sm.broadcast(workspace_id, sid, "task", "complete", payload)
                 elif evt_type == "graph:error":
@@ -562,29 +545,6 @@ class WorkflowEngine:
             payload = {"phase": phase_type, "error": str(exc), "source": "graph"}
             yield self._trace_ev(sid, "task", "error", payload)
             await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
-
-    async def _sync_phase_task_status(
-        self, workspace_id: str, phase_id: str, phase_status: PhaseStatus,
-    ) -> None:
-        """After graph execution, sync workspace task statuses to match phase outcome.
-
-        When a phase completes successfully, mark all pending tasks in that phase
-        as completed so progress tracking and the frontend reflect reality.
-        """
-        try:
-            tasks = await self.ws_client.get_tasks_by_phase(workspace_id, phase_id)
-            target_status = "completed" if phase_status == PhaseStatus.COMPLETED else "in_progress"
-            for t in tasks:
-                if t.get("status") in ("pending", "in_progress"):
-                    try:
-                        if target_status == "completed":
-                            await self.ws_client.complete_task(workspace_id, t["id"])
-                        else:
-                            await self.ws_client.update_task(workspace_id, t["id"], {"status": target_status})
-                    except Exception:
-                        pass
-        except Exception:
-            _logger.debug("Failed to sync task status for phase %s", phase_id)
 
     async def _recover_after_project_error(self, workspace_id: str, phase_type: str, failed_task_id: str | None) -> None:
         phase_id = await self.ws_client.find_phase_by_type(workspace_id, phase_type)
@@ -820,7 +780,7 @@ class WorkflowEngine:
                 pass
             graph_tasks = 0
             graph_errors = 0
-            async for evt in self._execute_graph_for_phase(workspace_id, phase_type, effective_graph, sid, user_message, preferred_model=preferred_model):
+            async for evt in self._execute_graph_for_phase(workspace_id, phase_type, effective_graph, sid, user_message, preferred_model=preferred_model, phase_id=phase_id):
                 yield evt
                 if "task:complete" in evt:
                     graph_tasks += 1
@@ -831,8 +791,6 @@ class WorkflowEngine:
                 await self.ws_client.update_phase(workspace_id, phase_id, status=final_status)
             except Exception:
                 pass
-
-            await self._sync_phase_task_status(workspace_id, phase_id, final_status)
 
             payload_done = {"phase": phase_type, "tasks_executed": graph_tasks, "tasks_total": graph_tasks + graph_errors, "tasks_failed": graph_errors, "source": graph_source}
             yield self._trace_ev(sid, "phase", "complete", payload_done)
@@ -1201,7 +1159,7 @@ class WorkflowEngine:
                 )
             return passed
         except Exception as exc:
-            logger.warning("LLM quality gate error for %s: %s", phase_type, exc)
+            _logger.warning("LLM quality gate error for %s: %s", phase_type, exc)
             return True  # fail open on LLM error
 
     async def _run_project_inner(self, workspace_id: str, user_message: str = "", *, start_phase: str | None = None) -> AsyncIterator[str]:

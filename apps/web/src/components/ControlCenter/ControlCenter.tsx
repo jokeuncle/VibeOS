@@ -23,6 +23,7 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
   const setWorkspaceId = useGraphStore((s) => s.setWorkspaceId)
   const loadWorkspaceGraph = useGraphStore((s) => s.loadWorkspaceGraph)
   const loadWorkspaceGraphs = useGraphStore((s) => s.loadWorkspaceGraphs)
+  const consumePendingLoad = useGraphStore((s) => s.consumePendingLoad)
   const currentWsId = useGraphStore((s) => s.workspaceId)
 
   useEffect(() => {
@@ -35,11 +36,18 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
   }, [setTemplates])
 
   useEffect(() => {
+    const pending = consumePendingLoad()
+    if (pending) {
+      setWorkspaceId(pending.wsId)
+      loadWorkspaceGraphs(pending.wsId)
+      loadWorkspaceGraph(pending.wsId, pending.graphId)
+      return
+    }
     if (!activeWorkspaceId || activeWorkspaceId === currentWsId) return
     setWorkspaceId(activeWorkspaceId)
     loadWorkspaceGraphs(activeWorkspaceId)
     loadWorkspaceGraph(activeWorkspaceId)
-  }, [activeWorkspaceId, currentWsId, setWorkspaceId, loadWorkspaceGraph, loadWorkspaceGraphs])
+  }, [activeWorkspaceId, currentWsId, setWorkspaceId, loadWorkspaceGraph, loadWorkspaceGraphs, consumePendingLoad])
 
   return (
     <ReactFlowProvider>

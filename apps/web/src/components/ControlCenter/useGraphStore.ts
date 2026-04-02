@@ -44,6 +44,7 @@ interface GraphState {
   graphId: string | null
   workspaceGraphs: WorkspaceGraph[]
   loadingGraph: boolean
+  _pendingLoad: { wsId: string; graphId: string } | null
 
   onNodesChange: OnNodesChange
   onEdgesChange: OnEdgesChange
@@ -70,8 +71,12 @@ interface GraphState {
 
   setWorkspaceId: (id: string | null) => void
   setGraphId: (id: string | null) => void
+  /** Schedule a graph to be loaded when ControlCenter mounts (from Agent Team etc.) */
+  requestLoadGraph: (wsId: string, graphId: string) => void
+  consumePendingLoad: () => { wsId: string; graphId: string } | null
   loadWorkspaceGraphs: (wsId: string) => Promise<void>
   loadWorkspaceGraph: (wsId: string, graphId?: string) => Promise<void>
+  loadDefaultGraph: (wsId: string, phaseType: string) => Promise<void>
   saveToWorkspace: (wsId: string) => Promise<void>
   cloneTemplate: (wsId: string, templateId: string, name: string) => Promise<void>
 
@@ -97,6 +102,7 @@ const initialState = {
   graphId: null as string | null,
   workspaceGraphs: [] as WorkspaceGraph[],
   loadingGraph: false,
+  _pendingLoad: null as { wsId: string; graphId: string } | null,
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
@@ -164,6 +170,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   setWorkspaceId: (workspaceId) => set({ workspaceId }),
   setGraphId: (graphId) => set({ graphId }),
 
+  requestLoadGraph: (wsId, graphId) => set({ _pendingLoad: { wsId, graphId } }),
+  consumePendingLoad: () => {
+    const pending = get()._pendingLoad
+    if (pending) set({ _pendingLoad: null })
+    return pending
+  },
+
   loadWorkspaceGraphs: async (wsId) => {
     try {
       const graphs = await workspaceGraphApi.list(wsId)
@@ -199,12 +212,34 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     }
   },
 
+  loadDefaultGraph: async (wsId, phaseType) => {
+    set({ loadingGraph: true })
+    try {
+      const graphDef = await workspaceGraphApi.getDefaultGraph(phaseType)
+      if (graphDef) {
+        set({
+          workspaceId: wsId,
+          graphId: null,
+          graphName: `${phaseType} (default)`,
+          graphDescription: '',
+        })
+        get().loadGraphDef(graphDef as Record<string, unknown>)
+        set({ dirty: false })
+      }
+    } catch {
+      set({ workspaceId: wsId, graphId: null })
+    } finally {
+      set({ loadingGraph: false })
+    }
+  },
+
   saveToWorkspace: async (wsId) => {
     const { graphId, graphName, graphDescription, toGraphDef } = get()
     const graphDef = toGraphDef()
     const stateSchema = (graphDef as Record<string, unknown>).state_schema as Record<string, unknown>
 
     try {
+      let savedId: string
       if (graphId) {
         const updated = await workspaceGraphApi.update(wsId, graphId, {
           name: graphName || undefined,
@@ -212,7 +247,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           graphDef: graphDef as Record<string, unknown>,
           stateSchema: stateSchema as Record<string, unknown>,
         })
-        set({ graphId: updated.id, dirty: false })
+        savedId = updated.id
+        set({ graphId: savedId, dirty: false })
       } else {
         const created = await workspaceGraphApi.create(wsId, {
           name: graphName || `workflow_${Date.now()}`,
@@ -221,7 +257,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           stateSchema: stateSchema as Record<string, unknown>,
           isActive: true,
         })
-        set({ graphId: created.id, dirty: false })
+        savedId = created.id
+        set({ graphId: savedId, dirty: false })
       }
       get().loadWorkspaceGraphs(wsId)
     } catch (err) {

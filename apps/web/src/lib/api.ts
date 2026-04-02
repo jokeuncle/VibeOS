@@ -873,6 +873,15 @@ export const workspaceGraphApi = {
 
   activate: (workspaceId: string, graphId: string) =>
     request<{ data: string }>(`/api/workspaces/${workspaceId}/graphs/${graphId}/activate`, { method: 'POST' }),
+
+  syncTasks: (workspaceId: string, graphId: string, body?: { phaseId?: string; requirementId?: string }) =>
+    request<{ data: import('../types').Task[] }>(`/api/workspaces/${workspaceId}/graphs/${graphId}/sync-tasks`, {
+      method: 'POST',
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }).then(unwrap),
+
+  getDefaultGraph: (phaseType: string) =>
+    request<{ data: Record<string, unknown> }>(`/api/default-graphs/${phaseType}`).then(unwrap),
 }
 
 export const registryApi = {

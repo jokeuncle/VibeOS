@@ -33,6 +33,9 @@ type Store interface {
 	DeleteTask(ctx context.Context, id string, workspaceID string) error
 	ReorderTasks(ctx context.Context, phaseID string, taskIDs []string) error
 	CountTasksByPhase(ctx context.Context, phaseID string) (total int, completed int, err error)
+	ListTasksByPhase(ctx context.Context, workspaceID, phaseID string, requirementID *string) ([]models.Task, error)
+	FindTaskByGraphNode(ctx context.Context, workspaceID, phaseID, graphNodeID string, requirementID *string) (*models.Task, error)
+	ListTasksByGraphID(ctx context.Context, workspaceID, graphID string) ([]models.Task, error)
 
 	ListAgentsByWorkspace(ctx context.Context, workspaceID string) ([]models.Agent, error)
 	CreateAgent(ctx context.Context, a models.Agent) (*models.Agent, error)

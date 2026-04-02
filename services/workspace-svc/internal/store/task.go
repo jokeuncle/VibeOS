@@ -11,7 +11,7 @@ import (
 	"github.com/vibeos/shared/models"
 )
 
-const taskCols = `id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, last_execution_id, execution_count, sort_order, created_at, updated_at`
+const taskCols = `id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, last_execution_id, execution_count, graph_node_id, graph_id, sort_order, created_at, updated_at`
 
 func scanTask(s rowScanner) (*models.Task, error) {
 	var t models.Task
@@ -20,6 +20,7 @@ func scanTask(s rowScanner) (*models.Task, error) {
 	err := s.Scan(&t.ID, &t.PhaseID, &t.WorkspaceID, &t.RequirementID, &t.Title, &t.Description,
 		&status, &priority, &t.Labels, &t.DueDate, &assignedAgent,
 		&t.LastExecutionID, &t.ExecutionCount,
+		&t.GraphNodeID, &t.GraphID,
 		&t.SortOrder, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -50,13 +51,76 @@ func (s *PostgresStore) CreateTask(ctx context.Context, task *models.Task) error
 		assignedAgent = &v
 	}
 	return s.pool.QueryRow(ctx, `
-		INSERT INTO tasks (id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, sort_order)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+		INSERT INTO tasks (id, phase_id, workspace_id, requirement_id, title, description, status, priority, labels, due_date, assigned_agent, graph_node_id, graph_id, sort_order)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
 			COALESCE((SELECT MAX(sort_order) FROM tasks WHERE phase_id = $2), -1) + 1)
 		RETURNING sort_order, created_at, updated_at`,
 		task.ID, task.PhaseID, task.WorkspaceID, task.RequirementID, task.Title, task.Description,
 		string(task.Status), priority, task.Labels, task.DueDate, assignedAgent,
+		task.GraphNodeID, task.GraphID,
 	).Scan(&task.SortOrder, &task.CreatedAt, &task.UpdatedAt)
+}
+
+func (s *PostgresStore) ListTasksByPhase(ctx context.Context, workspaceID, phaseID string, requirementID *string) ([]models.Task, error) {
+	var query string
+	var args []any
+	if requirementID != nil {
+		query = `SELECT ` + taskCols + ` FROM tasks WHERE workspace_id = $1 AND phase_id = $2 AND requirement_id = $3 ORDER BY sort_order`
+		args = []any{workspaceID, phaseID, *requirementID}
+	} else {
+		query = `SELECT ` + taskCols + ` FROM tasks WHERE workspace_id = $1 AND phase_id = $2 AND requirement_id IS NULL ORDER BY sort_order`
+		args = []any{workspaceID, phaseID}
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks by phase: %w", err)
+	}
+	defer rows.Close()
+	var out []models.Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresStore) FindTaskByGraphNode(ctx context.Context, workspaceID, phaseID, graphNodeID string, requirementID *string) (*models.Task, error) {
+	var query string
+	var args []any
+	if requirementID != nil {
+		query = `SELECT ` + taskCols + ` FROM tasks WHERE workspace_id = $1 AND phase_id = $2 AND graph_node_id = $3 AND requirement_id = $4 LIMIT 1`
+		args = []any{workspaceID, phaseID, graphNodeID, *requirementID}
+	} else {
+		query = `SELECT ` + taskCols + ` FROM tasks WHERE workspace_id = $1 AND phase_id = $2 AND graph_node_id = $3 LIMIT 1`
+		args = []any{workspaceID, phaseID, graphNodeID}
+	}
+	t, err := scanTask(s.pool.QueryRow(ctx, query, args...))
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *PostgresStore) ListTasksByGraphID(ctx context.Context, workspaceID, graphID string) ([]models.Task, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+taskCols+` FROM tasks WHERE workspace_id = $1 AND graph_id = $2 ORDER BY sort_order`,
+		workspaceID, graphID)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks by graph: %w", err)
+	}
+	defer rows.Close()
+	var out []models.Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
 }
 
 func (s *PostgresStore) GetTask(ctx context.Context, id string) (*models.Task, error) {

@@ -46,6 +46,8 @@ export interface Task {
   requirementId?: string
   lastExecutionId?: string
   executionCount?: number
+  graphNodeId?: string
+  graphId?: string
   sortOrder: number
   createdAt: string
   updatedAt: string

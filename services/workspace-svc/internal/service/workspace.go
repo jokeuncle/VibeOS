@@ -73,17 +73,7 @@ func defaultAgentNameAvatar(t models.AgentType) (name, avatar string, ok bool) {
 	return "", "", false
 }
 
-var requirementAnalysisTasks = []struct {
-	Title       string
-	Description string
-}{
-	{"Requirement Clarification", "Clarify raw requirements, resolve ambiguities, and confirm scope boundaries"},
-	{"Stakeholder & User Role Analysis", "Identify stakeholders, define user personas, goals, and pain points"},
-	{"User Story Decomposition", "Break requirements into actionable user stories with priority levels"},
-	{"Acceptance Criteria Definition", "Define Given/When/Then acceptance criteria for each user story"},
-	{"Non-functional Requirements & Constraints", "Identify NFRs (performance, security, scalability) and technical/business constraints"},
-	{"PRD Document Generation", "Generate comprehensive Product Requirements Document from all prior analysis"},
-}
+// requirementAnalysisTasks replaced by default-graphs.json via SyncGraphTasks.
 
 // ---------------------------------------------------------------------------
 // Workspace operations
@@ -565,21 +555,9 @@ func (s *Service) CreateRequirement(ctx context.Context, wsID string, req models
 	}
 
 	if reqPhaseID != "" {
-		for i, at := range requirementAnalysisTasks {
-			task := &models.Task{
-				ID:            uuid.New().String(),
-				PhaseID:       reqPhaseID,
-				WorkspaceID:   wsID,
-				RequirementID: &r.ID,
-				Title:         at.Title,
-				Description:   at.Description,
-				Status:        models.StatusPending,
-				Labels:        []string{},
-				SortOrder:     i,
-			}
-			if err := s.store.CreateTask(ctx, task); err != nil {
-				s.log.Error("failed to create requirement analysis task", "error", err, "title", at.Title)
-			}
+		if _, err := s.SyncGraphTasksForPhaseType(ctx, wsID, reqPhaseID,
+			string(models.PhaseRequirement), &r.ID); err != nil {
+			s.log.Error("sync graph tasks for new requirement", "error", err)
 		}
 	}
 

@@ -157,6 +157,8 @@ type Task struct {
 	AssignedAgent   *AgentType    `json:"assignedAgent,omitempty" db:"assigned_agent"`
 	LastExecutionID *string       `json:"lastExecutionId,omitempty" db:"last_execution_id"`
 	ExecutionCount  int           `json:"executionCount" db:"execution_count"`
+	GraphNodeID     *string       `json:"graphNodeId,omitempty" db:"graph_node_id"`
+	GraphID         *string       `json:"graphId,omitempty" db:"graph_id"`
 	SortOrder       int           `json:"sortOrder" db:"sort_order"`
 	CreatedAt       time.Time     `json:"createdAt" db:"created_at"`
 	UpdatedAt       time.Time     `json:"updatedAt" db:"updated_at"`

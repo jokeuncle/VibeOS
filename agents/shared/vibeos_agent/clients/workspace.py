@@ -173,6 +173,16 @@ class WorkspaceClient:
                 return phase.get("tasks", [])
         return []
 
+    async def find_task_by_graph_node(
+        self, workspace_id: str, phase_id: str, graph_node_id: str
+    ) -> dict[str, Any] | None:
+        """Find a task linked to a specific graph node ID within a phase."""
+        tasks = await self.get_tasks_by_phase(workspace_id, phase_id)
+        for t in tasks:
+            if t.get("graphNodeId") == graph_node_id:
+                return t
+        return None
+
     async def update_phase(
         self,
         workspace_id: str,

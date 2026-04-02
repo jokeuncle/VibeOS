@@ -1,0 +1,251 @@
+{
+  "requirement": {
+    "nodes": [
+      {
+        "id": "clarify",
+        "type": "capability",
+        "capability_ref": "requirement.analyze",
+        "config": {
+          "task_title": "Requirement Clarification & Scope",
+          "task_description": "Clarify raw requirements, resolve ambiguities, and confirm scope boundaries",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "stakeholders",
+        "type": "capability",
+        "capability_ref": "requirement.analyze",
+        "config": {
+          "task_title": "Stakeholder & User Role Analysis",
+          "task_description": "Identify stakeholders, define user personas, goals, and pain points",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "stories",
+        "type": "capability",
+        "capability_ref": "requirement.analyze",
+        "config": {
+          "task_title": "User Story Decomposition",
+          "task_description": "Break requirements into actionable user stories with priority levels",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "acceptance",
+        "type": "capability",
+        "capability_ref": "requirement.analyze",
+        "config": {
+          "task_title": "Acceptance Criteria Definition",
+          "task_description": "Define Given/When/Then acceptance criteria for each user story",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "nfr",
+        "type": "capability",
+        "capability_ref": "requirement.analyze",
+        "config": {
+          "task_title": "Non-functional Requirements & Constraints",
+          "task_description": "Identify NFRs (performance, security, scalability) and technical/business constraints",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "prd",
+        "type": "capability",
+        "capability_ref": "requirement.analyze",
+        "config": {
+          "task_title": "PRD Document Generation",
+          "task_description": "Generate comprehensive Product Requirements Document from all prior analysis",
+          "timeout": 300,
+          "retries": 2
+        }
+      }
+    ],
+    "edges": [
+      { "source": "__start__", "target": "clarify" },
+      { "source": "clarify", "target": "stakeholders" },
+      { "source": "stakeholders", "target": "stories" },
+      { "source": "stories", "target": "acceptance" },
+      { "source": "acceptance", "target": "nfr" },
+      { "source": "nfr", "target": "prd" },
+      { "source": "prd", "target": "__end__" }
+    ],
+    "state_schema": { "messages": { "type": "list", "reducer": "append" } },
+    "config": { "checkpointer": "memory", "recursion_limit": 25 }
+  },
+  "architecture": {
+    "nodes": [
+      {
+        "id": "tech_stack",
+        "type": "capability",
+        "capability_ref": "architecture.design",
+        "config": {
+          "task_title": "Technology Stack Selection",
+          "task_description": "Evaluate and select technology stack including languages, frameworks, and infrastructure",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "system_design",
+        "type": "capability",
+        "capability_ref": "architecture.design",
+        "config": {
+          "task_title": "System Architecture Design",
+          "task_description": "Design overall system architecture, component interactions, and deployment topology",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "data_model",
+        "type": "capability",
+        "capability_ref": "architecture.design",
+        "config": {
+          "task_title": "Data Model & Storage Design",
+          "task_description": "Design database schema, data flows, caching strategy, and storage architecture",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "api_design",
+        "type": "capability",
+        "capability_ref": "architecture.design",
+        "config": {
+          "task_title": "API Contract Design",
+          "task_description": "Define API endpoints, request/response schemas, authentication, and versioning strategy",
+          "timeout": 300,
+          "retries": 2
+        }
+      }
+    ],
+    "edges": [
+      { "source": "__start__", "target": "tech_stack" },
+      { "source": "tech_stack", "target": "system_design" },
+      { "source": "system_design", "target": "data_model" },
+      { "source": "data_model", "target": "api_design" },
+      { "source": "api_design", "target": "__end__" }
+    ],
+    "state_schema": { "messages": { "type": "list", "reducer": "append" } },
+    "config": { "checkpointer": "memory", "recursion_limit": 25 }
+  },
+  "design": {
+    "nodes": [
+      {
+        "id": "wireframe",
+        "type": "capability",
+        "capability_ref": "design.ui",
+        "config": {
+          "task_title": "Wireframe & Layout Design",
+          "task_description": "Create wireframes and page layout designs for all key screens and flows",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "component_spec",
+        "type": "capability",
+        "capability_ref": "design.ui",
+        "config": {
+          "task_title": "Component Specification",
+          "task_description": "Define reusable UI component library with states, variants, and design tokens",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "prototype",
+        "type": "capability",
+        "capability_ref": "design.ui",
+        "config": {
+          "task_title": "Interactive Prototype",
+          "task_description": "Build interactive prototype with navigation flows and micro-interactions",
+          "timeout": 300,
+          "retries": 2
+        }
+      }
+    ],
+    "edges": [
+      { "source": "__start__", "target": "wireframe" },
+      { "source": "wireframe", "target": "component_spec" },
+      { "source": "component_spec", "target": "prototype" },
+      { "source": "prototype", "target": "__end__" }
+    ],
+    "state_schema": { "messages": { "type": "list", "reducer": "append" } },
+    "config": { "checkpointer": "memory", "recursion_limit": 25 }
+  },
+  "development": {
+    "nodes": [
+      {
+        "id": "code_implementation",
+        "type": "capability",
+        "capability_ref": "coding.execute",
+        "config": {
+          "task_title": "Code Implementation",
+          "task_description": "Implement features via autonomous coding agent with full repository access",
+          "timeout": 900,
+          "retries": 1
+        }
+      }
+    ],
+    "edges": [
+      { "source": "__start__", "target": "code_implementation" },
+      { "source": "code_implementation", "target": "__end__" }
+    ],
+    "state_schema": { "messages": { "type": "list", "reducer": "append" } },
+    "config": { "checkpointer": "memory", "recursion_limit": 25 }
+  },
+  "testing": {
+    "nodes": [
+      {
+        "id": "test_plan",
+        "type": "capability",
+        "capability_ref": "testing.run",
+        "config": {
+          "task_title": "Test Plan & Strategy",
+          "task_description": "Define test strategy, coverage targets, and test case specifications",
+          "timeout": 300,
+          "retries": 2
+        }
+      },
+      {
+        "id": "test_implementation",
+        "type": "capability",
+        "capability_ref": "testing.run",
+        "config": {
+          "task_title": "Test Implementation",
+          "task_description": "Implement unit, integration, and end-to-end tests per the test plan",
+          "timeout": 600,
+          "retries": 2
+        }
+      },
+      {
+        "id": "test_execution",
+        "type": "capability",
+        "capability_ref": "testing.run",
+        "config": {
+          "task_title": "Test Execution & Reporting",
+          "task_description": "Execute test suites and generate coverage and quality reports",
+          "timeout": 600,
+          "retries": 2
+        }
+      }
+    ],
+    "edges": [
+      { "source": "__start__", "target": "test_plan" },
+      { "source": "test_plan", "target": "test_implementation" },
+      { "source": "test_implementation", "target": "test_execution" },
+      { "source": "test_execution", "target": "__end__" }
+    ],
+    "state_schema": { "messages": { "type": "list", "reducer": "append" } },
+    "config": { "checkpointer": "memory", "recursion_limit": 25 }
+  }
+}

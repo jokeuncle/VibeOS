@@ -23,6 +23,7 @@ MIGRATIONS=(
   "016_agent_descriptor.sql"
   "017_unified_capability_registry.sql"
   "019_chat_segments.sql"
+  "020_graph_task_link.sql"
 )
 
 run_psql() {

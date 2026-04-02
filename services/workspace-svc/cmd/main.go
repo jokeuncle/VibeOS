@@ -83,6 +83,7 @@ func main() {
 	execHandler := handler.NewExecutionHandler(svc, logger)
 	registryHandler := handler.NewRegistryHandler(st, logger)
 	wsGraphHandler := handler.NewWorkspaceGraphHandler(st, logger)
+	graphSyncHandler := handler.NewGraphSyncHandler(svc, logger)
 	extHandler := handler.NewExtensibilityHandler(st, logger)
 
 	// ---- Router ----------------------------------------------------------
@@ -211,10 +212,14 @@ func main() {
 					r.Put("/", wsGraphHandler.Update)
 					r.Delete("/", wsGraphHandler.Delete)
 					r.Post("/activate", wsGraphHandler.Activate)
+					r.Post("/sync-tasks", graphSyncHandler.SyncTasks)
 				})
 			})
 		})
 	})
+
+	// Default graph definitions (phase-type keyed, static)
+	r.Get("/api/default-graphs/{phaseType}", graphSyncHandler.GetDefaultGraph)
 
 	// Global (home) messages — not workspace-scoped
 	r.Get("/api/messages", chatHandler.ListGlobalMessages)

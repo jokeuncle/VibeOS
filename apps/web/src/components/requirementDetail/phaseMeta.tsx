@@ -139,8 +139,35 @@ export const PHASE_EMPTY_ICON: Record<PhaseType, ReactNode> = {
   monitoring:   <BarChart3 className="w-8 h-8" />,
 }
 
+const GRAPH_NODE_TYPE_KEY: Record<string, string> = {
+  clarify:             'story',
+  stakeholders:        'epic',
+  stories:             'story',
+  acceptance:          'ac',
+  nfr:                 'ac',
+  prd:                 'story',
+  tech_stack:          'design',
+  system_design:       'diagram',
+  data_model:          'design',
+  api_design:          'adr',
+  wireframe:           'wireframe',
+  component_spec:      'component',
+  prototype:           'flow',
+  code_implementation: 'feature',
+  test_plan:           'unit',
+  test_implementation: 'integration',
+  test_execution:      'e2e',
+}
+
 export function getTaskTypeInfo(phase: PhaseType, task: Task): PhaseTaskType {
   const types = PHASE_TASK_TYPE_MAP[phase]
+  if (task.graphNodeId) {
+    const key = GRAPH_NODE_TYPE_KEY[task.graphNodeId]
+    if (key) {
+      const found = types.find(t => t.key === key)
+      if (found) return found
+    }
+  }
   const seed = Math.abs((task.title.charCodeAt(0) || 0) + (task.title.charCodeAt(2) || 0) + task.title.length)
   return types[seed % types.length]
 }

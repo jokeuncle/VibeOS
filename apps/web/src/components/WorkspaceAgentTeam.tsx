@@ -5,12 +5,13 @@ import {
   Cpu, MessageSquare, ToggleLeft, ToggleRight,
   Sparkles, Code2, TestTube, Rocket, Eye, Brush, ClipboardList,
   ShieldCheck, ShieldAlert, Shield, Plus,
-  GitBranch, Workflow,
+  GitBranch, Workflow, RefreshCw,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useUIStore } from '../stores/ui'
 import { workspaceApi, trustApi, modelsApi, workspaceGraphApi } from '../lib/api'
-import type { Agent } from '../types'
+import { useGraphStore } from './ControlCenter/useGraphStore'
+import type { Agent, Phase } from '../types'
 import type { TrustScore, LlmModel, WorkspaceGraph } from '../lib/api'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
@@ -71,7 +72,7 @@ function autonomyColor(level: string) {
 const inputClass = 'w-full rounded-lg bg-surface-2/40 border border-border-subtle px-3 py-2 text-[11px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent/35 focus:border-accent/30'
 
 function AgentRow({
-  meta, live, wsId, trust, models, graphs, onRefresh,
+  meta, live, wsId, trust, models, graphs, phases, onRefresh,
 }: {
   meta: AgentMeta
   live?: Agent
@@ -79,6 +80,7 @@ function AgentRow({
   trust?: TrustScore
   models: LlmModel[]
   graphs: WorkspaceGraph[]
+  phases: Phase[]
   onRefresh: () => Promise<void>
 }) {
   const t = useT()
@@ -95,8 +97,10 @@ function AgentRow({
   const [graphId, setGraphId] = useState(live?.graphId ?? '')
   const [trustThreshold, setTrustThreshold] = useState(live?.trustThreshold ?? 50)
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const Icon = meta.icon
   const isActive = liveStatus !== 'idle'
+  const matchedPhase = phases.find(p => p.type === meta.type)
 
   useEffect(() => { if (live?.preferredModel) setModel(live.preferredModel) }, [live?.preferredModel])
   useEffect(() => { if (!agentId) setExpanded(false) }, [agentId])
@@ -120,6 +124,21 @@ function AgentRow({
     if (!agentId) return
     await workspaceApi.updateAgent(wsId, agentId, updates).catch(() => {})
     await onRefresh()
+  }
+
+  async function syncGraphTasks(gId?: string) {
+    const targetGraphId = gId ?? graphId
+    if (!targetGraphId || !matchedPhase) return
+    setSyncing(true)
+    try {
+      await workspaceGraphApi.syncTasks(wsId, targetGraphId, { phaseId: matchedPhase.id })
+      await onRefresh()
+      addToast({ type: 'success', message: t('agentTeam.syncSuccess' as TranslationKey) })
+    } catch {
+      addToast({ type: 'error', message: t('agentTeam.syncFailed' as TranslationKey) })
+    } finally {
+      setSyncing(false)
+    }
   }
 
   async function handleAddAgent() {
@@ -213,9 +232,26 @@ function AgentRow({
                   </div>
                   <div className="flex gap-2">
                     <div className="flex-1">
-                      <FormSelect size="sm" fullWidth value={graphId} options={graphOpts} onChange={v => { setGraphId(v); patch({ graphId: v || null }) }} />
+                      <FormSelect size="sm" fullWidth value={graphId} options={graphOpts} onChange={v => {
+                        setGraphId(v)
+                        patch({ graphId: v || null })
+                        if (v) syncGraphTasks(v)
+                      }} />
                     </div>
-                    <button type="button" onClick={() => setViewMode('pipeline')}
+                    {graphId && (
+                      <button type="button" onClick={() => syncGraphTasks()} disabled={syncing}
+                        className="rounded-md border border-border-subtle bg-surface-2/40 px-2 py-1 text-[10px] font-medium text-text-secondary hover:bg-surface-2/55 disabled:opacity-50 cursor-pointer shrink-0 flex items-center gap-1"
+                        title={t('agentTeam.field.syncTasks' as TranslationKey)}>
+                        <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+                        {t('agentTeam.field.syncTasks' as TranslationKey)}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => {
+                      if (graphId) {
+                        useGraphStore.getState().requestLoadGraph(wsId, graphId)
+                      }
+                      setViewMode('pipeline')
+                    }}
                       className="rounded-md border border-border-subtle bg-surface-2/40 px-2 py-1 text-[10px] font-medium text-text-secondary hover:bg-surface-2/55 cursor-pointer shrink-0">
                       {t('agentTeam.field.editGraph' as TranslationKey)}
                     </button>
@@ -386,7 +422,7 @@ export default function WorkspaceAgentTeam() {
             const trust = trustScores.find(s => s.agent_type === meta.type && s.model === agentModel)
               ?? trustScores.find(s => s.agent_type === meta.type)
             return (
-              <AgentRow key={meta.type} meta={meta} live={live} wsId={activeWorkspaceId ?? ''} trust={trust} models={availableModels} graphs={graphs} onRefresh={onRefresh} />
+              <AgentRow key={meta.type} meta={meta} live={live} wsId={activeWorkspaceId ?? ''} trust={trust} models={availableModels} graphs={graphs} phases={workspace?.phases ?? []} onRefresh={onRefresh} />
             )
           })}
         </div>

@@ -77,6 +77,8 @@ CREATE TABLE tasks (
     assigned_agent VARCHAR(32),
     last_execution_id UUID,
     execution_count INT NOT NULL DEFAULT 0,
+    graph_node_id VARCHAR(128),
+    graph_id UUID,
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -85,6 +87,8 @@ CREATE TABLE tasks (
 CREATE INDEX idx_tasks_phase ON tasks(phase_id);
 CREATE INDEX idx_tasks_workspace ON tasks(workspace_id);
 CREATE INDEX idx_tasks_requirement ON tasks(requirement_id);
+CREATE INDEX idx_tasks_graph_node ON tasks(graph_node_id) WHERE graph_node_id IS NOT NULL;
+CREATE INDEX idx_tasks_graph_id ON tasks(graph_id) WHERE graph_id IS NOT NULL;
 
 -- Activities (Event Sourcing)
 CREATE TABLE activities (
