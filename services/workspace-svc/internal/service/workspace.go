@@ -1022,7 +1022,7 @@ func (s *Service) UpdateAgentExecution(ctx context.Context, wsID, id string, req
 		return nil, fmt.Errorf("update agent execution: %w", err)
 	}
 
-	if req.TaskIDs != nil && len(req.TaskIDs) > 0 {
+	if len(req.TaskIDs) > 0 {
 		if linkErr := s.store.LinkExecutionToTasks(ctx, id, req.TaskIDs); linkErr != nil {
 			s.log.Error("failed to link execution to tasks", "error", linkErr, "executionId", id)
 		}

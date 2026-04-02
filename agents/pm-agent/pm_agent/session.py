@@ -39,10 +39,15 @@ class SessionManager:
         task_ids: list[str] | None = None,
         result_type: str = "",
         parent_execution_id: str | None = None,
+        workspace_persist: bool = True,
     ) -> str:
-        """Create a new session and persist an AgentExecution record."""
+        """Create a new session; optionally persist AgentExecution to workspace-svc.
+
+        NLP streaming sets workspace_persist=False and persists after intent is known
+        so intent_type/agent_type/requirement_id match parse_intent (avoids double INSERT).
+        """
         sid = uuid.uuid4().hex
-        if workspace_id and workspace_id != "__home__":
+        if workspace_persist and workspace_id and workspace_id != "__home__":
             try:
                 await self.ws_client.create_execution(
                     workspace_id,
@@ -54,7 +59,7 @@ class SessionManager:
                     triggered_by=triggered_by,
                     user_message=user_message,
                     agent_type=agent_type,
-                    result_type=result_type,
+                    result_type=result_type or "general",
                     parent_execution_id=parent_execution_id,
                 )
             except Exception:

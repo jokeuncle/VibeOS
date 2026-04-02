@@ -317,6 +317,23 @@ def _intent_payload(parsed: Any) -> dict[str, Any]:
     return payload
 
 
+def _nlp_stream_result_type(intent: str) -> str:
+    """Align with apps/web chatSlice intentToResultType for execution.result_type."""
+    m = {
+        "trigger_build": "pipeline",
+        "view_build_log": "pipeline",
+        "deploy": "deployment",
+        "rollback": "deployment",
+        "generate_code": "code_gen",
+        "ui_design": "design_doc",
+        "design_system": "architecture",
+        "architecture_design": "architecture",
+        "run_tests": "test_report",
+        "analyze_requirements": "requirement_analysis",
+    }
+    return m.get(intent, "general")
+
+
 # ---------------------------------------------------------------------------
 # NLP routes
 # ---------------------------------------------------------------------------
@@ -375,7 +392,13 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
     is_home = req.workspace_id == "__home__"
 
     async def event_gen() -> AsyncGenerator[str, None]:
-        sid = await sm.create("nlp", req.workspace_id, user_message=req.message, triggered_by="user")
+        sid = await sm.create(
+            "nlp",
+            req.workspace_id,
+            user_message=req.message,
+            triggered_by="user",
+            workspace_persist=False,
+        )
         yield sm.session_start(sid, "nlp", req.workspace_id)
 
         try:
@@ -385,6 +408,27 @@ async def handle_nlp_stream(req: NLPRequest) -> StreamingResponse:
             parsed = await parse_intent(req.message, llm, extra_context=req.context)
             if not is_home:
                 await ws.publish_log(req.workspace_id, "pm", f"Intent: {parsed.intent} → {parsed.target_agent.value}", level="success")
+
+            if not is_home and not parsed.is_ambiguous:
+                ctx = req.context or {}
+                rid_raw = ctx.get("requirement_id")
+                rid: str | None = rid_raw if isinstance(rid_raw, str) and rid_raw.strip() else None
+                rt = _nlp_stream_result_type(parsed.intent)
+                try:
+                    await ws_client.create_execution(
+                        req.workspace_id,
+                        execution_id=sid,
+                        requirement_id=rid,
+                        task_ids=[],
+                        intent_type=parsed.intent,
+                        intent_summary=(parsed.summary or req.message)[:2000],
+                        triggered_by="user",
+                        user_message=req.message,
+                        agent_type=parsed.target_agent.value,
+                        result_type=rt,
+                    )
+                except Exception:
+                    pass
 
             yield sm.ev(sid, "intent", "parsed", _intent_payload(parsed))
             yield sm.timeline(sid, "parse", "理解意图 / Understanding intent", "completed", parsed.summary)

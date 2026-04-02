@@ -125,7 +125,8 @@ export function buildChatSlice(set: SetState, get: GetState) {
                 startedAt: new Date().toISOString(),
               }
               get().upsertExecution(exec)
-              get().persistExecution(exec)
+              // Persistence: workspace-svc row is created in pm-agent after parse_intent
+              // (same sid). Calling persistExecution here duplicated POST /executions → 500.
               execCreated = true
             }
           }
