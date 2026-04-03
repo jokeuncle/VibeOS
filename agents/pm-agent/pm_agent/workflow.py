@@ -65,6 +65,14 @@ PIPELINE_KEY_TO_PHASE: dict[str, str] = {
 }
 
 
+def _phase_key_from_cfg(cfg: dict[str, Any]) -> str:
+    """Normalize pipeline phaseKey from API/JSON (may be null or non-string)."""
+    raw = cfg.get("phaseKey")
+    if raw is None:
+        return ""
+    return raw if isinstance(raw, str) else str(raw)
+
+
 def resolve_branch_name(task_title: str, strategy: str, default_branch: str) -> str:
     slug = re.sub(r"[^\w]+", "-", task_title.lower())[:40].strip("-")
     if strategy == "feature":
@@ -971,8 +979,10 @@ class WorkflowEngine:
         if configs:
             enabled: set[str] = set()
             for cfg in configs:
-                key = cfg.get("phaseKey", "")
                 if not cfg.get("enabled", True):
+                    continue
+                key = _phase_key_from_cfg(cfg)
+                if not key:
                     continue
                 enabled.add(PIPELINE_KEY_TO_PHASE.get(key, key))
             if enabled:
@@ -990,7 +1000,7 @@ class WorkflowEngine:
             if configs is None:
                 configs = await self._resolve_pipeline_configs(workspace_id)
             for cfg in configs:
-                key = cfg.get("phaseKey", "")
+                key = _phase_key_from_cfg(cfg)
                 resolved = PIPELINE_KEY_TO_PHASE.get(key, key)
                 if resolved == phase_type:
                     gate_expr = cfg.get("qualityGate")
@@ -1116,6 +1126,14 @@ class WorkflowEngine:
             await self.ws_gw.publish_log(
                 workspace_id, "pm",
                 f"LLM quality gate for {phase_type}: no artifacts to review, auto-pass",
+                level="info",
+            )
+            return True
+
+        if self.llm is None:
+            await self.ws_gw.publish_log(
+                workspace_id, "pm",
+                f"LLM quality gate for {phase_type}: no LLM client, auto-pass",
                 level="info",
             )
             return True
@@ -1291,7 +1309,8 @@ class WorkflowEngine:
             yield self._trace_ev(sid_err, "task", "error", {"error": "requirement not found"})
             return
 
-        phase_type = phase_type or req.get("currentPhase", "requirement")
+        resolved_phase = phase_type or req.get("currentPhase") or "requirement"
+        phase_type = resolved_phase if isinstance(resolved_phase, str) else str(resolved_phase)
         req_title = req.get("title", "Untitled")
 
         sid = await self.sm.create(
