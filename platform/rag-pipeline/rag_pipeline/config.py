@@ -10,13 +10,11 @@ class Settings:
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "512"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
 
-    EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
-    EMBEDDING_BASE_URL: str = os.getenv(
-        "EMBEDDING_BASE_URL",
-        os.getenv("LLM_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+    EMBEDDING_MODEL: str = os.getenv(
+        "EMBEDDING_MODEL",
+        "sentence-transformers/all-MiniLM-L6-v2",
     )
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "doubao-embedding-large")
-    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "2048"))
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "384"))
 
 
 settings = Settings()

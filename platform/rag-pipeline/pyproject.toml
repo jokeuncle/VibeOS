@@ -6,10 +6,10 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.34.0",
+    "fastembed>=0.5.0",
     "llama-index-core",
     "llama-index-vector-stores-qdrant",
-    "llama-index-embeddings-openai",
-    "llama-index-embeddings-openai-like",
+    "llama-index-embeddings-fastembed",
     "llama-index-llms-openai",
     "pydantic>=2.0",
     "qdrant-client>=1.12.0",

@@ -7,10 +7,12 @@ import litellm
 litellm.drop_params = True
 
 from mem0 import Memory
+from qdrant_client import QdrantClient, models
 
 from .config import Settings
 
 logger = logging.getLogger(__name__)
+MEMORY_COLLECTION_NAME = "vibeos_memories"
 
 
 class VibeOSMemory:
@@ -25,36 +27,25 @@ class VibeOSMemory:
     """
 
     def __init__(self, config: Settings) -> None:
-        use_local_embedder = config.embedding_model.startswith("local/") or not config.volcengine_api_key
+        self._ensure_collection_schema(config)
 
-        embedder_config: dict[str, Any]
-        embedding_dims: int
-        if use_local_embedder:
-            embedder_config = {
-                "provider": "huggingface",
-                "config": {
-                    "model": "sentence-transformers/all-MiniLM-L6-v2",
-                },
-            }
-            embedding_dims = 384
-            logger.info("Using local embeddings (all-MiniLM-L6-v2, dim=384)")
-        else:
-            embedder_config = {
-                "provider": "openai",
-                "config": {
-                    "model": config.embedding_model,
-                    "api_key": config.volcengine_api_key,
-                    "openai_base_url": config.volcengine_base_url,
-                },
-            }
-            embedding_dims = config.embedding_dim
+        # fastembed (ONNX) avoids sentence-transformers→transformers, which breaks on Python 3.14
+        # (importlib.metadata.packages_distributions + None metadata).
+        embedder_config: dict[str, Any] = {
+            "provider": "fastembed",
+            "config": {
+                "model": config.embedding_model,
+            },
+        }
+        embedding_dims = config.embedding_dim
+        logger.info("Mem0 embedder: fastembed %s (dim=%s)", config.embedding_model, embedding_dims)
 
         mem0_config: dict[str, Any] = {
             "vector_store": {
                 "provider": "qdrant",
                 "config": {
                     "url": config.qdrant_url,
-                    "collection_name": "vibeos_memories",
+                    "collection_name": MEMORY_COLLECTION_NAME,
                     "embedding_model_dims": embedding_dims,
                 },
             },
@@ -69,6 +60,51 @@ class VibeOSMemory:
             "version": "v1.1",
         }
         self.memory = Memory.from_config(mem0_config)
+
+    @staticmethod
+    def _extract_vector_size(vectors: Any) -> int | None:
+        if vectors is None:
+            return None
+        if hasattr(vectors, "size"):
+            return getattr(vectors, "size")
+        if isinstance(vectors, dict):
+            if "size" in vectors:
+                return vectors["size"]
+            for value in vectors.values():
+                size = VibeOSMemory._extract_vector_size(value)
+                if size is not None:
+                    return size
+        return None
+
+    def _ensure_collection_schema(self, config: Settings) -> None:
+        client = QdrantClient(url=config.qdrant_url)
+        expected_dim = config.embedding_dim
+
+        if not client.collection_exists(MEMORY_COLLECTION_NAME):
+            return
+
+        info = client.get_collection(MEMORY_COLLECTION_NAME)
+        current_dim = self._extract_vector_size(info.config.params.vectors)
+        points_count = info.points_count or 0
+
+        if current_dim == expected_dim:
+            return
+
+        logger.warning(
+            "Recreating Qdrant collection %s with dim=%s (was %s, points=%s)",
+            MEMORY_COLLECTION_NAME,
+            expected_dim,
+            current_dim,
+            points_count,
+        )
+        client.delete_collection(MEMORY_COLLECTION_NAME)
+        client.create_collection(
+            collection_name=MEMORY_COLLECTION_NAME,
+            vectors_config=models.VectorParams(
+                size=expected_dim,
+                distance=models.Distance.COSINE,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # L1 – Working (session-scoped) memory

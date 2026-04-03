@@ -12,6 +12,7 @@ class Settings:
     volcengine_llm_model: str
     embedding_model: str
     embedding_dim: int
+    org_id: str
 
     def __init__(self) -> None:
         self.port = int(os.getenv("PORT", "8050"))
@@ -29,8 +30,12 @@ class Settings:
         self.volcengine_llm_model = os.getenv(
             "VOLCENGINE_LLM_MODEL", "volcengine/doubao-seed-2-0-pro-260215"
         )
-        self.embedding_model = os.getenv("EMBEDDING_MODEL", "doubao-embedding-large")
-        self.embedding_dim = int(os.getenv("EMBEDDING_DIM", "2048"))
+        # fastembed / Qdrant supported model id (same default as rag-pipeline).
+        self.embedding_model = os.getenv(
+            "EMBEDDING_MODEL",
+            "sentence-transformers/all-MiniLM-L6-v2",
+        )
+        self.embedding_dim = int(os.getenv("EMBEDDING_DIM", "384"))
         self.org_id = os.getenv("VIBEOS_ORG_ID", "default")
 
 

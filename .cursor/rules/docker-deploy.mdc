@@ -25,6 +25,7 @@ build:
 - `PORT`: String, matches the exposed port
 - Secrets use `${VAR:-}` default syntax
 - **workspace-svc** (optional): `GITLAB_URL` + `GITLAB_TOKEN` — on startup, upserts a global `gitlab_credentials` row so all workspaces reuse the same instance PAT
+- **memory-service** & **rag-pipeline**: `EMBEDDING_MODEL` / `EMBEDDING_DIM` — FastEmbed-supported id (Compose defaults: `sentence-transformers/all-MiniLM-L6-v2`, `384`)
 
 ## Data Stores
 

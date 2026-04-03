@@ -89,8 +89,6 @@ run-memory-service: ## Run memory-service (:8050)
 
 .PHONY: run-rag-pipeline
 run-rag-pipeline: ## Run rag-pipeline (:8060)
-	EMBEDDING_API_KEY=$(ARK_API_KEY) \
-	EMBEDDING_BASE_URL=$(LLM_BASE_URL) \
 	QDRANT_URL=http://localhost:6333 \
 	LLM_GATEWAY_URL=http://localhost:8030 \
 	REDIS_URL=redis://localhost:6379/4 PORT=8060 \

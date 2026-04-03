@@ -10,7 +10,7 @@ import redis.asyncio as aioredis
 from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import NodeWithScore
-from llama_index.embeddings.openai_like import OpenAILikeEmbedding
+from llama_index.embeddings.fastembed import FastEmbedEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient, models
 
@@ -36,12 +36,7 @@ class WorkspaceIndexer:
         chunk_overlap: int = settings.CHUNK_OVERLAP,
     ) -> None:
         self.qdrant = QdrantClient(url=qdrant_url)
-        self.embed_model = OpenAILikeEmbedding(
-            model_name=embedding_model,
-            api_key=settings.EMBEDDING_API_KEY,
-            api_base=settings.EMBEDDING_BASE_URL,
-            dimensions=settings.EMBEDDING_DIM,
-        )
+        self.embed_model = FastEmbedEmbedding(model_name=embedding_model)
         self._vector_dim = settings.EMBEDDING_DIM
         self.splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         self._redis: aioredis.Redis | None = None

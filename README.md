@@ -174,8 +174,8 @@ QDRANT_URL="http://localhost:6333"
 VOLCENGINE_API_KEY="$ARK_API_KEY"
 VOLCENGINE_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
 VOLCENGINE_LLM_MODEL="volcengine/doubao-seed-2-0-code-preview-260215"
-EMBEDDING_MODEL="local/all-MiniLM-L6-v2"   # "local/" prefix = local embeddings
-EMBEDDING_DIM="384"                         # 384 for MiniLM, 2048 for doubao
+EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"  # fastembed / ONNX (memory + RAG)
+EMBEDDING_DIM="384"
 VIBEOS_ORG_ID="default"                     # org-level cross-workspace memory scope
 HF_ENDPOINT="https://hf-mirror.com"        # HuggingFace mirror (China network)
 ```
