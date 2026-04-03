@@ -125,6 +125,8 @@ class ContextEnricherMiddleware(Middleware):
             logger.warning("Memory assembly failed ws=%s", ctx.workspace_id, exc_info=True)
 
     async def _append_rag(self, sections: list[str], ctx: InvocationContext) -> None:
+        if self._rag is None:
+            return
         try:
             results = await self._rag.search(
                 ctx.user_message, workspace_id=ctx.workspace_id, top_k=3
@@ -138,6 +140,8 @@ class ContextEnricherMiddleware(Middleware):
             logger.warning("RAG search failed ws=%s", ctx.workspace_id, exc_info=True)
 
     async def _append_knowledge(self, sections: list[str], ctx: InvocationContext) -> None:
+        if self._knowledge is None:
+            return
         try:
             patterns = await self._knowledge.search(
                 ctx.user_message, access_level="enterprise", limit=3

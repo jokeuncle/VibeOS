@@ -178,34 +178,63 @@ async def assemble_context(req: ContextAssembleRequest) -> dict[str, Any]:
     sections: list[str] = []
 
     if req.include_project_memory and req.user_message:
-        project_hits = await asyncio.to_thread(
-            memory_client.search_project_memory,
-            query=req.user_message, workspace_id=req.workspace_id, limit=10,
-        )
-        if project_hits:
-            lines = [f"- {m.get('memory', m.get('text', ''))}" for m in project_hits]
-            sections.append("## Project Memory\n" + "\n".join(lines))
+        try:
+            project_hits = await asyncio.to_thread(
+                memory_client.search_project_memory,
+                query=req.user_message,
+                workspace_id=req.workspace_id,
+                limit=10,
+            )
+        except Exception:
+            logger.warning(
+                "Project memory search failed (embedding/vector error?) ws=%s",
+                req.workspace_id,
+                exc_info=True,
+            )
+        else:
+            if project_hits:
+                lines = [f"- {m.get('memory', m.get('text', ''))}" for m in project_hits]
+                sections.append("## Project Memory\n" + "\n".join(lines))
 
     if req.include_org_memory and req.user_message:
         effective_org_id = req.org_id or settings.org_id
-        org_hits = await asyncio.to_thread(
-            memory_client.search_org_memory,
-            query=req.user_message, org_id=effective_org_id, limit=5,
-        )
-        if org_hits:
-            lines = [f"- {m.get('memory', m.get('text', ''))}" for m in org_hits]
-            sections.append("## Organization Memory\n" + "\n".join(lines))
+        try:
+            org_hits = await asyncio.to_thread(
+                memory_client.search_org_memory,
+                query=req.user_message,
+                org_id=effective_org_id,
+                limit=5,
+            )
+        except Exception:
+            logger.warning(
+                "Org memory search failed ws=%s org=%s",
+                req.workspace_id,
+                effective_org_id,
+                exc_info=True,
+            )
+        else:
+            if org_hits:
+                lines = [f"- {m.get('memory', m.get('text', ''))}" for m in org_hits]
+                sections.append("## Organization Memory\n" + "\n".join(lines))
 
     if req.include_preferences:
-        pref_hits = await asyncio.to_thread(
-            memory_client.search_preferences,
-            query=req.user_message or "preferences",
-            workspace_id=req.workspace_id,
-            limit=10,
-        )
-        if pref_hits:
-            lines = [f"- {m.get('memory', m.get('text', ''))}" for m in pref_hits]
-            sections.append("## Learned Preferences\n" + "\n".join(lines))
+        try:
+            pref_hits = await asyncio.to_thread(
+                memory_client.search_preferences,
+                query=req.user_message or "preferences",
+                workspace_id=req.workspace_id,
+                limit=10,
+            )
+        except Exception:
+            logger.warning(
+                "Preference memory search failed ws=%s",
+                req.workspace_id,
+                exc_info=True,
+            )
+        else:
+            if pref_hits:
+                lines = [f"- {m.get('memory', m.get('text', ''))}" for m in pref_hits]
+                sections.append("## Learned Preferences\n" + "\n".join(lines))
 
     assembled = "\n\n".join(sections) if sections else ""
 
