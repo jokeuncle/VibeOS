@@ -157,6 +157,7 @@ export interface WorkspaceState {
   homeMessages: Message[]
   homeNlpLoading: boolean
   sendHomeNLPStream: (input: string) => void
+  sendToolConfirmation: (confirmationKey: string, approved: boolean, toolName: string, args?: Record<string, unknown>) => void
   clearHomeMessages: () => void
   clearWorkspaceConversation: () => void
 

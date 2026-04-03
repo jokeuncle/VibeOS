@@ -470,6 +470,55 @@ async def handle_approval(req: dict[str, Any]) -> dict[str, Any]:
     return {"status": "ok", "approved": req.get("approved")}
 
 
+class ToolConfirmRequest(BaseModel):
+    """Payload for approving / rejecting a pending tool confirmation."""
+    confirmation_key: str
+    approved: bool
+    workspace_id: str = ""
+    tool_name: str = ""
+    arguments: dict[str, Any] = {}
+
+
+@app.post("/api/conversation/confirm")
+async def handle_tool_confirmation(req: ToolConfirmRequest) -> StreamingResponse:
+    """Resolve a pending tool confirmation.
+
+    When approved, executes the tool directly and sends a follow-up
+    conversation turn so the LLM can incorporate the result.
+    When rejected, sends a rejection message into the conversation.
+    """
+    engine: ConversationEngine = app.state.conversation
+    tool_manager: ToolManager = app.state.tool_manager
+    ws_client: WorkspaceClient = app.state.ws_client
+    ws_id = req.workspace_id or "__home__"
+
+    if ws_id != "__home__":
+        await _load_mcp_providers(ws_client, tool_manager, ws_id)
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        if req.approved and req.tool_name:
+            args = dict(req.arguments)
+            args["_workspace_id"] = ws_id
+            result = await tool_manager.execute(req.tool_name, args)
+            display = await tool_manager.get_display_name(req.tool_name)
+            label = display or req.tool_name
+            summary = (
+                f'用户已确认执行「{label}」。工具返回结果：{result.output[:800]}'
+                if result.ok
+                else f'用户已确认执行「{label}」，但执行出错：{result.output[:800]}'
+            )
+        else:
+            summary = "用户取消了操作，不需要执行。"
+
+        async for sse_frame in engine.run(ConversationRequest(
+            workspace_id=ws_id,
+            message=summary,
+        )):
+            yield sse_frame
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
 @app.post("/api/workflow/run-project")
 async def run_project_direct(req: dict[str, Any]) -> StreamingResponse:
     """Direct workflow trigger — bypasses LLM tool calling."""

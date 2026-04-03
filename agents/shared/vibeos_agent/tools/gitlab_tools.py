@@ -103,6 +103,7 @@ def _get_gl() -> Any:
 class GitLabCreateIssue(BaseTool):
     name = "gitlab_create_issue"
     display_name = "创建 Issue"
+    requires_confirmation = True
     description = "Create a new issue in a GitLab project."
     parameters = {
         "type": "object",
@@ -140,6 +141,7 @@ class GitLabCreateIssue(BaseTool):
 class GitLabCreateMR(BaseTool):
     name = "gitlab_create_mr"
     display_name = "创建 MR"
+    requires_confirmation = True
     description = "Create a merge request in a GitLab project."
     parameters = {
         "type": "object",
@@ -223,6 +225,7 @@ class GitLabListPipelines(BaseTool):
 class GitLabPushFile(BaseTool):
     name = "gitlab_push_file"
     display_name = "推送文件"
+    requires_confirmation = True
     description = (
         "Create or update a file in a GitLab repository via commit. "
         "Use the project_id from the task context (gitlab_primary_project). "

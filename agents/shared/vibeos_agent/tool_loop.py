@@ -6,6 +6,10 @@ tool-call processing logic.
 
 The optional ``ws_notify`` callback pushes tool events through the WebSocket
 gateway for real-time observability in the frontend.
+
+Tools with ``requires_confirmation=True`` are intercepted: instead of
+executing immediately the loop emits a ``tool_confirmation`` event and
+returns a synthetic result telling the LLM to stop and wait.
 """
 
 from __future__ import annotations
@@ -22,6 +26,13 @@ from .tools.provider import ToolManager
 logger = logging.getLogger(__name__)
 
 WSNotifyFn = Callable[[AgentEvent], Awaitable[None]]
+
+_CONFIRMATION_PENDING_RESULT = (
+    '{"status":"confirmation_pending","message":'
+    '"This action requires user confirmation. '
+    'A confirmation card has been sent to the user. '
+    'Do NOT retry this tool -- wait for the user\'s next message."}'
+)
 
 
 def _truncate(s: str, limit: int = 3000) -> str:
@@ -73,11 +84,17 @@ async def execute_tool_calls(
     agent_type: AgentType | str = "",
     collect_results: list[dict[str, Any]] | None = None,
     ws_notify: WSNotifyFn | None = None,
+    check_confirmation: bool = False,
 ) -> list[AgentEvent]:
     """Execute a batch of tool_calls, append results to *messages*,
     and return ``AgentEvent`` list for WS/SSE forwarding.
 
     This is the **single** tool-call execution path for the entire system.
+
+    When *check_confirmation* is ``True`` and a tool has
+    ``requires_confirmation=True``, the tool is **not** executed.  Instead
+    a ``tool_confirmation`` event is emitted and the LLM receives a
+    synthetic result instructing it to stop and wait for user input.
     """
     events: list[AgentEvent] = []
 
@@ -101,6 +118,39 @@ async def execute_tool_calls(
             args = {}
 
         display_name = await tool_manager.get_display_name(name)
+
+        needs_confirm = (
+            check_confirmation
+            and await tool_manager.tool_requires_confirmation(name)
+        )
+
+        if needs_confirm:
+            confirmation_key = f"tc:{workspace_id}:{call_id}"
+            confirm_evt = _evt(
+                "tool_confirmation", tool=name, call_id=call_id,
+                display_name=display_name,
+                arguments=_truncate_dict(args),
+                confirmation_key=confirmation_key,
+            )
+            events.append(confirm_evt)
+            if ws_notify:
+                try:
+                    await ws_notify(confirm_evt)
+                except Exception:
+                    logger.debug("ws_notify tool_confirmation failed", exc_info=True)
+
+            if collect_results is not None:
+                collect_results.append({
+                    "tool": name, "ok": True,
+                    "result": "confirmation_pending",
+                })
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.get("id", ""),
+                "content": _CONFIRMATION_PENDING_RESULT,
+            })
+            continue
 
         start_evt = _evt(
             "tool_start", tool=name, call_id=call_id,
@@ -206,8 +256,15 @@ async def run_tool_loop_stream(
     model: str | None = None,
     collect_results: list[dict[str, Any]] | None = None,
     ws_notify: WSNotifyFn | None = None,
+    check_confirmation: bool = False,
 ) -> AsyncIterator[AgentEvent]:
-    """Streaming tool loop: yields content deltas and tool events."""
+    """Streaming tool loop: yields content deltas and tool events.
+
+    When *check_confirmation* is ``True``, tools marked with
+    ``requires_confirmation`` will not execute immediately.  A
+    ``tool_confirmation`` event is emitted instead and the loop
+    terminates so the LLM stops generating further calls.
+    """
 
     def _evt(etype: str, **payload: Any) -> AgentEvent:
         return AgentEvent(
@@ -263,10 +320,16 @@ async def run_tool_loop_stream(
                 agent_type=agent_type,
                 collect_results=collect_results,
                 ws_notify=ws_notify,
+                check_confirmation=check_confirmation,
+            )
+            has_confirmation = any(
+                e.type == "tool_confirmation" for e in events
             )
             for evt in events:
                 yield evt
             _merge_discovered_schemas(tool_calls_acc, messages, tool_schemas)
+            if has_confirmation:
+                break
             continue
 
         joined = "".join(content_parts)

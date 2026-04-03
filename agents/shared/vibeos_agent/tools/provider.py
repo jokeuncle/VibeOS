@@ -32,6 +32,7 @@ class ToolDescriptor:
     parameters: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}})
     provider_key: str = ""
     display_name: str = ""
+    requires_confirmation: bool = False
 
     def to_openai_schema(self) -> dict[str, Any]:
         return {
@@ -81,6 +82,7 @@ class StaticToolProvider(ToolProvider):
                 parameters=t.parameters,
                 provider_key=self.provider_key,
                 display_name=getattr(t, "display_name", "") or "",
+                requires_confirmation=getattr(t, "requires_confirmation", False),
             )
             for t in self._tools.values()
         ]
@@ -273,3 +275,19 @@ class ToolManager:
             return self._display_name_cache[tool_name]
         await self.refresh_index()
         return self._display_name_cache.get(tool_name, "")
+
+    async def tool_requires_confirmation(self, tool_name: str) -> bool:
+        """Check whether *tool_name* is flagged for user confirmation."""
+        provider = self._tool_index.get(tool_name)
+        if provider is None:
+            await self.refresh_index()
+            provider = self._tool_index.get(tool_name)
+        if provider is None:
+            return False
+        if isinstance(provider, StaticToolProvider):
+            tool = provider._tools.get(tool_name)
+            return getattr(tool, "requires_confirmation", False) if tool else False
+        for desc in await provider.list_tools():
+            if desc.name == tool_name:
+                return desc.requires_confirmation
+        return False

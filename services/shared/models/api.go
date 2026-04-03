@@ -311,5 +311,7 @@ const (
 
 	WSEventPhaseAwaitApproval = "phase:awaiting_approval"
 
+	WSEventToolConfirmation = "tool:confirmation"
+
 	WSEventTrustDegraded = "trust:degraded"
 )

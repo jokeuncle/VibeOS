@@ -20,6 +20,7 @@ class WorkspaceCreateRequirement(BaseTool):
 
     name = "workspace_create_requirement"
     display_name = "创建需求"
+    requires_confirmation = True
     description = (
         "Create a new requirement in the current workspace. "
         "Use this when the user asks to create/add a requirement (需求). "
@@ -64,6 +65,7 @@ class WorkspaceCreateRequirement(BaseTool):
 class WorkspaceCreateTask(BaseTool):
     name = "workspace_create_task"
     display_name = "创建任务"
+    requires_confirmation = True
     description = "Create a new task in the current workspace under a specific phase."
     parameters = {
         "type": "object",
@@ -136,6 +138,7 @@ class WorkspaceCreateArtifact(BaseTool):
 
     name = "workspace_create_artifact"
     display_name = "保存产物"
+    requires_confirmation = True
     description = (
         "Save a structured artifact to the workspace. Automatically uploads to CDN "
         "and indexes for retrieval. Use this for ALL deliverables: specs, code, "

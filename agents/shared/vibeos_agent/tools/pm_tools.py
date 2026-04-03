@@ -63,6 +63,7 @@ class QueryProgressTool(BaseTool):
 class CreateWorkspaceTool(BaseTool):
     name = "create_workspace"
     display_name = "创建工作区"
+    requires_confirmation = True
     description = (
         "Create a new workspace with a title and optional description. "
         "Use when the user asks to start a new project or workspace."
@@ -172,6 +173,7 @@ class RunTaskTool(BaseTool):
 class RunProjectTool(BaseTool):
     name = "run_project"
     display_name = "执行项目"
+    requires_confirmation = True
     description = (
         "Execute the full project lifecycle starting from a given phase. "
         "Runs all phases sequentially from the start phase onward."

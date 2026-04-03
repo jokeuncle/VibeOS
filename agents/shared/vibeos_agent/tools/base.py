@@ -35,12 +35,17 @@ class BaseTool:
     Subclasses must define ``name``, ``description``, ``parameters`` (JSON
     Schema) and override either ``execute()`` or ``_execute()``.
     Optionally set ``display_name`` for a human-friendly label.
+
+    Set ``requires_confirmation = True`` on tools that create, delete, or
+    modify persistent resources.  The tool loop will emit a confirmation
+    event instead of executing immediately and wait for user approval.
     """
 
     name: str
     description: str
     display_name: str = ""
     parameters: dict[str, Any] = {"type": "object", "properties": {}}
+    requires_confirmation: bool = False
 
     async def execute(self, **kwargs: Any) -> str:
         """Run the tool and return a string result for the LLM."""

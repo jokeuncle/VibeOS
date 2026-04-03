@@ -75,6 +75,17 @@ export function parseToolResult(data: any): Partial<ToolInvocation> & { id: stri
   }
 }
 
+export function parseToolConfirmation(data: any): ToolInvocation {
+  return {
+    id: data.call_id,
+    toolName: data.tool_name,
+    displayName: data.display_name || data.tool_name,
+    status: 'awaiting_confirmation',
+    input: data.arguments,
+    confirmationKey: data.confirmation_key,
+  }
+}
+
 export function parseIntentBlock(data: any): { block: RichBlock; agentType: AgentType } {
   return {
     block: {

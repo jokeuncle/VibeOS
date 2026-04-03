@@ -46,14 +46,21 @@ development, testing, cicd, monitoring)
 - CI/CD pipelines (trigger, status, logs, cancel)
 - Feishu/Lark messaging, tasks, and document creation
 
-CRITICAL: When the user asks to create, modify, or manage anything \
-(requirements, tasks, workspaces, artifacts, etc.), you MUST use the \
-appropriate tool. NEVER fabricate results or pretend actions were taken. \
-If you don't see the right tool, use search_tools to discover it first.
+When the user gives a clear, explicit instruction to create, modify, or manage \
+a resource, use the appropriate tool. NEVER fabricate results or pretend \
+actions were taken. If you don't see the right tool, use search_tools to \
+discover it first.
 
-Respond conversationally only when the user asks questions or wants to discuss.
+IMPORTANT: Do NOT infer action intent from ambiguous acknowledgments such as \
+"好的", "OK", "sure", "嗯", "好", "行". These are conversational responses, \
+NOT action requests. When the user's intent is unclear, ask a clarifying \
+question instead of calling any tool.
 
-IMPORTANT: Always respond in the same language as the user's message. \
+Before creating, deleting, or modifying resources (workspaces, requirements, \
+tasks, artifacts, pipelines), briefly summarize what you plan to do and ask \
+the user to confirm. Only call the tool after the user explicitly agrees.
+
+Always respond in the same language as the user's message. \
 If the user writes in Chinese, respond in Chinese. If in English, respond \
 in English.\
 """
@@ -240,6 +247,7 @@ class ConversationEngine:
             workspace_id=ctx.workspace_id,
             agent_type=ctx.agent_type,
             collect_results=ctx.tool_results,
+            check_confirmation=True,
         ):
             if evt.type == "content_delta":
                 full_reply_parts.append(evt.payload.get("delta", ""))
@@ -330,6 +338,31 @@ class ConversationEngine:
                     "step_id": call_id,
                     "label": label,
                     "status": st,
+                }, sid),
+            ]
+
+        if etype == "tool_confirmation":
+            name = payload.get("tool", "")
+            call_id = payload.get("call_id", f"tool_{name}")
+            display_name = payload.get("display_name", "")
+            label = display_name or name
+            if step_accum is not None:
+                step_accum.append({
+                    "id": call_id, "label": label,
+                    "status": "awaiting_confirmation",
+                })
+            return [
+                _sse("tool", "confirmation", {
+                    "call_id": call_id,
+                    "tool_name": name,
+                    "display_name": display_name,
+                    "arguments": payload.get("arguments"),
+                    "confirmation_key": payload.get("confirmation_key", ""),
+                }, sid),
+                _sse("timeline", "step", {
+                    "step_id": call_id,
+                    "label": label,
+                    "status": "awaiting_confirmation",
                 }, sid),
             ]
 

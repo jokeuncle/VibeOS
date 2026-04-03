@@ -332,16 +332,18 @@ export interface ToolInvocation {
   id: string
   toolName: string
   displayName: string
-  status: 'calling' | 'completed' | 'error'
+  status: 'calling' | 'completed' | 'error' | 'awaiting_confirmation'
   input?: Record<string, unknown>
   output?: string
   error?: string
   durationMs?: number
+  confirmationKey?: string
 }
 
 export type ContentSegment =
   | { kind: 'text'; text: string }
   | { kind: 'tool_use'; invocation: ToolInvocation }
+  | { kind: 'tool_confirmation'; invocation: ToolInvocation }
   | { kind: 'block'; block: RichBlock }
 
 /**

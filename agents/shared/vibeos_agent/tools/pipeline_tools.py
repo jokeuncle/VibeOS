@@ -18,6 +18,7 @@ class TriggerPipeline(BaseTool):
 
     name = "trigger_pipeline"
     display_name = "触发流水线"
+    requires_confirmation = True
     description = (
         "Trigger a CI/CD pipeline build for a GitLab project. "
         "Returns the pipeline ID and URL for status tracking."

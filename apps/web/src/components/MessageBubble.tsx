@@ -8,6 +8,7 @@ import { feedbackApi } from '../lib/api'
 import { RichBlockRenderer } from './RichBlockRenderer'
 import { HomeReasoningPanel } from './HomeReasoningPanel'
 import { ToolInvocationBlock } from './ToolInvocationBlock'
+import { ToolConfirmationCard } from './ToolConfirmationCard'
 import { MarkdownPreview } from './MarkdownPreview'
 import { partitionNlpConversationRichBlocks, shouldShowAgentTextBubble } from '../lib/nlpConversationLayout'
 import type { Message, ContentSegment } from '../types'
@@ -205,6 +206,7 @@ function SegmentRenderer({
       {segments.map((seg, i) => {
         if (seg.kind === 'text') return <TextBubble key={`s-${i}`} text={seg.text} />
         if (seg.kind === 'tool_use') return <ToolInvocationBlock key={`t-${seg.invocation.id}`} invocation={seg.invocation} />
+        if (seg.kind === 'tool_confirmation') return <ToolConfirmationCard key={`tc-${seg.invocation.id}`} invocation={seg.invocation} />
         if (seg.kind === 'block') return (
           <div key={`b-${i}`} className="w-full min-w-0">
             <RichBlockRenderer block={seg.block} richLayout={richLayout === 'home' ? 'home' : undefined} />

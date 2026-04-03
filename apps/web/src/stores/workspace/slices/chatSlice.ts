@@ -10,6 +10,7 @@ import {
   parseTimelineStep,
   parseToolStart,
   parseToolResult,
+  parseToolConfirmation,
 } from '../../../lib/sseEventParsers'
 import {
   friendlyError,
@@ -119,6 +120,9 @@ export function buildChatSlice(set: SetState, get: GetState) {
               s.kind === 'tool_use' && s.invocation.id === patch.id,
           )
           if (seg) Object.assign(seg.invocation, patch)
+        } else if (action === 'confirmation') {
+          flushText()
+          segments.push({ kind: 'tool_confirmation', invocation: parseToolConfirmation(data) })
         }
         updateMsg()
       })
@@ -320,6 +324,101 @@ export function buildChatSlice(set: SetState, get: GetState) {
       runConversation('__home__', input, msgId, true)
     },
 
+    sendToolConfirmation: (confirmationKey: string, approved: boolean, toolName: string, args?: Record<string, unknown>) => {
+      const wsId = get().activeWorkspaceId || '__home__'
+      const isHome = wsId === '__home__'
+      const msgId = crypto.randomUUID()
+
+      const agentMsg = makeMsg({
+        id: msgId, role: 'agent', content: '', agentType: 'pm',
+        contextType: isHome ? 'home' : 'workspace', workspaceId: wsId,
+      })
+      if (isHome) {
+        set((s) => ({ homeNlpLoading: true, homeMessages: [...s.homeMessages, agentMsg] }))
+      } else {
+        set((s) => ({ nlpLoading: true, messages: [...s.messages, agentMsg] }))
+      }
+
+      let content = ''
+      const richBlocks: RichBlock[] = []
+      const segments: ContentSegment[] = []
+      const timelineSteps: ExecutionStep[] = []
+      let pendingText = ''
+
+      const flushText = () => {
+        if (pendingText.trim()) {
+          segments.push({ kind: 'text', text: pendingText })
+          pendingText = ''
+        }
+      }
+
+      const updateMsg = () => {
+        const liveSegs: ContentSegment[] = segments.length > 0 || pendingText.trim().length > 0
+          ? [...segments, ...(pendingText.trim() ? [{ kind: 'text' as const, text: pendingText }] : [])]
+          : undefined as any
+        const msg: Partial<Message> = {
+          content, agentType: 'pm',
+          richBlocks: richBlocks.length > 0 ? [...richBlocks] : undefined,
+          segments: liveSegs || undefined,
+        }
+        if (isHome) {
+          set((s) => ({ homeMessages: s.homeMessages.map((m) => m.id === msgId ? { ...m, ...msg } : m) }))
+        } else {
+          set((s) => ({ messages: s.messages.map((m) => m.id === msgId ? { ...m, ...msg } : m) }))
+        }
+      }
+
+      const upsertTimeline = () => {
+        const idx = richBlocks.findIndex((b) => b.type === 'execution_timeline')
+        const block: RichBlock = { type: 'execution_timeline', steps: [...timelineSteps] }
+        if (idx !== -1) richBlocks[idx] = block
+        else richBlocks.unshift(block)
+      }
+
+      const session = new ExecutionSession()
+        .on('session', () => {})
+        .on('timeline', (_action, data) => {
+          const step = parseTimelineStep(data)
+          const existing = timelineSteps.find((s) => s.id === step.id)
+          if (existing) { existing.status = step.status; if (step.detail) existing.detail = step.detail }
+          else timelineSteps.push(step)
+          upsertTimeline()
+          updateMsg()
+        })
+        .on('tool', (action, data) => {
+          if (action === 'start') { flushText(); segments.push({ kind: 'tool_use', invocation: parseToolStart(data) }) }
+          else if (action === 'result') {
+            const patch = parseToolResult(data)
+            const seg = segments.find(
+              (s): s is ContentSegment & { kind: 'tool_use' } => s.kind === 'tool_use' && s.invocation.id === patch.id,
+            )
+            if (seg) Object.assign(seg.invocation, patch)
+          }
+          updateMsg()
+        })
+        .on('content', (action, data) => {
+          if (action === 'delta' && data.delta) { content += data.delta; pendingText += data.delta }
+          updateMsg()
+        })
+
+      ;(async () => {
+        try {
+          await session.run('/api/conversation/confirm', {
+            confirmation_key: confirmationKey,
+            approved,
+            workspace_id: wsId,
+            tool_name: toolName,
+            arguments: args || {},
+          })
+        } catch { /* handled by finally */ }
+        finally {
+          flushText()
+          if (isHome) set({ homeNlpLoading: false })
+          else { set({ nlpLoading: false }); get().refreshActiveWorkspace() }
+        }
+      })()
+    },
+
     fetchMessages: async (scope: MessageScope) => {
       if (scope.contextType === 'home') {
         try {
@@ -415,7 +514,8 @@ export function buildChatSlice(set: SetState, get: GetState) {
     | 'homeMessages' | 'homeNlpLoading' | 'homeMessagesCursor' | 'homeMessagesHasMore'
     | 'addMessage' | 'sendNLPMessage' | 'sendAgentChatMessage'
     | 'sendNLPMessageStream' | 'sendAgentChatMessageStream'
-    | 'sendHomeNLPStream' | 'clearHomeMessages' | 'clearWorkspaceConversation'
+    | 'sendHomeNLPStream' | 'sendToolConfirmation'
+    | 'clearHomeMessages' | 'clearWorkspaceConversation'
     | 'fetchMessages' | 'fetchWorkspaceMessages' | 'loadOlderMessages'
   >
 }

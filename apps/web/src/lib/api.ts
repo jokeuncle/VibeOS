@@ -739,6 +739,23 @@ export const approvalApi = {
     }),
 }
 
+export const toolConfirmApi = {
+  resolve: (params: {
+    confirmationKey: string
+    approved: boolean
+    workspaceId: string
+    toolName?: string
+    arguments?: Record<string, unknown>
+  }) =>
+    streamSSE('/api/conversation/confirm', {
+      confirmation_key: params.confirmationKey,
+      approved: params.approved,
+      workspace_id: params.workspaceId,
+      tool_name: params.toolName || '',
+      arguments: params.arguments || {},
+    }),
+}
+
 export const workflowApi = {
   runRequirementPipeline: (params: {
     workspace_id: string
