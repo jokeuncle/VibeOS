@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Activity, ChevronDown, ChevronUp,
   Clock, CheckCircle2,
-  AlertCircle, Filter, Info, Zap,
+  AlertCircle, Filter, Info, Zap, RefreshCw, ScrollText, FileStack,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useT } from '../i18n'
@@ -13,6 +13,7 @@ import ArtifactPanel from './ArtifactPanel'
 import FormSelect from './ui/FormSelect'
 
 type TraceStatus = 'success' | 'error' | 'running' | 'info'
+type TracesMainTab = 'runs' | 'artifacts'
 
 const AGENT_META: Record<string, { label: string; color: string }> = {
   pm:           { label: 'PM Agent',           color: 'text-violet-400' },
@@ -58,11 +59,18 @@ function relativeTime(iso: string): string {
   return `${h}h ago`
 }
 
+function statusRailClass(status: TraceStatus): string {
+  if (status === 'success') return 'bg-success/10 text-success'
+  if (status === 'error') return 'bg-danger/10 text-danger'
+  if (status === 'running') return 'bg-accent/10 text-accent'
+  return 'bg-surface-3 text-text-tertiary'
+}
+
 function StatusIcon({ status }: { status: TraceStatus }) {
-  if (status === 'success') return <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-  if (status === 'error')   return <AlertCircle  className="w-3.5 h-3.5 text-danger" />
-  if (status === 'running') return <Activity     className="w-3.5 h-3.5 text-accent animate-pulse" />
-  return <Info className="w-3.5 h-3.5 text-text-tertiary" />
+  if (status === 'success') return <CheckCircle2 className="w-3.5 h-3.5" />
+  if (status === 'error') return <AlertCircle className="w-3.5 h-3.5" />
+  if (status === 'running') return <Activity className="w-3.5 h-3.5 animate-pulse" />
+  return <Info className="w-3.5 h-3.5" />
 }
 
 function ExecutionTraceRow({ exec, requirementName, onRequirementClick }: {
@@ -79,23 +87,47 @@ function ExecutionTraceRow({ exec, requirementName, onRequirementClick }: {
     ? new Date(exec.completedAt).getTime() - new Date(exec.startedAt).getTime()
     : 0
 
+  function toggleExpanded() {
+    setExpanded(v => !v)
+  }
+
+  function rowKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      toggleExpanded()
+    }
+  }
+
   return (
-    <div className={`rounded-xl border transition-all
-      ${status === 'error' ? 'border-danger/20 bg-danger/4' : 'border-border-subtle bg-surface-1/30'}`}
+    <div
+      className={`border-b border-border-subtle last:border-b-0 ${
+        status === 'error' ? 'bg-danger/[0.04]' : ''
+      }`}
     >
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer"
+      {/* div+role=button: nested requirement control must stay a real <button> */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={toggleExpanded}
+        onKeyDown={rowKeyDown}
+        className="group mx-0.5 flex w-full cursor-pointer items-start gap-2.5 rounded-lg px-3 py-3 text-left transition-colors hover:bg-surface-2/35 sm:mx-1 sm:px-4 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/35"
       >
-        <StatusIcon status={status} />
+        <div
+          className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${statusRailClass(status)}`}
+        >
+          <StatusIcon status={status} />
+        </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className={`text-[11px] font-semibold ${meta.color}`}>{agentLabel}</span>
-            <span className="text-[10px] font-mono text-text-tertiary truncate">{exec.intentSummary}</span>
+            <span className="text-[10px] font-mono text-text-tertiary truncate max-w-[min(100%,280px)]">
+              {exec.intentSummary}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <p className="text-[11px] text-text-tertiary truncate">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[11px] text-text-tertiary truncate min-w-0">
               {exec.triggeredBy} &middot; {exec.intentType}
               {exec.errorMessage && ` — ${exec.errorMessage}`}
             </p>
@@ -106,7 +138,7 @@ function ExecutionTraceRow({ exec, requirementName, onRequirementClick }: {
                   e.stopPropagation()
                   onRequirementClick?.(exec.requirementId!)
                 }}
-                className="shrink-0 text-[9px] font-medium text-accent/80 bg-accent/8 px-1.5 py-0.5 rounded hover:bg-accent/15 transition-colors cursor-pointer"
+                className="shrink-0 rounded-md border border-border-subtle bg-surface-2/40 px-2 py-0.5 text-[10px] font-medium text-text-secondary hover:bg-surface-2/55 transition-colors cursor-pointer"
               >
                 {requirementName}
               </button>
@@ -114,21 +146,25 @@ function ExecutionTraceRow({ exec, requirementName, onRequirementClick }: {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0 text-[10px] font-mono text-text-tertiary">
+        <div className="flex items-center gap-3 shrink-0 text-[10px] font-mono text-text-tertiary tabular-nums">
           <span className="flex items-center gap-1">
-            <Zap className="w-2.5 h-2.5" />
+            <Zap className="w-2.5 h-2.5 opacity-80" />
             {exec.steps.length}
           </span>
           {durationMs > 0 && (
             <span className="flex items-center gap-1">
-              <Clock className="w-2.5 h-2.5" />
+              <Clock className="w-2.5 h-2.5 opacity-80" />
               {(durationMs / 1000).toFixed(1)}s
             </span>
           )}
           <span>{relativeTime(exec.startedAt)}</span>
-          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          {expanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+          )}
         </div>
-      </button>
+      </div>
 
       <AnimatePresence>
         {expanded && (
@@ -139,15 +175,18 @@ function ExecutionTraceRow({ exec, requirementName, onRequirementClick }: {
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 border-t border-border-subtle pt-3 space-y-1.5">
+            <div className="mx-3 mb-3 mt-0 space-y-1.5 border-t border-border-subtle pt-3 sm:mx-4">
               {exec.steps.length === 0 && (
                 <div className="space-y-1">
                   <p className="text-[11px] text-text-tertiary">{t('traces.noStepsRecorded')}</p>
-                  <p className="text-[10px] text-text-tertiary/75 leading-relaxed">{t('traces.noStepsHint')}</p>
+                  <p className="text-[10px] text-text-tertiary leading-relaxed">{t('traces.noStepsHint')}</p>
                 </div>
               )}
               {exec.steps.map((step, i) => (
-                <div key={step.id} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-surface-2/60 border border-border-subtle">
+                <div
+                  key={step.id}
+                  className="flex items-start gap-2 px-3 py-2 rounded-lg bg-surface-2/40 border border-border-subtle"
+                >
                   <span className="text-[10px] font-mono text-text-tertiary shrink-0 mt-0.5">{i + 1}.</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -160,13 +199,13 @@ function ExecutionTraceRow({ exec, requirementName, onRequirementClick }: {
                         {step.status}
                       </span>
                     </div>
-                    <p className="text-[11px] text-text-secondary mt-0.5 break-words">{step.label}</p>
+                    <p className="mt-0.5 break-words text-xs text-text-primary/90">{step.label}</p>
                     {step.detail && <p className="text-[10px] text-text-tertiary mt-0.5">{step.detail}</p>}
                   </div>
                 </div>
               ))}
               {exec.errorMessage && (
-                <div className="px-3 py-2 rounded-lg bg-danger/5 border border-danger/20">
+                <div className="px-3 py-2 rounded-lg bg-surface-2/40 border border-danger/25">
                   <p className="text-[11px] text-danger break-words">{exec.errorMessage}</p>
                 </div>
               )}
@@ -206,6 +245,12 @@ export default function WorkspaceTraces() {
   const [agentFilter, setAgentFilter] = useState('All')
   const [statusFilter, setStatusFilter] = useState<TraceStatus | 'all'>('all')
   const [reqFilter, setReqFilter] = useState('all')
+  const [mainTab, setMainTab] = useState<TracesMainTab>('runs')
+  const tabBaseId = useId()
+  const runsTabId = `${tabBaseId}-runs-tab`
+  const artifactsTabId = `${tabBaseId}-artifacts-tab`
+  const runsPanelId = `${tabBaseId}-runs-panel`
+  const artifactsPanelId = `${tabBaseId}-artifacts-panel`
 
   const reqFilterOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [{ value: 'all', label: t('traces.allRequirements' as TranslationKey) }]
@@ -238,7 +283,23 @@ export default function WorkspaceTraces() {
     })
   }, [executions, agentFilter, statusFilter, reqFilter])
 
+  const traceExecutionAllowlist = useMemo(() => new Set(filtered.map(e => e.id)), [filtered])
+
+  const allFiltersDefault =
+    agentFilter === 'All' && statusFilter === 'all' && reqFilter === 'all'
+
   const errorCount = executions.filter(e => e.status === 'failed').length
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = useCallback(async () => {
+    if (!activeWorkspaceId || activeWorkspaceId.startsWith('ws-temp-')) return
+    setRefreshing(true)
+    try {
+      await fetchExecutions()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [activeWorkspaceId, fetchExecutions])
 
   const stats = [
     { label: t('traces.totalExecutions'), value: executions.length.toString(), icon: Activity, color: 'text-text-primary' },
@@ -248,98 +309,243 @@ export default function WorkspaceTraces() {
       icon: Zap,
       color: 'text-accent',
     },
-    { label: t('traces.errors'),          value: errorCount.toString(), icon: AlertCircle, color: errorCount > 0 ? 'text-danger' : 'text-text-tertiary' },
+    { label: t('traces.errors'), value: errorCount.toString(), icon: AlertCircle, color: errorCount > 0 ? 'text-danger' : 'text-text-tertiary' },
   ]
+
+  const filterPanel = (
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-1/30">
+      <div className="border-b border-border-subtle bg-surface-2/15 px-4 py-3 sm:px-5">
+        <div className="flex items-center gap-2">
+          <Filter className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden />
+          <span className="text-xs font-medium text-text-secondary">{t('traces.filtersHeading')}</span>
+        </div>
+        <p className="mt-1.5 text-[10px] leading-relaxed text-text-tertiary">{t('traces.filtersSyncedHint')}</p>
+      </div>
+      <div className="space-y-5 p-4 sm:p-5">
+        <div className="min-w-0">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+            {t('traces.filter.agent')}
+          </p>
+          <div className="flex max-w-full flex-wrap gap-1 rounded-lg border border-border-subtle bg-surface-2/40 p-1">
+            {AGENT_FILTER_OPTIONS.map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setAgentFilter(opt)}
+                className={`shrink-0 cursor-pointer rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors
+                  ${
+                    agentFilter === opt
+                      ? 'border-accent/30 bg-accent/10 text-text-primary'
+                      : 'border-transparent text-text-tertiary hover:bg-surface-2/50 hover:text-text-secondary'
+                  }`}
+              >
+                {agentFilterTabLabel(t, opt)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-3">
+          <FormSelect
+            size="sm"
+            fullWidth
+            prefix={t('traces.statusFilter')}
+            value={statusFilter}
+            options={statusFilterOptions}
+            onChange={v => setStatusFilter(v as TraceStatus | 'all')}
+            aria-label={t('traces.statusFilter')}
+          />
+          {reqFilterOptions.length > 1 && (
+            <FormSelect
+              size="sm"
+              fullWidth
+              prefix={t('traces.requirementFilter' as TranslationKey)}
+              value={reqFilter}
+              options={reqFilterOptions}
+              onChange={v => setReqFilter(v)}
+              aria-label={t('traces.requirementFilter' as TranslationKey)}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
+  const runsPanelBody =
+    executions.length === 0 ? (
+      <div className="mx-2 mb-2 rounded-xl border border-dashed border-border-subtle bg-surface-2/15 px-6 py-16 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
+          <Activity className="h-6 w-6 text-accent/80" />
+        </div>
+        <p className="text-sm font-medium text-text-primary">{t('traces.noResults')}</p>
+        <p className="mx-auto mt-2 max-w-sm text-[12px] leading-relaxed text-text-tertiary">{t('traces.emptyHint')}</p>
+      </div>
+    ) : filtered.length === 0 ? (
+      <div className="py-16 text-center">
+        <p className="text-[13px] text-text-secondary">{t('traces.noResults')}</p>
+        <p className="mx-auto mt-2 max-w-xs text-[11px] text-text-tertiary">{t('traces.emptyHint')}</p>
+      </div>
+    ) : (
+      <div className="bg-surface-2/15">
+        <div className="hidden border-b border-border-subtle px-4 py-2.5 sm:flex sm:items-center sm:justify-between sm:pl-[3.65rem] sm:pr-5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+            {t('traces.listHeader.details')}
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums">
+            {t('traces.listHeader.timing')}
+          </span>
+        </div>
+        <div className="py-1">
+          {filtered.map(exec => (
+            <ExecutionTraceRow
+              key={exec.id}
+              exec={exec}
+              requirementName={exec.requirementId ? reqNameMap[exec.requirementId] : undefined}
+              onRequirementClick={reqId => setActiveRequirement(reqId)}
+            />
+          ))}
+        </div>
+      </div>
+    )
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-6"
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="space-y-8"
     >
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Activity className="w-4 h-4 text-accent" />
-          <h1 className="text-base font-semibold text-text-primary tracking-tight">{t('traces.title')}</h1>
-        </div>
-        <p className="text-[12px] text-text-tertiary">{t('traces.desc')}</p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        {stats.map(stat => {
-          const Icon = stat.icon
-          return (
-            <div key={stat.label} className="rounded-xl border border-border-subtle bg-surface-1/30 px-4 py-3.5">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Icon className={`w-3 h-3 ${stat.color}`} />
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-text-tertiary">{stat.label}</span>
-              </div>
-              <span className={`text-xl font-semibold font-mono ${stat.color}`}>{stat.value}</span>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Filter className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
-        <div className="flex items-center gap-px p-0.5 rounded-lg bg-surface-2 border border-border-subtle overflow-x-auto max-w-full shrink min-w-0">
-          {AGENT_FILTER_OPTIONS.map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setAgentFilter(opt)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer shrink-0
-                ${agentFilter === opt ? 'bg-surface-4 text-text-primary' : 'text-text-tertiary hover:text-text-secondary'}`}
-            >
-              {agentFilterTabLabel(t, opt)}
-            </button>
-          ))}
-        </div>
-        <FormSelect
-          size="sm"
-          fullWidth={false}
-          prefix={t('traces.statusFilter')}
-          value={statusFilter}
-          options={statusFilterOptions}
-          onChange={v => setStatusFilter(v as TraceStatus | 'all')}
-          aria-label={t('traces.statusFilter')}
-        />
-        {reqFilterOptions.length > 1 && (
-          <FormSelect
-            size="sm"
-            fullWidth={false}
-            prefix={t('traces.requirementFilter' as TranslationKey)}
-            value={reqFilter}
-            options={reqFilterOptions}
-            onChange={v => setReqFilter(v)}
-            aria-label={t('traces.requirementFilter' as TranslationKey)}
-          />
-        )}
-      </div>
-
-      <div className="space-y-2">
-        {executions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border-default bg-surface-1/20 py-14 text-center">
-            <Activity className="w-8 h-8 text-text-tertiary/40 mx-auto mb-3" />
-            <p className="text-[12px] text-text-tertiary">{t('traces.noResults')}</p>
-            <p className="text-[11px] text-text-tertiary/60 mt-1">{t('traces.emptyHint')}</p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10">
+            <Activity className="h-4 w-4 text-accent" aria-hidden />
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-[12px] text-text-tertiary">{t('traces.noResults')}</div>
-        ) : (
-          filtered.map(exec => (
-            <ExecutionTraceRow
-              key={exec.id}
-              exec={exec}
-              requirementName={exec.requirementId ? reqNameMap[exec.requirementId] : undefined}
-              onRequirementClick={(reqId) => setActiveRequirement(reqId)}
-            />
-          ))
-        )}
+          <div className="min-w-0 pt-0.5">
+            <h1 className="text-base font-semibold tracking-tight text-text-primary">{t('traces.title')}</h1>
+            <p className="mt-1 max-w-xl text-[12px] leading-relaxed text-text-tertiary">{t('traces.desc')}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleRefresh()}
+          disabled={refreshing || !activeWorkspaceId || activeWorkspaceId.startsWith('ws-temp-')}
+          className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md border border-border-subtle bg-surface-2/40 px-3 py-1.5 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-2/55 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+          aria-label={t('common.refresh')}
+        >
+          <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} aria-hidden />
+          {t('common.refresh')}
+        </button>
+      </header>
+
+      <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-1/30 p-1.5">
+        <div className="flex flex-col divide-y divide-border-subtle rounded-lg bg-surface-2/25 sm:flex-row sm:divide-x sm:divide-y-0">
+          {stats.map(stat => {
+            const Icon = stat.icon
+            return (
+              <div
+                key={stat.label}
+                className="relative flex flex-1 flex-col items-center px-5 py-5 sm:items-stretch sm:px-6 sm:py-6"
+              >
+                <Icon
+                  className={`absolute right-3 top-3 h-3.5 w-3.5 opacity-[0.35] sm:right-4 sm:top-4 ${stat.color}`}
+                  aria-hidden
+                />
+                <span className={`font-mono text-2xl font-semibold tabular-nums sm:text-[1.65rem] ${stat.color}`}>
+                  {stat.value}
+                </span>
+                <span className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-text-secondary sm:text-left">
+                  {stat.label}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      <ArtifactPanel />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+        <aside className="min-w-0 space-y-4 lg:sticky lg:top-2 lg:col-span-4">{filterPanel}</aside>
+
+        <section className="min-w-0 lg:col-span-8">
+          <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-1/30">
+            <div className="border-b border-border-subtle bg-surface-2/15">
+              <div className="flex items-end justify-between gap-3 px-4 sm:px-5">
+                <div
+                  role="tablist"
+                  aria-label={t('traces.tabsAria')}
+                  className="flex min-w-0 gap-6 sm:gap-10"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    id={runsTabId}
+                    aria-selected={mainTab === 'runs'}
+                    aria-controls={runsPanelId}
+                    tabIndex={mainTab === 'runs' ? 0 : -1}
+                    onClick={() => setMainTab('runs')}
+                    className={`relative -mb-px cursor-pointer border-b-2 pt-4 pb-3 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1/30
+                      ${
+                        mainTab === 'runs'
+                          ? 'border-accent text-text-primary'
+                          : 'border-transparent text-text-tertiary hover:text-text-secondary'
+                      }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ScrollText className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                      <span className="truncate">{t('traces.runsHeading')}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id={artifactsTabId}
+                    aria-selected={mainTab === 'artifacts'}
+                    aria-controls={artifactsPanelId}
+                    tabIndex={mainTab === 'artifacts' ? 0 : -1}
+                    onClick={() => setMainTab('artifacts')}
+                    className={`relative -mb-px cursor-pointer border-b-2 pt-4 pb-3 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1/30
+                      ${
+                        mainTab === 'artifacts'
+                          ? 'border-accent text-text-primary'
+                          : 'border-transparent text-text-tertiary hover:text-text-secondary'
+                      }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileStack className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                      <span className="truncate">{t('artifact.title')}</span>
+                    </span>
+                  </button>
+                </div>
+                {mainTab === 'runs' && executions.length > 0 && (
+                  <span className="mb-3 hidden font-mono text-[10px] tabular-nums text-text-tertiary sm:block">
+                    {filtered.length}/{executions.length}
+                  </span>
+                )}
+              </div>
+            </div>
+            {mainTab === 'runs' && (
+              <div id={runsPanelId} role="tabpanel" aria-labelledby={runsTabId}>
+                {runsPanelBody}
+              </div>
+            )}
+            {mainTab === 'artifacts' && (
+              <div id={artifactsPanelId} role="tabpanel" aria-labelledby={artifactsTabId}>
+                <p className="border-b border-border-subtle px-4 py-3 text-[11px] leading-relaxed text-text-tertiary sm:px-5">
+                  {t('traces.artifactsHint')}
+                </p>
+                <div className="p-4 sm:p-5">
+                  <ArtifactPanel
+                    embedded
+                    traceExecutionAllowlist={traceExecutionAllowlist}
+                    traceShowOrphansWithoutExecution={allFiltersDefault}
+                    traceOrphanAgentFilter={agentFilter}
+                    traceOrphanStatusFilter={statusFilter}
+                    traceOrphanReqFilter={reqFilter}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </motion.div>
   )
 }

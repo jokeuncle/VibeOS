@@ -103,7 +103,12 @@ export default function WorkspaceView() {
   /** Full-bleed layout: pipeline / visual orchestration only; other sidebar views share one content width. */
   const isPipelineLayout =
     currentViewMode === 'pipeline' || currentViewMode === 'controlCenter'
-  const contentMaxW = isPipelineLayout ? 'max-w-none' : 'max-w-6xl'
+  const isTracesLayout = currentViewMode === 'execution' || currentViewMode === 'traces'
+  const contentMaxW = isPipelineLayout
+    ? 'max-w-none'
+    : isTracesLayout
+      ? 'max-w-7xl'
+      : 'max-w-6xl'
 
   return (
     <motion.main

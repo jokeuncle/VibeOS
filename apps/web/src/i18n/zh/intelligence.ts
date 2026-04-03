@@ -232,6 +232,16 @@ const intelligence = {
   'pipeline.phase.monitoring.desc': '定义告警、仪表盘和运维手册',
 
   'traces.title': '追踪',
+  'traces.filtersHeading': '筛选条件',
+  'traces.runsHeading': '执行记录',
+  'traces.listHeader.details': '运行',
+  'traces.listHeader.timing': '步骤 · 耗时 · 时间',
+  'traces.filter.agent': 'Agent',
+  'traces.artifactsHint': '本工作空间运行产生的文档、代码与导出内容。',
+  'traces.tabsAria': '执行记录或工作空间产物',
+  'traces.filtersSyncedHint':
+    '执行记录按 Agent、状态、需求筛选。已关联运行的产物同步；未返回 run id 的产物仅按 Agent 匹配（选择状态或需求后不展示此类产物）。',
+  'traces.artifactsNoMatchFilters': '当前筛选下没有关联产物。可放宽筛选或在「执行记录」中查看可见运行。',
   'traces.desc': 'Agent 推理历史——此工作空间内所有需求的 LLM 调用、工具链和决策路径。',
   'traces.totalExecutions': '总执行次数',
   'traces.activeRuns': '进行中',

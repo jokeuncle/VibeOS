@@ -232,6 +232,16 @@ const intelligence = {
   'pipeline.phase.monitoring.desc': 'Define alerts, dashboards, and runbooks',
 
   'traces.title': 'Traces',
+  'traces.filtersHeading': 'Filters',
+  'traces.runsHeading': 'Execution log',
+  'traces.listHeader.details': 'Run',
+  'traces.listHeader.timing': 'Steps · Duration · Time',
+  'traces.filter.agent': 'Agent',
+  'traces.artifactsHint': 'Design docs, code, and exports from runs in this workspace.',
+  'traces.tabsAria': 'Execution log or workspace artifacts',
+  'traces.filtersSyncedHint':
+    'Runs use Agent, Status, and Requirement. Artifacts with a linked run follow. Items without a stored run id only match Agent (Status or Requirement filters hide them).',
+  'traces.artifactsNoMatchFilters': 'No artifacts for the current run filters. Loosen filters or switch tab to see more runs.',
   'traces.desc': 'Agent reasoning history — LLM calls, tool chains, and decision paths across all requirements in this workspace.',
   'traces.totalExecutions': 'Total executions',
   'traces.activeRuns': 'Active now',

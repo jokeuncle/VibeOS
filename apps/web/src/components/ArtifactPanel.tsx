@@ -38,10 +38,10 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
   }
 
   return (
-    <div className="rounded-xl border border-border-subtle bg-surface-1 overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-1/30">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-2/50 transition-colors cursor-pointer"
+        className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/35"
       >
         <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
           <Icon className="w-4 h-4 text-accent" />
@@ -130,7 +130,51 @@ function groupByAgent(artifacts: Artifact[]): Record<string, Artifact[]> {
   return groups
 }
 
-export default function ArtifactPanel() {
+/** Traces sidebar status filter — must match WorkspaceTraces TraceStatus | 'all'. */
+type TraceSidebarStatusFilter = 'all' | 'success' | 'error' | 'running' | 'info'
+
+/**
+ * API often omits `executionId` on artifacts. When missing, we cannot verify run status or requirement:
+ * only Agent can be matched; Status ≠ all or Requirement ≠ all excludes these rows.
+ */
+function artifactWithoutExecutionMatchesTraceSidebar(
+  a: Artifact,
+  agentFilter: string,
+  statusFilter: TraceSidebarStatusFilter,
+  reqFilter: string,
+): boolean {
+  if (agentFilter !== 'All' && a.agentType !== agentFilter) return false
+  if (statusFilter !== 'all') return false
+  if (reqFilter !== 'all') return false
+  return true
+}
+
+type ArtifactPanelProps = {
+  /** When true, skip the standalone title + divider — wrap with a parent panel header (e.g. Traces). */
+  embedded?: boolean
+  /**
+   * Traces view: keep artifacts whose executionId is in this set.
+   * When omitted, no execution-based narrowing (workspace-wide list).
+   */
+  traceExecutionAllowlist?: Set<string>
+  /**
+   * When allowlist is set: also show artifacts with no executionId (e.g. filters at default on Traces).
+   */
+  traceShowOrphansWithoutExecution?: boolean
+  /** Traces sidebar: agent chip value (`All` or AgentType key). Used when `executionId` is missing. */
+  traceOrphanAgentFilter?: string
+  traceOrphanStatusFilter?: TraceSidebarStatusFilter
+  traceOrphanReqFilter?: string
+}
+
+export default function ArtifactPanel({
+  embedded = false,
+  traceExecutionAllowlist,
+  traceShowOrphansWithoutExecution = false,
+  traceOrphanAgentFilter,
+  traceOrphanStatusFilter,
+  traceOrphanReqFilter,
+}: ArtifactPanelProps) {
   const { activeWorkspaceId, workflowRunning, workspaces, activeRequirementId, executions } = useWorkspaceStore()
   const t = useT()
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
@@ -183,50 +227,120 @@ export default function ArtifactPanel() {
     return scoped.length > 0 ? scoped : artifacts
   }, [artifacts, activeRequirementId, executions])
 
+  const displayArtifacts = useMemo(() => {
+    if (!traceExecutionAllowlist) return filteredArtifacts
+    return filteredArtifacts.filter(a => {
+      if (a.executionId && traceExecutionAllowlist.has(a.executionId)) return true
+      if (!a.executionId) {
+        if (traceShowOrphansWithoutExecution) return true
+        if (
+          traceOrphanAgentFilter === undefined ||
+          traceOrphanStatusFilter === undefined ||
+          traceOrphanReqFilter === undefined
+        )
+          return false
+        return artifactWithoutExecutionMatchesTraceSidebar(
+          a,
+          traceOrphanAgentFilter,
+          traceOrphanStatusFilter,
+          traceOrphanReqFilter,
+        )
+      }
+      return false
+    })
+  }, [
+    filteredArtifacts,
+    traceExecutionAllowlist,
+    traceShowOrphansWithoutExecution,
+    traceOrphanAgentFilter,
+    traceOrphanStatusFilter,
+    traceOrphanReqFilter,
+  ])
+
   if (!activeWorkspaceId) return null
 
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-          {t('artifact.title')}
-        </span>
+  const noMatchesAfterTraceFilter =
+    traceExecutionAllowlist != null &&
+    !loading &&
+    displayArtifacts.length === 0 &&
+    filteredArtifacts.length > 0
+
+  const metaRow =
+    embedded && (activeRequirementId || displayArtifacts.length > 0) ? (
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         {activeRequirementId && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-medium">
+          <span className="rounded-md bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
             {t('requirement.scoped' as TranslationKey)}
           </span>
         )}
-        <span className="text-[10px] text-text-tertiary font-mono">
-          ({filteredArtifacts.length})
-        </span>
-        <div className="flex-1 h-px bg-border-subtle" />
+        {displayArtifacts.length > 0 && (
+          <span className="font-mono text-[10px] tabular-nums text-text-tertiary">
+            {displayArtifacts.length}
+          </span>
+        )}
       </div>
+    ) : null
 
+  const body = (
+    <>
+      {embedded && metaRow}
       {loading && (
-        <div className="text-xs text-text-tertiary py-4 text-center">{t('artifact.loading' as TranslationKey)}</div>
-      )}
-
-      {!loading && filteredArtifacts.length === 0 && (
-        <div className="text-xs text-text-tertiary py-4 text-center">
-          {t('artifact.empty')}
+        <div className="py-8 text-center text-[12px] text-text-tertiary">
+          {t('artifact.loading' as TranslationKey)}
         </div>
       )}
 
-      <div className="space-y-3">
-        {Object.entries(groupByAgent(filteredArtifacts)).map(([agent, arts]) => (
-          <div key={agent}>
-            <div className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider mb-1.5 pl-1">
-              {agent}
-              <span className="text-text-tertiary/60 ml-1">({arts.length})</span>
+      {!loading && displayArtifacts.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border-subtle bg-surface-2/20 py-10 text-center">
+          <p className="text-[12px] text-text-secondary">
+            {noMatchesAfterTraceFilter
+              ? t('traces.artifactsNoMatchFilters' as TranslationKey)
+              : t('artifact.empty')}
+          </p>
+        </div>
+      )}
+
+      {!loading && displayArtifacts.length > 0 && (
+        <div className="space-y-4">
+          {Object.entries(groupByAgent(displayArtifacts)).map(([agent, arts]) => (
+            <div key={agent}>
+              <div className="mb-2 pl-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                {agent}
+                <span className="ml-1 font-mono tabular-nums text-text-tertiary/80">({arts.length})</span>
+              </div>
+              <div className="space-y-2">
+                {arts.map(art => (
+                  <ArtifactCard key={art.id} artifact={art} />
+                ))}
+              </div>
             </div>
-            <div className="space-y-2">
-              {arts.map((art) => (
-                <ArtifactCard key={art.id} artifact={art} />
-              ))}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
+      )}
+    </>
+  )
+
+  if (embedded) {
+    return <div className="space-y-3">{body}</div>
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
+          {t('artifact.title')}
+        </span>
+        {activeRequirementId && (
+          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+            {t('requirement.scoped' as TranslationKey)}
+          </span>
+        )}
+        <span className="font-mono text-[10px] tabular-nums text-text-tertiary">
+          ({displayArtifacts.length})
+        </span>
+        <div className="min-h-px min-w-[2rem] flex-1 bg-border-subtle" />
       </div>
+      {body}
     </div>
   )
 }
