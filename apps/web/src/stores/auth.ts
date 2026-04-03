@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { User } from '../types'
 import { authApi } from '../lib/api'
+import { friendlyAuthError } from './workspace/helpers'
 
 interface AuthState {
   user: User | null
@@ -30,7 +31,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user, token, loading: false, checked: true })
       return true
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : 'Login failed' })
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ loading: false, error: friendlyAuthError(msg) })
       return false
     }
   },
@@ -43,7 +45,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user, token, loading: false, checked: true })
       return true
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : 'Registration failed' })
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ loading: false, error: friendlyAuthError(msg) })
       return false
     }
   },

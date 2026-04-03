@@ -5,6 +5,9 @@ import { useAuthStore } from '../stores/auth'
 import { useT } from '../i18n'
 import type { TranslationKey } from '../i18n/en'
 
+const emailLooksValid = (value: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+
 export default function LoginPage() {
   const t = useT()
   const { login, register, loading, error } = useAuthStore()
@@ -12,15 +15,40 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
+  const [clientError, setClientError] = useState<string | null>(null)
+
+  function clearErrors() {
+    setClientError(null)
+    useAuthStore.setState({ error: null })
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    clearErrors()
+    if (isRegister && !name.trim()) {
+      setClientError(t('auth.validationNameRequired' as TranslationKey))
+      return
+    }
+    if (!email.trim()) {
+      setClientError(t('auth.validationEmailRequired' as TranslationKey))
+      return
+    }
+    if (!emailLooksValid(email)) {
+      setClientError(t('auth.validationEmailInvalid' as TranslationKey))
+      return
+    }
+    if (!password) {
+      setClientError(t('auth.validationPasswordRequired' as TranslationKey))
+      return
+    }
     if (isRegister) {
       await register(email, password, name)
     } else {
       await login(email, password)
     }
   }
+
+  const formError = clientError || error
 
   return (
     <div className="h-screen flex items-center justify-center bg-surface-0">
@@ -42,35 +70,39 @@ export default function LoginPage() {
             {isRegister ? t('auth.register' as TranslationKey) : t('auth.login' as TranslationKey)}
           </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form noValidate onSubmit={handleSubmit} className="space-y-3">
             {isRegister && (
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => { setName(e.target.value); clearErrors() }}
                 placeholder={t('auth.namePlaceholder' as TranslationKey)}
+                autoComplete="name"
                 className="w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40"
               />
             )}
             <input
               type="email"
+              inputMode="email"
+              autoComplete="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); clearErrors() }}
               placeholder={t('auth.emailPlaceholder' as TranslationKey)}
-              required
               className="w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40"
             />
             <input
               type="password"
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { setPassword(e.target.value); clearErrors() }}
               placeholder={t('auth.passwordPlaceholder' as TranslationKey)}
-              required
               className="w-full px-3 py-2 rounded-lg border border-border-default bg-surface-2 text-sm text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40"
             />
 
-            {error && (
-              <p className="text-xs text-danger">{error}</p>
+            {formError && (
+              <p className="text-xs text-danger leading-relaxed" role="alert">
+                {formError}
+              </p>
             )}
 
             <button
@@ -89,7 +121,10 @@ export default function LoginPage() {
           <div className="mt-4 text-center">
             <button
               type="button"
-              onClick={() => setIsRegister(!isRegister)}
+              onClick={() => {
+                setIsRegister(!isRegister)
+                clearErrors()
+              }}
               className="text-xs text-text-tertiary hover:text-accent cursor-pointer transition-colors"
             >
               {isRegister ? t('auth.haveAccount' as TranslationKey) : t('auth.noAccount' as TranslationKey)}

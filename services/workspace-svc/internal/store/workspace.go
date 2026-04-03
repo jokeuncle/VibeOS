@@ -42,10 +42,30 @@ func scanAgent(s rowScanner) (*models.Agent, error) {
 	return &a, nil
 }
 
+// scanAgentListRow loads only fields needed for workspace list / cards (no prompts, manifests, or capabilities JSON).
+func scanAgentListRow(s rowScanner) (*models.Agent, error) {
+	var a models.Agent
+	var agentType, status string
+	err := s.Scan(&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
+		&a.Avatar, &a.Enabled, &a.RequireApproval, &a.TrustThreshold,
+		&a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	a.Type = models.AgentType(agentType)
+	a.Status = models.AgentStatus(status)
+	a.SystemPromptTemplate = ""
+	a.ToolManifest = nil
+	a.Capabilities = nil
+	return &a, nil
+}
+
 // ---------------------------------------------------------------------------
 // Workspace CRUD
 // ---------------------------------------------------------------------------
 
+// ListWorkspaces returns workspaces with phases (tasks empty), lightweight agents, no activities.
+// Callers needing full nested data should use GetWorkspace.
 func (s *PostgresStore) ListWorkspaces(ctx context.Context) ([]models.Workspace, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+workspaceCols+` FROM workspaces ORDER BY created_at DESC`)
 	if err != nil {
@@ -82,23 +102,13 @@ func (s *PostgresStore) ListWorkspaces(ctx context.Context) ([]models.Workspace,
 		}
 	}
 
-	if agents, err := s.queryAgents(ctx, wsIDs); err != nil {
+	agents, err := s.queryAgentsForWorkspaceList(ctx, wsIDs)
+	if err != nil {
 		return nil, err
-	} else {
-		for _, a := range agents {
-			if idx, ok := wsMap[a.WorkspaceID]; ok {
-				workspaces[idx].Agents = append(workspaces[idx].Agents, a)
-			}
-		}
 	}
-
-	if activities, err := s.queryRecentActivities(ctx, wsIDs, 5); err != nil {
-		return nil, err
-	} else {
-		for _, a := range activities {
-			if idx, ok := wsMap[a.WorkspaceID]; ok {
-				workspaces[idx].Activities = append(workspaces[idx].Activities, a)
-			}
+	for _, a := range agents {
+		if idx, ok := wsMap[a.WorkspaceID]; ok {
+			workspaces[idx].Agents = append(workspaces[idx].Agents, a)
 		}
 	}
 
@@ -313,6 +323,29 @@ func (s *PostgresStore) queryPhases(ctx context.Context, wsIDs []string) ([]mode
 		phases = []models.Phase{}
 	}
 	return phases, nil
+}
+
+func (s *PostgresStore) queryAgentsForWorkspaceList(ctx context.Context, wsIDs []string) ([]models.Agent, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, workspace_id, type, name, status, avatar, enabled, require_approval, trust_threshold, created_at, updated_at
+		 FROM agents WHERE workspace_id = ANY($1) ORDER BY type`, wsIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query agents (list): %w", err)
+	}
+	defer rows.Close()
+
+	var agents []models.Agent
+	for rows.Next() {
+		a, err := scanAgentListRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan agent: %w", err)
+		}
+		agents = append(agents, *a)
+	}
+	if agents == nil {
+		agents = []models.Agent{}
+	}
+	return agents, nil
 }
 
 func (s *PostgresStore) queryAgents(ctx context.Context, wsIDs []string) ([]models.Agent, error) {

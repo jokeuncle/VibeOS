@@ -56,13 +56,13 @@ db-migrate: ## Apply all migrations
 # ---------------------------------------------------------------------------
 
 .PHONY: run-workspace-svc
-run-workspace-svc: ## Run workspace-svc (Go, :8010)
-	cd services/workspace-svc && \
+run-workspace-svc: ## Run workspace-svc (Go, :8010); rebuilds binary so make dev picks up Go changes
+	cd services/workspace-svc && go build -o workspace-svc ./cmd && \
 	PORT=8010 REDIS_URL=redis://localhost:6379/0 ./workspace-svc
 
 .PHONY: run-ws-gateway
-run-ws-gateway: ## Run ws-gateway (Go, :8020)
-	cd services/ws-gateway && \
+run-ws-gateway: ## Run ws-gateway (Go, :8020); rebuilds binary so make dev picks up Go changes
+	cd services/ws-gateway && go build -o ws-gateway ./cmd && \
 	PORT=8020 REDIS_URL=redis://localhost:6379/0 ./ws-gateway
 
 .PHONY: run-llm-gateway

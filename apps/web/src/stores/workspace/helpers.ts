@@ -13,6 +13,34 @@ export function tRaw(key: TranslationKey, vars?: Record<string, string>): string
   return msg
 }
 
+/** Map login/register API errors (HTTP status from `request()` or network) to i18n strings. */
+export function friendlyAuthError(raw: string): string {
+  const statusMatch = raw.match(/^(\d{3}):\s*(.*)/s)
+  if (statusMatch) {
+    const code = Number(statusMatch[1])
+    const body = statusMatch[2]?.trim() ?? ''
+    if (code === 401) return tRaw('auth.errorInvalidCredentials' as TranslationKey)
+    if (code === 403) return tRaw('auth.errorForbidden' as TranslationKey)
+    if (code === 404) return tRaw('auth.errorNotFound' as TranslationKey)
+    if (code === 429) return tRaw('auth.errorTooManyRequests' as TranslationKey)
+    if (code >= 500) return tRaw('auth.errorServerUnavailable' as TranslationKey)
+    if (body) {
+      try {
+        const j = JSON.parse(body) as { error?: string }
+        if (typeof j.error === 'string' && j.error.trim()) return j.error.trim()
+      } catch {
+        if (body.length <= 200 && !body.startsWith('<')) return body
+      }
+    }
+    if (code >= 400) return tRaw('auth.errorRequestFailed' as TranslationKey)
+  }
+  const fe = friendlyError(raw)
+  if (fe !== raw) return fe
+  const t = raw.trim()
+  if (t) return t
+  return tRaw('auth.errorGeneric' as TranslationKey)
+}
+
 export function friendlyError(raw: string): string {
   if (/rate.?limit|too.?many|SetLimitExceeded|inference limit/i.test(raw)) {
     return tRaw('error.llmRateLimit')
