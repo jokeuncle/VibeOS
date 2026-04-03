@@ -15,9 +15,9 @@ import os
 import sys
 import time
 
-os.environ.setdefault("CODING_LLM_MODEL", "openai/doubao-seed-code-preview-251028")
+os.environ.setdefault("CODING_LLM_MODEL", "deepseek/deepseek-chat")
 os.environ.setdefault("CODING_LLM_API_KEY", "your-api-key-here")
-os.environ.setdefault("CODING_LLM_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
+os.environ.setdefault("CODING_LLM_BASE_URL", "https://api.deepseek.com/v1")
 os.environ.setdefault("GITLAB_URL", "https://gitlab.example.com")
 os.environ.setdefault("GITLAB_TOKEN", "glpat-xxxxxxxxxxxxxxxxxxxx")
 

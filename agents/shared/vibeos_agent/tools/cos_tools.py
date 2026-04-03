@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .base import BaseTool
@@ -54,4 +55,6 @@ class CosUploadTool(BaseTool):
 
 
 def create_cos_tools() -> list[BaseTool]:
+    if not os.environ.get("VIBEOS_COS_UPLOAD"):
+        return []
     return [CosUploadTool()]

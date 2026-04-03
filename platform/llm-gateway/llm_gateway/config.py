@@ -14,7 +14,8 @@ class Settings:
     deepseek_api_key: str | None = os.getenv("DEEPSEEK_API_KEY")
     dashscope_api_key: str | None = os.getenv("DASHSCOPE_API_KEY")
     volcengine_api_key: str | None = os.getenv("VOLCENGINE_API_KEY") or os.getenv("ARK_API_KEY")
-    llm_model: str = os.getenv("LLM_MODEL", "doubao-seed-2-0-pro-260215")
+    llm_api_key: str | None = os.getenv("LLM_API_KEY")
+    llm_model: str = os.getenv("LLM_MODEL", "")
 
     default_model: str = os.getenv("DEFAULT_MODEL", "auto")
     default_temperature: float = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
@@ -40,20 +41,21 @@ class Settings:
             for m in volc_models:
                 if m not in models:
                     models.append(m)
-            if self.llm_model not in models:
-                models.append(self.llm_model)
+        if self.llm_model and self.llm_model not in models:
+            models.append(self.llm_model)
         return models
 
     @property
     def default_preference_order(self) -> list[str]:
         """Preferred model order when no capability contract is given."""
-        return [m for m in [
+        candidates = [
             self.llm_model,
             "claude-sonnet-4-20250514",
             "gpt-4o",
             "deepseek-chat",
             "qwen-plus",
-        ] if m in self.available_models]
+        ]
+        return [m for m in candidates if m and m in self.available_models]
 
 
 settings = Settings()

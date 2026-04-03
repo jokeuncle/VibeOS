@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -143,15 +144,17 @@ MODEL_REGISTRY: dict[str, ModelProfile] = {
     ),
 }
 
+_ENV_DEFAULT_MODEL = os.environ.get("LLM_MODEL", "")
+
 AGENT_TYPE_DEFAULTS: dict[str, str] = {
-    "pm": "doubao-seed-2-0-pro-260215",
-    "architecture": "doubao-seed-2-0-pro-260215",
-    "frontend": "doubao-seed-2-0-pro-260215",
-    "backend": "doubao-seed-2-0-pro-260215",
-    "development": "doubao-seed-2-0-pro-260215",
-    "qa": "doubao-seed-2-0-pro-260215",
-    "devops": "doubao-seed-2-0-pro-260215",
-    "default": "doubao-seed-2-0-pro-260215",
+    "pm": _ENV_DEFAULT_MODEL,
+    "architecture": _ENV_DEFAULT_MODEL,
+    "frontend": _ENV_DEFAULT_MODEL,
+    "backend": _ENV_DEFAULT_MODEL,
+    "development": _ENV_DEFAULT_MODEL,
+    "qa": _ENV_DEFAULT_MODEL,
+    "devops": _ENV_DEFAULT_MODEL,
+    "default": _ENV_DEFAULT_MODEL,
 }
 
 

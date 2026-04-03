@@ -67,7 +67,7 @@ run-ws-gateway: ## Run ws-gateway (Go, :8020); rebuilds binary so make dev picks
 
 .PHONY: run-llm-gateway
 run-llm-gateway: ## Run llm-gateway (:8030)
-	VOLCENGINE_API_KEY=$(ARK_API_KEY) \
+	VOLCENGINE_API_KEY=$${VOLCENGINE_API_KEY:-$${ARK_API_KEY:-$${LLM_API_KEY:-}}} \
 	REDIS_URL=redis://localhost:6379/1 PORT=8030 \
 	uv run --package llm-gateway \
 		uvicorn llm_gateway.main:app --host 0.0.0.0 --port 8030 --reload
@@ -78,9 +78,6 @@ run-llm-gateway: ## Run llm-gateway (:8030)
 
 .PHONY: run-memory-service
 run-memory-service: ## Run memory-service (:8050)
-	VOLCENGINE_API_KEY=$(ARK_API_KEY) \
-	VOLCENGINE_BASE_URL=$(LLM_BASE_URL) \
-	VOLCENGINE_LLM_MODEL=volcengine/$(LLM_MODEL) \
 	QDRANT_URL=http://localhost:6333 \
 	LLM_GATEWAY_URL=http://localhost:8030 \
 	REDIS_URL=redis://localhost:6379/3 PORT=8050 \

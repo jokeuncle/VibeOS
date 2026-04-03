@@ -13,7 +13,7 @@ import sys
 
 os.environ.setdefault("WORKSPACE_SVC_URL", "http://localhost:8010")
 os.environ.setdefault("WS_GATEWAY_URL", "http://localhost:8020")
-os.environ.setdefault("LLM_BASE_URL", os.environ.get("LLM_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"))
+os.environ.setdefault("LLM_BASE_URL", os.environ.get("LLM_BASE_URL", "http://localhost:8030"))
 os.environ.setdefault("LLM_MODEL", os.environ.get("LLM_MODEL", "deepseek-v3-2-251201"))
 
 WS_ID = "6fe32552-4326-46b7-b17f-f29817928955"

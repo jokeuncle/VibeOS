@@ -87,9 +87,10 @@ services:
     environment:
       PORT: "8030"
       REDIS_URL: redis://redis:6379/1
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-${LLM_API_KEY:-}}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${LLM_API_KEY:-}}
       VOLCENGINE_API_KEY: ${VOLCENGINE_API_KEY:-${ARK_API_KEY:-}}
     depends_on:
       redis:
@@ -184,9 +185,9 @@ services:
       REDIS_URL: redis://redis:6379/3
       QDRANT_URL: http://qdrant:6333
       LLM_GATEWAY_URL: http://llm-gateway:8030
-      VOLCENGINE_API_KEY: ${VOLCENGINE_API_KEY:-${ARK_API_KEY:-}}
-      VOLCENGINE_BASE_URL: ${LLM_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
-      VOLCENGINE_LLM_MODEL: ${VOLCENGINE_LLM_MODEL:-volcengine/doubao-seed-2-0-pro-260215}
+      VOLCENGINE_API_KEY: ${VOLCENGINE_API_KEY:-${ARK_API_KEY:-${LLM_API_KEY:-}}}
+      VOLCENGINE_BASE_URL: ${VOLCENGINE_BASE_URL:-${LLM_BASE_URL:-}}
+      VOLCENGINE_LLM_MODEL: ${VOLCENGINE_LLM_MODEL:-${LLM_MODEL:-}}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
     depends_on:

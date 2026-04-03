@@ -21,14 +21,16 @@ class Settings:
         self.volcengine_api_key = (
             os.getenv("VOLCENGINE_API_KEY", "")
             or os.getenv("ARK_API_KEY", "")
+            or os.getenv("LLM_API_KEY", "")
             or os.getenv("OPENAI_API_KEY", "")
         )
         self.volcengine_base_url = os.getenv(
             "VOLCENGINE_BASE_URL",
-            os.getenv("LLM_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+            os.getenv("LLM_BASE_URL", ""),
         )
         self.volcengine_llm_model = os.getenv(
-            "VOLCENGINE_LLM_MODEL", "volcengine/doubao-seed-2-0-pro-260215"
+            "VOLCENGINE_LLM_MODEL",
+            os.getenv("LLM_MODEL", ""),
         )
         # fastembed / Qdrant supported model id (same default as rag-pipeline).
         self.embedding_model = os.getenv(

@@ -10,14 +10,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-BUCKET = os.environ.get("COS_BUCKET", "your-bucket-name")
-REGION = os.environ.get("COS_REGION", "ap-guangzhou")
-CDN_BASE = os.environ.get("COS_CDN_BASE", "https://your-cdn.example.com")
-
-_DEFAULT_CREDENTIALS = {
-    "COS_SECRET_ID": "REDACTED_COS_SECRET_ID",
-    "COS_SECRET_KEY": "REDACTED_COS_SECRET_KEY",
-}
+BUCKET = os.environ.get("COS_BUCKET", "")
+REGION = os.environ.get("COS_REGION", "")
+CDN_BASE = os.environ.get("COS_CDN_BASE", "")
 
 ARTIFACT_EXT_MAP: dict[str, str] = {
     "prd_document": ".md",
@@ -62,12 +57,13 @@ class CosUploader:
         self.bucket = bucket
         self.region = region
         self.cdn_base = cdn_base.rstrip("/")
-        self._secret_id = secret_id or os.environ.get(
-            "COS_SECRET_ID", _DEFAULT_CREDENTIALS["COS_SECRET_ID"]
-        )
-        self._secret_key = secret_key or os.environ.get(
-            "COS_SECRET_KEY", _DEFAULT_CREDENTIALS["COS_SECRET_KEY"]
-        )
+        self._secret_id = secret_id or os.environ.get("COS_SECRET_ID", "")
+        self._secret_key = secret_key or os.environ.get("COS_SECRET_KEY", "")
+        if not self._secret_id or not self._secret_key:
+            raise ValueError(
+                "COS credentials required: set COS_SECRET_ID and COS_SECRET_KEY "
+                "environment variables, or pass secret_id/secret_key explicitly."
+            )
         self._client: Any = None
 
     def _get_client(self) -> Any:
