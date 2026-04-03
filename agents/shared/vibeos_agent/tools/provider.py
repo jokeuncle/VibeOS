@@ -58,6 +58,10 @@ class ToolProvider(ABC):
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
         ...
 
+    async def list_resources(self) -> list[dict[str, Any]]:
+        """MCP-style resources; overridden by providers that support discovery."""
+        return []
+
 
 class StaticToolProvider(ToolProvider):
     """Hosts ``BaseTool`` instances as a :class:`ToolProvider`."""

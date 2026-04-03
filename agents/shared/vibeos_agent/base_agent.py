@@ -856,8 +856,6 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
                 sections.append("## Available MCP servers\n" + "\n".join(lines))
 
                 for provider in self.tool_manager._providers:
-                    if not hasattr(provider, "list_resources"):
-                        continue
                     try:
                         resources = await provider.list_resources()
                         if resources:
