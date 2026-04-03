@@ -225,13 +225,17 @@ class ContextEnricherMiddleware(Middleware):
         ctx: InvocationContext,
         active_skills: list[str],
     ) -> None:
+        from ..builtin_skills import BUILTIN_SKILLS
+
+        registry = SkillRegistry()
+        agent_key = _enum_val(ctx.agent_type)
+
+        for sk in BUILTIN_SKILLS:
+            registry.register(sk)
+
         try:
             db_skills = await self._workspace.list_skills(ctx.workspace_id)
-            if not db_skills:
-                return
-            registry = SkillRegistry()
-            agent_key = _enum_val(ctx.agent_type)
-            for row in db_skills:
+            for row in (db_skills or []):
                 sk = Skill.from_db_config(
                     row.get("config", {}),
                     id=row.get("id", ""),
@@ -243,14 +247,9 @@ class ContextEnricherMiddleware(Middleware):
                 if active_skills and sk.name not in active_skills:
                     sk.enabled = False
                 registry.register(sk)
-            combined = registry.get_combined_prompt(agent_key)
-            if combined:
-                sections.append(f"## Active skills\n{combined}")
-            else:
-                lines = [
-                    f"- {s.get('name', '?')}: {s.get('description', '')}"
-                    for s in db_skills[:10]
-                ]
-                sections.append("## Available skills\n" + "\n".join(lines))
         except Exception:
             logger.debug("Failed to load skills ws=%s", ctx.workspace_id, exc_info=True)
+
+        combined = registry.get_combined_prompt(agent_key)
+        if combined:
+            sections.append(f"## Active skills\n{combined}")

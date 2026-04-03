@@ -55,6 +55,7 @@ from .container import ClientContainer
 from .sandbox_agent import SandboxAgent
 from .sdlc_agent import ArtifactConfig, SDLCAgent
 from .skills import Skill, SkillRegistry, SkillToolProvider
+from .builtin_skills import BUILTIN_SKILLS, SDLC_ARTIFACT_DISCIPLINE, REQUIREMENT_PLAYBOOK, GITLAB_COMMIT_WORKFLOW
 from .user_context import UserContext, UserContextClient
 from .conversation import ConversationEngine, ConversationRequest
 from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
@@ -117,6 +118,10 @@ __all__ = [
     "Skill",
     "SkillRegistry",
     "SkillToolProvider",
+    "BUILTIN_SKILLS",
+    "SDLC_ARTIFACT_DISCIPLINE",
+    "REQUIREMENT_PLAYBOOK",
+    "GITLAB_COMMIT_WORKFLOW",
     "StaticToolProvider",
     "UserContext",
     "UserContextClient",
