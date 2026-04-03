@@ -23,6 +23,7 @@ import httpx
 from vibeos_agent import (
     AGENT_PHASE_MAP,
     DEFAULT_PHASE_ORDER,
+    DEFAULT_PROJECT_GRAPH,
     PHASE_CONTRACTS,
     AgentStatus,
     AgentTask,
@@ -354,6 +355,58 @@ class WorkflowEngine:
         if graph_id:
             return await self._fetch_graph_by_id(workspace_id, graph_id)
         return await self._fetch_workspace_graph(workspace_id)
+
+    async def _fetch_project_graph(self, workspace_id: str) -> dict[str, Any]:
+        """Load the project-level DCG from workspace DB, falling back to DEFAULT_PROJECT_GRAPH."""
+        try:
+            resp = await self.ws_client._http.get(
+                f"/api/workspaces/{workspace_id}/graphs/active?scope=project",
+            )
+            if resp.status_code == 200:
+                body = resp.json()
+                data = body.get("data")
+                if data and isinstance(data, dict) and data.get("graphDef"):
+                    graph_def = data["graphDef"]
+                    if isinstance(graph_def, dict) and graph_def.get("nodes"):
+                        return graph_def
+        except Exception as exc:
+            _logger.debug("Failed to fetch project graph: %s", exc)
+        return DEFAULT_PROJECT_GRAPH
+
+    def _phase_order_from_project_graph(self, graph_def: dict[str, Any]) -> list[str]:
+        """Derive linear phase execution order from a project graph's edges."""
+        nodes = graph_def.get("nodes", [])
+        edges = graph_def.get("edges", [])
+
+        phase_nodes = {n["id"] for n in nodes if n.get("type") == "phase"}
+        adjacency: dict[str, list[str]] = {nid: [] for nid in phase_nodes}
+        start_targets: list[str] = []
+
+        for e in edges:
+            src, tgt = e.get("source", ""), e.get("target", "")
+            if src == "__start__" and tgt in phase_nodes:
+                start_targets.append(tgt)
+            elif src in phase_nodes and tgt in phase_nodes:
+                adjacency[src].append(tgt)
+
+        order: list[str] = []
+        visited: set[str] = set()
+        queue = start_targets or list(phase_nodes)
+        while queue:
+            node = queue.pop(0)
+            if node in visited:
+                continue
+            visited.add(node)
+            order.append(node)
+            for neighbor in adjacency.get(node, []):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+        for nid in phase_nodes:
+            if nid not in visited:
+                order.append(nid)
+
+        return order
 
     async def _build_cross_phase_context(
         self, workspace_id: str, completed_phases: list[str],

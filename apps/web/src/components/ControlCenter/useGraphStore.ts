@@ -42,6 +42,7 @@ interface GraphState {
 
   workspaceId: string | null
   graphId: string | null
+  graphScope: 'phase' | 'project'
   workspaceGraphs: WorkspaceGraph[]
   loadingGraph: boolean
   _pendingLoad: { wsId: string; graphId: string } | null
@@ -71,11 +72,13 @@ interface GraphState {
 
   setWorkspaceId: (id: string | null) => void
   setGraphId: (id: string | null) => void
+  setGraphScope: (scope: 'phase' | 'project') => void
   /** Schedule a graph to be loaded when ControlCenter mounts (from Agent Team etc.) */
   requestLoadGraph: (wsId: string, graphId: string) => void
   consumePendingLoad: () => { wsId: string; graphId: string } | null
-  loadWorkspaceGraphs: (wsId: string) => Promise<void>
+  loadWorkspaceGraphs: (wsId: string, scope?: 'phase' | 'project') => Promise<void>
   loadWorkspaceGraph: (wsId: string, graphId?: string) => Promise<void>
+  loadProjectGraph: (wsId: string) => Promise<void>
   loadDefaultGraph: (wsId: string, phaseType: string) => Promise<void>
   saveToWorkspace: (wsId: string) => Promise<void>
   cloneTemplate: (wsId: string, templateId: string, name: string) => Promise<void>
@@ -100,6 +103,7 @@ const initialState = {
   executionLog: [] as { category: string; action: string; data: Record<string, unknown> }[],
   workspaceId: null as string | null,
   graphId: null as string | null,
+  graphScope: 'phase' as 'phase' | 'project',
   workspaceGraphs: [] as WorkspaceGraph[],
   loadingGraph: false,
   _pendingLoad: null as { wsId: string; graphId: string } | null,
@@ -169,6 +173,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   setWorkspaceId: (workspaceId) => set({ workspaceId }),
   setGraphId: (graphId) => set({ graphId }),
+  setGraphScope: (graphScope) => set({ graphScope }),
 
   requestLoadGraph: (wsId, graphId) => set({ _pendingLoad: { wsId, graphId } }),
   consumePendingLoad: () => {
@@ -177,9 +182,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     return pending
   },
 
-  loadWorkspaceGraphs: async (wsId) => {
+  loadWorkspaceGraphs: async (wsId, scope) => {
     try {
-      const graphs = await workspaceGraphApi.list(wsId)
+      const graphs = await workspaceGraphApi.list(wsId, scope)
       set({ workspaceGraphs: graphs })
     } catch {
       set({ workspaceGraphs: [] })
@@ -212,6 +217,30 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     }
   },
 
+  loadProjectGraph: async (wsId) => {
+    set({ loadingGraph: true, graphScope: 'project' })
+    try {
+      const graphs = await workspaceGraphApi.list(wsId, 'project')
+      const active = graphs.find((g) => g.isActive) || graphs[0]
+      if (active) {
+        set({
+          workspaceId: wsId,
+          graphId: active.id,
+          graphName: active.name,
+          graphDescription: active.description,
+        })
+        get().loadGraphDef(active.graphDef)
+        set({ dirty: false })
+      } else {
+        set({ workspaceId: wsId, graphId: null, graphName: 'Project DCG (default)' })
+      }
+    } catch {
+      set({ workspaceId: wsId, graphId: null })
+    } finally {
+      set({ loadingGraph: false })
+    }
+  },
+
   loadDefaultGraph: async (wsId, phaseType) => {
     set({ loadingGraph: true })
     try {
@@ -234,7 +263,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   saveToWorkspace: async (wsId) => {
-    const { graphId, graphName, graphDescription, toGraphDef } = get()
+    const { graphId, graphName, graphDescription, graphScope, toGraphDef } = get()
     const graphDef = toGraphDef()
     const stateSchema = (graphDef as Record<string, unknown>).state_schema as Record<string, unknown>
 
@@ -255,12 +284,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           description: graphDescription,
           graphDef: graphDef as Record<string, unknown>,
           stateSchema: stateSchema as Record<string, unknown>,
+          scope: graphScope,
           isActive: true,
         })
         savedId = created.id
         set({ graphId: savedId, dirty: false })
       }
-      get().loadWorkspaceGraphs(wsId)
+      get().loadWorkspaceGraphs(wsId, graphScope)
     } catch (err) {
       throw err
     }

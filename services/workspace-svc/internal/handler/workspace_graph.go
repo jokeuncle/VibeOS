@@ -52,7 +52,11 @@ func (h *WorkspaceGraphHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *WorkspaceGraphHandler) GetActive(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
-	g, err := h.store.GetActiveWorkspaceGraph(r.Context(), wsID)
+	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = "phase"
+	}
+	g, err := h.store.GetActiveWorkspaceGraphByScope(r.Context(), wsID, scope)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeJSON(w, http.StatusOK, models.APIResponse[*models.WorkspaceGraph]{Data: nil})

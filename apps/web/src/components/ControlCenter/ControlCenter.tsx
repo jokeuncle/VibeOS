@@ -23,7 +23,10 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
   const setWorkspaceId = useGraphStore((s) => s.setWorkspaceId)
   const loadWorkspaceGraph = useGraphStore((s) => s.loadWorkspaceGraph)
   const loadWorkspaceGraphs = useGraphStore((s) => s.loadWorkspaceGraphs)
+  const loadProjectGraph = useGraphStore((s) => s.loadProjectGraph)
   const consumePendingLoad = useGraphStore((s) => s.consumePendingLoad)
+  const graphScope = useGraphStore((s) => s.graphScope)
+  const setGraphScope = useGraphStore((s) => s.setGraphScope)
   const currentWsId = useGraphStore((s) => s.workspaceId)
 
   useEffect(() => {
@@ -45,9 +48,24 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
     }
     if (!activeWorkspaceId || activeWorkspaceId === currentWsId) return
     setWorkspaceId(activeWorkspaceId)
-    loadWorkspaceGraphs(activeWorkspaceId)
-    loadWorkspaceGraph(activeWorkspaceId)
-  }, [activeWorkspaceId, currentWsId, setWorkspaceId, loadWorkspaceGraph, loadWorkspaceGraphs, consumePendingLoad])
+    loadWorkspaceGraphs(activeWorkspaceId, graphScope)
+    if (graphScope === 'project') {
+      loadProjectGraph(activeWorkspaceId)
+    } else {
+      loadWorkspaceGraph(activeWorkspaceId)
+    }
+  }, [activeWorkspaceId, currentWsId, graphScope, setWorkspaceId, loadWorkspaceGraph, loadWorkspaceGraphs, loadProjectGraph, consumePendingLoad])
+
+  const handleScopeChange = (scope: 'phase' | 'project') => {
+    setGraphScope(scope)
+    if (!activeWorkspaceId) return
+    loadWorkspaceGraphs(activeWorkspaceId, scope)
+    if (scope === 'project') {
+      loadProjectGraph(activeWorkspaceId)
+    } else {
+      loadWorkspaceGraph(activeWorkspaceId)
+    }
+  }
 
   return (
     <ReactFlowProvider>
@@ -55,9 +73,25 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
         {/* Header - 可通过 hideHeader 隐藏 */}
         {!hideHeader && (
           <div className="shrink-0 px-5 py-3 border-b border-border-subtle flex items-center justify-between">
-            <div>
-              <h1 className="text-sm font-semibold text-text-primary">{t('controlCenter.title')}</h1>
-              <p className="text-[11px] text-text-tertiary mt-0.5">{t('controlCenter.desc')}</p>
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-sm font-semibold text-text-primary">{t('controlCenter.title')}</h1>
+                <p className="text-[11px] text-text-tertiary mt-0.5">{t('controlCenter.desc')}</p>
+              </div>
+              <div className="flex rounded-md border border-border-subtle overflow-hidden text-[11px] font-medium">
+                <button
+                  className={`px-3 py-1 transition-colors ${graphScope === 'phase' ? 'bg-accent text-white' : 'bg-surface-2/40 text-text-secondary hover:bg-surface-2/60'}`}
+                  onClick={() => handleScopeChange('phase')}
+                >
+                  Phase
+                </button>
+                <button
+                  className={`px-3 py-1 transition-colors ${graphScope === 'project' ? 'bg-accent text-white' : 'bg-surface-2/40 text-text-secondary hover:bg-surface-2/60'}`}
+                  onClick={() => handleScopeChange('project')}
+                >
+                  Project
+                </button>
+              </div>
             </div>
             <GraphToolbar />
           </div>
