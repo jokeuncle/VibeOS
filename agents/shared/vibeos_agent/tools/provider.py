@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time as _time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -295,3 +296,79 @@ class ToolManager:
             if desc.name == tool_name:
                 return desc.requires_confirmation
         return False
+
+    # -- Workspace-scoped provider lifecycle -----------------------------------
+
+    _ws_loaded: dict[str, float] = {}
+
+    async def ensure_workspace_providers(
+        self,
+        workspace_client,
+        workspace_id: str,
+        *,
+        ttl: float = 300,
+    ) -> None:
+        """Load (or refresh after *ttl* seconds) MCP and Skill providers for
+        a workspace.  This is the **single** path for registering
+        workspace-scoped providers, replacing both
+        ``BaseAgent._ensure_workspace_tools`` and ``pm_agent._load_mcp_providers``.
+        """
+        ts = self._ws_loaded.get(workspace_id)
+        if ts is not None and (_time.monotonic() - ts) < ttl:
+            return
+
+        self.remove_providers(f"mcp:{workspace_id}")
+        self.remove_providers(f"skill:{workspace_id}")
+
+        mcp_providers = await self._load_mcp(workspace_client, workspace_id)
+        await self._load_skills(workspace_client, workspace_id)
+
+        if mcp_providers:
+            from .mcp_provider import ReadMCPResourceTool
+            self.register(ReadMCPResourceTool(mcp_providers))
+
+        self._ws_loaded[workspace_id] = _time.monotonic()
+
+    async def _load_mcp(self, workspace_client, workspace_id: str) -> list:
+        from .mcp_provider import MCPServerConfig, MCPToolProvider
+
+        providers: list = []
+        try:
+            servers = await workspace_client.list_mcp_servers(workspace_id)
+            for row in servers or []:
+                if not row.get("enabled", True):
+                    continue
+                try:
+                    cfg = MCPServerConfig.from_db_row(row)
+                    prov = MCPToolProvider(cfg)
+                    prov.provider_key = f"mcp:{workspace_id}:{cfg.name}"
+                    self.register_provider(prov)
+                    providers.append(prov)
+                except Exception:
+                    logger.debug("Skip MCP server %s", row.get("name", "?"), exc_info=True)
+        except Exception:
+            logger.debug("Failed to load MCP servers ws=%s", workspace_id, exc_info=True)
+        return providers
+
+    async def _load_skills(self, workspace_client, workspace_id: str) -> None:
+        from ..skills import Skill, SkillRegistry, SkillToolProvider
+
+        try:
+            db_skills = await workspace_client.list_skills(workspace_id)
+            if not db_skills:
+                return
+            registry = SkillRegistry()
+            for s in db_skills:
+                registry.register(Skill.from_db_config(
+                    s.get("config", {}),
+                    id=s.get("id", ""),
+                    name=s.get("name", ""),
+                    description=s.get("description", ""),
+                    version=s.get("version", "1.0"),
+                    enabled=s.get("enabled", True),
+                ))
+            skill_prov = SkillToolProvider(registry)
+            skill_prov.provider_key = f"skill:{workspace_id}"
+            self.register_provider(skill_prov)
+        except Exception:
+            logger.debug("Failed to load skills ws=%s", workspace_id, exc_info=True)

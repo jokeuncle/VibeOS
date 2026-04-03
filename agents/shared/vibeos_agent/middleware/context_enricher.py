@@ -1,4 +1,10 @@
-"""ContextEnricherMiddleware -- builds enriched system prompt from external sources."""
+"""ContextEnricherMiddleware -- builds enriched system prompt from external sources.
+
+Centralises all prompt enrichment logic: upstream artifacts, memory, RAG,
+knowledge graph, *and* user extensibility context (custom instructions, MCP
+resource hints, active skills).  This replaces the former
+``BaseAgent._build_enriched_prompt`` + ``BaseAgent._inject_extensibility_context``.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +12,10 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from ..base_agent import AGENT_PHASE_MAP, PHASE_CONTEXT
+from ..phases import AGENT_PHASE_MAP, PHASE_CONTEXT, agent_for_phase
 from ..clients._utils import _enum_val
 from ..models import AgentEvent
+from ..skills import Skill, SkillRegistry
 from .base import InvocationContext, Middleware, NextFn
 
 logger = logging.getLogger(__name__)
@@ -16,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 class ContextEnricherMiddleware(Middleware):
     """Assembles an enriched system prompt by querying Memory, RAG, Knowledge,
-    and upstream SDLC artifacts, then stores it on ``ctx.enriched_prompt``.
+    upstream SDLC artifacts, and user extensibility context, then stores the
+    result on ``ctx.enriched_prompt``.
     """
 
     def __init__(
@@ -25,11 +33,14 @@ class ContextEnricherMiddleware(Middleware):
         memory_client,
         rag_client,
         knowledge_client,
+        *,
+        tool_manager=None,
     ) -> None:
         self._workspace = workspace_client
         self._memory = memory_client
         self._rag = rag_client
         self._knowledge = knowledge_client
+        self._tool_manager = tool_manager
 
     async def process(
         self, ctx: InvocationContext, next_fn: NextFn
@@ -49,6 +60,7 @@ class ContextEnricherMiddleware(Middleware):
         await self._append_memory(sections, ctx)
         await self._append_rag(sections, ctx)
         await self._append_knowledge(sections, ctx)
+        await self._append_extensibility(sections, ctx)
 
         return "\n\n".join(sections)
 
@@ -93,13 +105,12 @@ class ContextEnricherMiddleware(Middleware):
     ) -> None:
         agent_key = _enum_val(ctx.agent_type)
         phase_key = AGENT_PHASE_MAP.get(agent_key, agent_key)
-        upstream_phases = PHASE_CONTEXT.get(phase_key, [])
-        if not upstream_phases:
+        up_phases = PHASE_CONTEXT.get(phase_key, [])
+        if not up_phases:
             return
-        phase_to_agent = {v: k for k, v in AGENT_PHASE_MAP.items()}
         parts: list[str] = []
-        for up_phase in upstream_phases:
-            upstream_agent = phase_to_agent.get(up_phase, up_phase)
+        for up_phase in up_phases:
+            upstream_agent = agent_for_phase(up_phase)
             try:
                 artifacts = await self._workspace.list_artifacts(
                     ctx.workspace_id, agent_type=upstream_agent
@@ -153,3 +164,94 @@ class ContextEnricherMiddleware(Middleware):
                 sections.append(f"## Organization best practices\n{text}")
         except Exception:
             logger.warning("Knowledge search failed ws=%s", ctx.workspace_id, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Extensibility: custom instructions, MCP resources, skills
+    # ------------------------------------------------------------------
+
+    async def _append_extensibility(
+        self, sections: list[str], ctx: InvocationContext
+    ) -> None:
+        active_skills: list[str] = []
+
+        try:
+            user_ctx = await self._workspace.get_user_context("system", ctx.workspace_id)
+            if isinstance(user_ctx, dict):
+                instructions = user_ctx.get("customInstructions", "")
+                if instructions:
+                    sections.append(f"## Custom instructions\n{instructions}")
+                active_skills = user_ctx.get("activeSkills", [])
+        except Exception:
+            logger.debug("Failed to load user context ws=%s", ctx.workspace_id, exc_info=True)
+
+        await self._append_mcp_resources(sections, ctx)
+        await self._append_skills(sections, ctx, active_skills)
+
+    async def _append_mcp_resources(
+        self, sections: list[str], ctx: InvocationContext
+    ) -> None:
+        try:
+            mcp_servers = await self._workspace.list_mcp_servers(ctx.workspace_id)
+            if mcp_servers:
+                lines = [
+                    f"- {s.get('name', '?')}: {s.get('description', '')}"
+                    for s in mcp_servers[:10]
+                ]
+                sections.append("## Available MCP servers\n" + "\n".join(lines))
+        except Exception:
+            logger.debug("Failed to load MCP servers ws=%s", ctx.workspace_id, exc_info=True)
+            return
+
+        if not self._tool_manager:
+            return
+        for provider in self._tool_manager._providers:
+            try:
+                resources = await provider.list_resources()
+                if resources:
+                    res_lines = [
+                        f"- {r.get('name', '?')} ({r.get('uri', '')}): {r.get('description', '')}"
+                        for r in resources[:8]
+                    ]
+                    sections.append(
+                        f"## MCP Resources ({provider.provider_key})\n"
+                        + "\n".join(res_lines)
+                        + "\nUse read_mcp_resource tool to access content."
+                    )
+            except Exception:
+                pass
+
+    async def _append_skills(
+        self,
+        sections: list[str],
+        ctx: InvocationContext,
+        active_skills: list[str],
+    ) -> None:
+        try:
+            db_skills = await self._workspace.list_skills(ctx.workspace_id)
+            if not db_skills:
+                return
+            registry = SkillRegistry()
+            agent_key = _enum_val(ctx.agent_type)
+            for row in db_skills:
+                sk = Skill.from_db_config(
+                    row.get("config", {}),
+                    id=row.get("id", ""),
+                    name=row.get("name", ""),
+                    description=row.get("description", ""),
+                    version=row.get("version", "1.0"),
+                    enabled=row.get("enabled", True),
+                )
+                if active_skills and sk.name not in active_skills:
+                    sk.enabled = False
+                registry.register(sk)
+            combined = registry.get_combined_prompt(agent_key)
+            if combined:
+                sections.append(f"## Active skills\n{combined}")
+            else:
+                lines = [
+                    f"- {s.get('name', '?')}: {s.get('description', '')}"
+                    for s in db_skills[:10]
+                ]
+                sections.append("## Available skills\n" + "\n".join(lines))
+        except Exception:
+            logger.debug("Failed to load skills ws=%s", ctx.workspace_id, exc_info=True)

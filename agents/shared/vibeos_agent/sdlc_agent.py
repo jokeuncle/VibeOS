@@ -14,7 +14,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from .base_agent import PHASE_TOOL_HINTS, BaseAgent
+from .base_agent import BaseAgent
+from .phases import PHASE_TOOL_HINTS
 from .clients._utils import _enum_val
 from .models import (
     AgentEvent,
@@ -65,9 +66,17 @@ class SDLCAgent(BaseAgent):
 
             repo_context = await self._resolve_repo_context(task)
 
+            system_prompt = getattr(self, "_task_system_override", None) or self.system_prompt
+            if hasattr(self, "_task_system_override"):
+                del self._task_system_override
+
             await _log(task.workspace_id, agent_name, "Calling LLM (tool-use enabled)...", task_id=task.task_id)
-            raw_reply = await self._call_llm_with_tools(
-                prompt, workspace_id=task.workspace_id, repo_context=repo_context,
+            raw_reply = await self._run_pipeline(
+                workspace_id=task.workspace_id,
+                user_message=prompt,
+                task_context=task.context,
+                repo_context=repo_context,
+                system_prompt=system_prompt,
                 model=task.preferred_model,
             )
             await _log(task.workspace_id, agent_name, "LLM response received.", level="success", task_id=task.task_id)

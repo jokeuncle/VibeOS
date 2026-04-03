@@ -168,6 +168,7 @@ class GraphExecutor:
         "_awaiting_human": (bool, False),
         "_phase_artifacts": (list, []),
         "_passthrough": (dict, {}),
+        "_node_visits": (dict, {}),
         "llm_output": (str, ""),
         "upstream_artifacts": (list, []),
         "workspace_id": (str, ""),
@@ -176,6 +177,63 @@ class GraphExecutor:
         "preferred_model": (str, ""),
         "agent_type": (str, ""),
     }
+
+    # ------------------------------------------------------------------
+    # Unified agent call helper (replaces raw HTTP POST to /api/execute)
+    # ------------------------------------------------------------------
+
+    async def _call_agent_stream(
+        self,
+        endpoint_base: str,
+        req_payload: dict[str, Any],
+        *,
+        timeout: int = 300,
+    ) -> dict[str, Any]:
+        """Send a ConversationRequest to ``/api/conversation/stream`` and
+        aggregate the SSE stream into a result dict.
+
+        Returns ``{"summary": ..., "result": ..., "artifacts": [...], "error": ...}``.
+        """
+        import httpx, json as _json
+
+        url = f"{endpoint_base.rstrip('/')}/api/conversation/stream"
+        result: dict[str, Any] = {"summary": "", "result": None, "artifacts": [], "error": ""}
+        content_parts: list[str] = []
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("POST", url, json=req_payload) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line or line.startswith(":"):
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                break
+                            try:
+                                data = _json.loads(data_str)
+                                if data.get("delta"):
+                                    content_parts.append(data["delta"])
+                                if data.get("summary"):
+                                    result["summary"] = data["summary"]
+                                if data.get("artifacts"):
+                                    result["artifacts"].extend(data["artifacts"])
+                            except _json.JSONDecodeError:
+                                pass
+                        elif line.startswith("event: "):
+                            event_type = line[7:].strip()
+                            if event_type == "session:error":
+                                pass
+                            elif "agent:result" in event_type:
+                                pass
+        except Exception as exc:
+            result["error"] = str(exc)
+            logger.warning("Agent stream call to %s failed: %s", url, exc)
+
+        if content_parts:
+            result["result"] = "".join(content_parts)
+        return result
 
     def _build_state_type(self, schema: dict[str, StateFieldDef]) -> type:
         """Build a TypedDict-like class with Annotated reducer fields."""
@@ -212,12 +270,42 @@ class GraphExecutor:
     # ------------------------------------------------------------------
 
     def _make_node_fn(self, node_def: GraphNodeDef):
-        """Create an async function that becomes a LangGraph node."""
+        """Create an async function that becomes a LangGraph node.
+
+        Includes cycle control: if ``max_cycles`` is set in the node config
+        and this node has already been visited that many times, the node
+        short-circuits with a ``_error: max_cycles_exceeded`` result.
+        """
         cap_ref = node_def.capability_ref
         node_config = node_def.config
         node_type = node_def.type
 
         max_retries = node_config.get("retries", 1)
+        max_cycles = node_config.get("max_cycles", 0)
+
+        def _check_cycle(state: dict[str, Any]) -> dict[str, Any] | None:
+            """Return an error dict if this node has exceeded max_cycles."""
+            if max_cycles <= 0:
+                return None
+            visits: dict[str, int] = dict(state.get("_node_visits", {}))
+            count = visits.get(node_def.id, 0)
+            if count >= max_cycles:
+                logger.warning(
+                    "Node %s exceeded max_cycles=%d (visited %d times)",
+                    node_def.id, max_cycles, count,
+                )
+                return {
+                    "_last_node": node_def.id,
+                    "_error": f"max_cycles ({max_cycles}) exceeded for {node_def.id}",
+                }
+            return None
+
+        def _track_visit(state: dict[str, Any], output: dict[str, Any]) -> dict[str, Any]:
+            """Increment the visit counter for this node in the output."""
+            visits = dict(state.get("_node_visits", {}))
+            visits[node_def.id] = visits.get(node_def.id, 0) + 1
+            output["_node_visits"] = visits
+            return output
 
         async def _capability_node(state: dict[str, Any]) -> dict[str, Any]:
             logger.info(">>> capability_node START: %s (cap_ref=%s)", node_def.id, cap_ref)
@@ -254,35 +342,34 @@ class GraphExecutor:
                 agent_key = cap.get("provider", "").split(".")[0] if cap.get("provider") else ""
                 override_base = self._endpoint_overrides.get(agent_key, "")
                 if override_base:
-                    endpoint = f"{override_base}/api/execute"
+                    endpoint = override_base
+            if endpoint and "/api/" in endpoint:
+                endpoint = endpoint.rsplit("/api/", 1)[0]
             logger.info(">>> capability_node %s: endpoint=%s provider=%s", node_def.id, endpoint, provider)
             if not endpoint:
                 logger.warning("Capability %s has no endpoint", cap_ref)
                 return {"_last_node": node_def.id, "_error": f"capability {cap_ref} has no endpoint"}
 
-            task_payload = _build_agent_task(node_def, state, node_config)
+            conv_payload = _build_conversation_request(node_def, state, node_config)
 
             upstream_arts = state.get("upstream_artifacts")
             if upstream_arts and isinstance(upstream_arts, list):
-                task_payload.setdefault("context", {})["phase_artifacts"] = upstream_arts
+                conv_payload.setdefault("context", {})["phase_artifacts"] = upstream_arts
 
             phase_arts = state.get("_phase_artifacts", [])
             if phase_arts:
-                task_payload.setdefault("context", {})["prior_node_artifacts"] = phase_arts
+                conv_payload.setdefault("context", {})["prior_node_artifacts"] = phase_arts
 
-            import httpx
             import asyncio as _asyncio
             timeout = node_config.get("timeout", 300)
             result = None
             last_err = ""
             for attempt in range(max_retries):
                 try:
-                    logger.info(">>> capability_node %s: calling POST %s (attempt=%d/%d, timeout=%ss)", node_def.id, endpoint, attempt + 1, max_retries, timeout)
-                    async with httpx.AsyncClient(timeout=timeout) as client:
-                        resp = await client.post(endpoint, json=task_payload)
-                        resp.raise_for_status()
-                        result = resp.json()
-                    logger.info(">>> capability_node %s: response received, status=%s", node_def.id, result.get("type","?"))
+                    logger.info(">>> capability_node %s: calling %s (attempt=%d/%d)", node_def.id, endpoint, attempt + 1, max_retries)
+                    result = await self._call_agent_stream(endpoint, conv_payload, timeout=timeout)
+                    if result.get("error"):
+                        raise RuntimeError(result["error"])
                     break
                 except Exception as exc:
                     last_err = str(exc) or f"{type(exc).__name__}"
@@ -293,26 +380,13 @@ class GraphExecutor:
                 logger.error("Capability %s all %d attempts failed", cap_ref, max_retries)
                 return {"_last_node": node_def.id, "_error": last_err}
 
-            if isinstance(result, dict) and result.get("type") == "error":
-                error_msg = (
-                    result.get("error")
-                    or (result.get("payload") or {}).get("error")
-                    or "agent returned error with no details"
-                )
-                logger.warning("Capability %s returned error response: %s", cap_ref, error_msg[:200])
-                return {"_last_node": node_def.id, "_error": error_msg}
-
             output: dict[str, Any] = {"_last_node": node_def.id}
-            payload = result.get("payload", result)
-            if isinstance(payload, dict):
-                summary = payload.get("summary", "")
-                if summary:
-                    output["_summary"] = summary
-                output["_result"] = payload
-                artifacts = payload.get("artifacts", [])
-                if artifacts:
-                    existing = list(state.get("_phase_artifacts", []))
-                    output["_phase_artifacts"] = existing + artifacts
+            if result.get("summary"):
+                output["_summary"] = result["summary"]
+            output["_result"] = result.get("result") or result
+            if result.get("artifacts"):
+                existing = list(state.get("_phase_artifacts", []))
+                output["_phase_artifacts"] = existing + result["artifacts"]
             return output
 
         async def _llm_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -381,17 +455,17 @@ class GraphExecutor:
                         cap_name = req_cap
                         break
                 cap = await self._resolve_capability(cap_name)
-                if cap and cap.get("endpoint"):
-                    task_payload = _build_agent_task(node_def, state, node_config)
-                    task_payload["intent"] = intent_name
-                    import httpx
+                endpoint = cap.get("endpoint", "") if cap else ""
+                if endpoint and "/api/" in endpoint:
+                    endpoint = endpoint.rsplit("/api/", 1)[0]
+                if endpoint:
+                    conv_payload = _build_conversation_request(node_def, state, node_config)
+                    conv_payload["intent"] = intent_name
                     try:
-                        async with httpx.AsyncClient(timeout=300) as client:
-                            resp = await client.post(cap["endpoint"], json=task_payload)
-                            resp.raise_for_status()
-                            result = resp.json()
-                        payload = result.get("payload", result)
-                        return {"_last_node": node_def.id, "_result": payload}
+                        result = await self._call_agent_stream(endpoint, conv_payload)
+                        if result.get("error"):
+                            return {"_last_node": node_def.id, "_error": result["error"]}
+                        return {"_last_node": node_def.id, "_result": result.get("result") or result}
                     except Exception as exc:
                         return {"_last_node": node_def.id, "_error": str(exc)}
 
@@ -427,14 +501,16 @@ class GraphExecutor:
             return {**sub_results, "_last_node": node_def.id}
 
         async def _agentic_node(state: dict[str, Any]) -> dict[str, Any]:
-            """LLM tool-use loop: the model can autonomously call tools."""
-            if not self._llm or not self._tool_manager:
-                return {"_last_node": node_def.id, "_error": "LLM or ToolManager unavailable"}
+            """LLM tool-use loop via the unified agent pipeline.
+
+            Instead of an inline tool loop, delegates to the PM agent's own
+            ``/api/conversation/stream`` endpoint with ``mode=execute``.
+            """
+            from .config import config as _cfg
+            import os
 
             system_prompt = node_config.get("system_prompt", "You are a helpful agent with access to tools.")
             prompt_template = node_config.get("prompt", "")
-            model = node_config.get("model")
-            max_iterations = node_config.get("max_iterations", 10)
             tool_filter: list[str] | None = node_config.get("enabled_tools")
 
             user_msg = prompt_template or state.get("user_message", "")
@@ -444,49 +520,30 @@ class GraphExecutor:
             if upstream and str(upstream) not in user_msg:
                 user_msg = f"{user_msg}\n\nContext from previous step:\n{str(upstream)[:2000]}"
 
-            tool_schemas = await self._tool_manager.get_schemas()
+            pm_base = os.getenv("PM_AGENT_URL", f"http://pm-agent:{_cfg.port}")
+            conv_payload = {
+                "workspace_id": state.get("workspace_id", ""),
+                "message": user_msg,
+                "mode": "execute",
+                "intent": node_config.get("task_title", node_def.id),
+                "description": node_config.get("task_description", ""),
+                "system_prompt": system_prompt,
+                "preferred_model": node_config.get("model") or state.get("preferred_model"),
+                "context": {"source": "graph_executor", "node_id": node_def.id},
+            }
             if tool_filter:
-                allowed = set(tool_filter)
-                tool_schemas = [s for s in tool_schemas if s.get("function", {}).get("name") in allowed]
+                conv_payload["enabled_tools"] = tool_filter
 
-            if not tool_schemas:
-                return {"_last_node": node_def.id, "_error": "No tools available for agentic node"}
+            timeout = node_config.get("timeout", 300)
+            result = await self._call_agent_stream(pm_base, conv_payload, timeout=timeout)
 
-            import json as _json
-            messages: list[dict[str, Any]] = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ]
-
-            final_text = ""
-            for _ in range(max_iterations):
-                result = await self._llm.chat(messages, tools=tool_schemas, model=model)
-                choice = result.get("choices", [{}])[0]
-                msg = choice.get("message", {})
-                tool_calls = msg.get("tool_calls")
-
-                if not tool_calls:
-                    final_text = msg.get("content", "")
-                    break
-
-                messages.append(msg)
-                for tc in tool_calls:
-                    fn = tc.get("function", {})
-                    t_name = fn.get("name", "")
-                    raw_args = fn.get("arguments", "{}")
-                    try:
-                        t_args = _json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                    except _json.JSONDecodeError:
-                        t_args = {}
-                    logger.info("Agentic node %s calling tool %s", node_def.id, t_name)
-                    t_result = await self._tool_manager.execute(t_name, t_args)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.get("id", ""),
-                        "content": t_result.output,
-                    })
-
-            return {"_last_node": node_def.id, "llm_output": final_text, "_result": final_text}
+            if result.get("error"):
+                return {"_last_node": node_def.id, "_error": result["error"]}
+            return {
+                "_last_node": node_def.id,
+                "llm_output": result.get("result", ""),
+                "_result": result.get("result", ""),
+            }
 
         async def _passthrough_node(state: dict[str, Any]) -> dict[str, Any]:
             return {"_last_node": node_def.id}
@@ -499,7 +556,16 @@ class GraphExecutor:
             "subgraph": _subgraph_node,
             "agentic": _agentic_node,
         }
-        return dispatch.get(node_type, _passthrough_node)
+        raw_fn = dispatch.get(node_type, _passthrough_node)
+
+        async def _wrapped(state: dict[str, Any]) -> dict[str, Any]:
+            cycle_err = _check_cycle(state)
+            if cycle_err:
+                return cycle_err
+            output = await raw_fn(state)
+            return _track_visit(state, output)
+
+        return _wrapped
 
     def _make_condition_router(self, node_def: GraphNodeDef, edges: list[GraphEdgeDef]):
         """Create a routing function for conditional edges from this node."""
@@ -732,12 +798,12 @@ class GraphExecutor:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _build_agent_task(
+def _build_conversation_request(
     node_def: GraphNodeDef,
     state: dict[str, Any],
     node_config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build an AgentTask-compatible JSON payload from graph node + state."""
+    """Build a ConversationRequest-compatible JSON payload from graph node + state."""
     workspace_id = state.get("workspace_id", "")
     task_title = node_config.get("task_title", node_def.id)
     task_desc = node_config.get("task_description", "")
@@ -761,16 +827,15 @@ def _build_agent_task(
         context["upstream_result"] = upstream
 
     payload: dict[str, Any] = {
-        "task_id": f"graph-{node_def.id}-{uuid.uuid4().hex[:8]}",
         "workspace_id": workspace_id,
+        "message": user_msg,
+        "mode": "execute",
         "intent": f"execute_{node_def.capability_ref}" if node_def.capability_ref else node_def.id,
         "description": task_title,
-        "user_message": user_msg,
+        "task_id": f"graph-{node_def.id}-{uuid.uuid4().hex[:8]}",
         "context": context,
         "preferred_model": node_config.get("model") or state.get("preferred_model"),
     }
-    if state.get("agent_type"):
-        payload["agent_type"] = state["agent_type"]
     if state.get("system_prompt"):
         payload["system_prompt"] = state["system_prompt"]
     if state.get("enabled_tools"):
@@ -782,8 +847,6 @@ def _build_agent_task(
             ]
         else:
             payload["enabled_tools"] = raw_tools
-    if state.get("capability"):
-        payload["capability"] = state["capability"]
     return payload
 
 

@@ -21,11 +21,18 @@ from .models import (
     Task,
     Workspace,
 )
-from .protocol import (
+from .phases import (
     AGENT_PHASE_MAP,
+    DEFAULT_PHASE_ORDER,
+    DEFAULT_PROJECT_GRAPH,
     PHASE_CONTEXT,
     PHASE_CONTRACTS,
     PHASE_TOOL_HINTS,
+    agent_for_phase,
+    phase_for_agent,
+    upstream_phases,
+)
+from .protocol import (
     BaseAgent,
     KnowledgeClient,
     LLMGatewayClient,
@@ -81,8 +88,11 @@ __all__ = [
     "KnowledgeClient",
     "LLMGatewayClient",
     "MemoryClient",
+    "DEFAULT_PHASE_ORDER",
+    "DEFAULT_PROJECT_GRAPH",
     "PHASE_CONTEXT",
     "PHASE_CONTRACTS",
+    "PHASE_TOOL_HINTS",
     "ParsedGraphDef",
     "PhaseContract",
     "RAGClient",
@@ -118,9 +128,11 @@ __all__ = [
     "get_tracer",
     "init_telemetry",
     "load_manifest_from_yaml",
+    "phase_for_agent",
     "WSGatewayClient",
     "Workspace",
     "WorkspaceClient",
+    "agent_for_phase",
     "config",
     "sse_event",
     "sse_delta",

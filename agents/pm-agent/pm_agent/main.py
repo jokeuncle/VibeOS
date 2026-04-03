@@ -36,12 +36,11 @@ from vibeos_agent import (
 )
 from vibeos_agent.mcp_discovery import check_mcp_health, discover_and_register_mcp_tools
 from vibeos_agent.session import SessionManager as AgentSessionManager
-from vibeos_agent.skills import Skill, SkillRegistry, SkillToolProvider
 from vibeos_agent.tools.delegation_tools import create_delegation_tools
 from vibeos_agent.tools.dev_tools import create_dev_tools
 from vibeos_agent.tools.feishu_tools import create_feishu_tools
 from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
-from vibeos_agent.tools.mcp_provider import MCPServerConfig, MCPToolProvider
+from vibeos_agent.tools.mcp_provider import MCPToolProvider
 from vibeos_agent.tools.pipeline_tools import create_pipeline_tools
 from vibeos_agent.tools.provider import ToolManager
 from vibeos_agent.tools.workspace_tools import create_workspace_tools
@@ -121,7 +120,7 @@ async def lifespan(app: FastAPI):
     async def _capability_sync_loop() -> None:
         while True:
             await asyncio.sleep(60)
-            for ws_id in set(_provider_loaded.keys()):
+            for ws_id in set(app.state.tool_manager._ws_loaded.keys()):
                 try:
                     await discover_and_register_mcp_tools(
                         app.state.ws_client, app.state.registry, ws_id
@@ -160,32 +159,11 @@ app.add_middleware(
 # MCP provider loading (reused by capabilities sync)
 # ---------------------------------------------------------------------------
 
-_provider_loaded: dict[str, float] = {}
-_PROVIDER_TTL = 300
-
-
-async def _load_mcp_providers(
-    ws_client: WorkspaceClient, tool_manager: ToolManager, workspace_id: str,
-) -> None:
-    ts = _provider_loaded.get(workspace_id)
-    if ts is not None and (_time.monotonic() - ts) < _PROVIDER_TTL:
-        return
-    try:
-        tool_manager.remove_providers(f"mcp:{workspace_id}")
-        servers = await ws_client.list_mcp_servers(workspace_id)
-        for srv in servers:
-            try:
-                cfg = MCPServerConfig.from_db_row(srv)
-            except Exception:
-                continue
-            if cfg.enabled:
-                prov = MCPToolProvider(cfg)
-                prov.provider_key = f"mcp:{workspace_id}:{cfg.name}"
-                tool_manager.register_provider(prov)
-        _provider_loaded[workspace_id] = _time.monotonic()
-    except Exception:
-        _provider_loaded.pop(workspace_id, None)
-        _log.warning("Failed to load MCP providers for ws=%s", workspace_id, exc_info=True)
+async def _ensure_workspace_tools(workspace_id: str) -> None:
+    """Ensure workspace-scoped MCP/skill providers are loaded."""
+    tool_manager: ToolManager = app.state.tool_manager
+    ws_client: WorkspaceClient = app.state.ws_client
+    await tool_manager.ensure_workspace_providers(ws_client, workspace_id)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +196,7 @@ async def handle_conversation(req: ConversationRequest) -> StreamingResponse:
     ws_client: WorkspaceClient = app.state.ws_client
 
     if req.workspace_id and req.workspace_id != "__home__":
-        await _load_mcp_providers(ws_client, tool_manager, req.workspace_id)
+        await _ensure_workspace_tools(req.workspace_id)
 
     async def event_gen() -> AsyncGenerator[str, None]:
         async for sse_frame in engine.run(req):
@@ -259,7 +237,7 @@ async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
         yield sm.session_start(sid, "graph", req.workspace_id or "__graph__")
 
         if req.workspace_id:
-            await _load_mcp_providers(ws_client, app.state.tool_manager, req.workspace_id)
+            await _ensure_workspace_tools(req.workspace_id)
 
         if not executor:
             yield sm.session_error(sid, "LangGraph not available")
@@ -358,7 +336,7 @@ async def handle_cap_sync(req: CapSyncRequest) -> dict[str, Any]:
     results: dict[str, Any] = {}
 
     if "mcp" in req.source_types:
-        _provider_loaded.pop(req.workspace_id, None)
+        app.state.tool_manager._ws_loaded.pop(req.workspace_id, None)
         defs = await discover_and_register_mcp_tools(ws_client, registry, req.workspace_id)
         results["mcp"] = [{"name": d.name, "provider": d.provider} for d in defs]
 
@@ -496,7 +474,7 @@ async def handle_tool_confirmation(req: ToolConfirmRequest) -> StreamingResponse
     ws_id = req.workspace_id or "__home__"
 
     if ws_id != "__home__":
-        await _load_mcp_providers(ws_client, tool_manager, ws_id)
+        await _ensure_workspace_tools(ws_id)
 
     async def event_gen() -> AsyncGenerator[str, None]:
         args = dict(req.arguments)

@@ -1,19 +1,17 @@
-"""Requirement Agent implementation."""
+"""Requirement Agent implementation (SDLCAgent subclass)."""
 
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from typing import Any
 
 from vibeos_agent import (
-    AgentEvent,
-    AgentStatus,
     AgentTask,
     AgentType,
-    BaseAgent,
     CapabilityContract,
     RichBlock,
 )
+from vibeos_agent.sdlc_agent import ArtifactConfig, SDLCAgent
 
 SYSTEM_PROMPT = """\
 You are an expert requirements analyst. You help teams capture, refine, and \
@@ -148,13 +146,20 @@ TASK_PROMPTS: dict[str, dict[str, str]] = {
 }
 
 
-class RequirementAgent(BaseAgent):
+class RequirementAgent(SDLCAgent):
     agent_type = AgentType.REQUIREMENT
     system_prompt = SYSTEM_PROMPT
     chat_prompt = CHAT_PROMPT
+    phase_key = "requirement"
 
-    def __init__(self) -> None:
-        super().__init__()
+    artifact_configs = [
+        ArtifactConfig(type="clarified_requirements", language="markdown"),
+        ArtifactConfig(type="prd_document", language="markdown"),
+        ArtifactConfig(type="user_stories", language="json"),
+        ArtifactConfig(type="acceptance_criteria", language="json"),
+        ArtifactConfig(type="stakeholder_analysis", language="json"),
+        ArtifactConfig(type="nfr_constraints", language="json"),
+    ]
 
     capabilities = [
         CapabilityContract(
@@ -163,141 +168,69 @@ class RequirementAgent(BaseAgent):
         ),
     ]
 
-    async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
-        yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
-        _log = self.ws.publish_log
-        agent_name = self.agent_type
+    def _build_execute_prompt(self, task: AgentTask) -> str:
+        user_msg = task.user_message or task.description
+        task_title = task.context.get("task_title", "")
+        task_config = TASK_PROMPTS.get(task_title)
 
-        try:
-            await self.ws.publish_agent_status(
-                task.workspace_id, self.agent_type, AgentStatus.RUNNING, detail=task.intent
-            )
-            await _log(task.workspace_id, agent_name, f"Starting task: {task.intent}", task_id=task.task_id)
+        if task_config:
+            self._task_system_override = task_config["system"]
 
-            user_msg = task.user_message or task.description
+        parts = [
+            f"Task: {task.intent}",
+            f"Description: {task.description}",
+            f"User request: {user_msg}",
+        ]
 
-            # Determine task-specific prompt and artifact type
-            task_title = task.context.get("task_title", "")
-            task_config = TASK_PROMPTS.get(task_title)
+        phase_artifacts = task.context.get("phase_artifacts", [])
+        if phase_artifacts:
+            art_parts = [
+                f"### {pa.get('title', '')} ({pa.get('type', '')})\n{pa.get('content', '')[:3000]}"
+                for pa in phase_artifacts
+            ]
+            parts.append("## Previous Analysis Steps\n\n" + "\n\n---\n\n".join(art_parts))
 
-            if task_config:
-                system_prompt = task_config["system"]
-                artifact_type = task_config["artifact_type"]
-            else:
-                system_prompt = SYSTEM_PROMPT
-                artifact_type = "requirements_spec"
-
-            # Build context from phase artifacts and related requirements
-            context_sections: list[str] = []
-            phase_artifacts = task.context.get("phase_artifacts", [])
-            if phase_artifacts:
-                parts = []
-                for pa in phase_artifacts:
-                    parts.append(f"### {pa.get('title', '')} ({pa.get('type', '')})\n{pa.get('content', '')[:3000]}")
-                context_sections.append("## Previous Analysis Steps\n\n" + "\n\n---\n\n".join(parts))
-
-            related_artifacts = task.context.get("related_artifacts", {})
-            if related_artifacts:
-                _LABELS = {
-                    "depends_on": "Dependency", "parent_of": "Parent Requirement",
-                    "related_to": "Related Requirement", "evolves_from": "Previous Version",
-                    "conflicts_with": "Conflicting Requirement",
-                }
-                parts = []
-                for rel_type, arts in related_artifacts.items():
-                    label = _LABELS.get(rel_type, rel_type)
-                    for art in arts[:5]:
-                        parts.append(f"### [{label}] {art.get('title', '')} ({art.get('type', '')})\n{art.get('content', '')[:3000]}")
-                if parts:
-                    context_sections.append("## Related Requirements Context\n\n" + "\n\n---\n\n".join(parts))
-
-            req_desc = task.context.get("requirement_description", "")
-            if req_desc:
-                context_sections.append(f"## Requirement Description\n\n{req_desc}")
-
-            context_block = "\n\n".join(context_sections)
-
-            prompt = (
-                f"Task: {task.intent}\n"
-                f"Description: {task.description}\n"
-                f"User request: {user_msg}\n"
-            )
-            if context_block:
-                prompt += f"\n\n{context_block}"
-
-            self._current_task_context = task.context
-
-            await _log(task.workspace_id, agent_name, f"Calling LLM for: {task_title or 'requirements analysis'}…", task_id=task.task_id)
-
-            saved_prompt = self.system_prompt
-            self.system_prompt = system_prompt
-            try:
-                raw_reply = await self._call_llm_with_tools(prompt, workspace_id=task.workspace_id)
-            finally:
-                self.system_prompt = saved_prompt
-
-            await _log(task.workspace_id, agent_name, "LLM response received. Parsing structured output…", level="success", task_id=task.task_id)
-
-            structured = self._extract_json(raw_reply)
-
-            yield self._make_event(
-                "progress", task.workspace_id, {"progress": 0.5, "detail": f"Saving {artifact_type}"}
-            )
-
-            try:
-                await self._upsert_artifact(
-                    task.workspace_id,
-                    artifact_type=artifact_type,
-                    title=f"{task_title}: {task.description[:60]}" if task_title else f"Requirements: {task.description[:80]}",
-                    content=raw_reply,
-                )
-                await _log(task.workspace_id, agent_name, f"Artifact ({artifact_type}) saved", level="success", task_id=task.task_id)
-            except Exception as exc:
-                await _log(task.workspace_id, agent_name, f"Failed to save artifact: {exc}", level="error", task_id=task.task_id)
-
-            rich_blocks: list[RichBlock] = []
-            for story in structured.get("user_stories", []):
-                role = story.get("role", "user")
-                action = story.get("action", "")
-                rich_blocks.append(
-                    RichBlock(
-                        type="code",
-                        language="markdown",
-                        content=f"As a {role}, I want to {action}",
-                        metadata={"title": f"User Story – {role}", "priority": story.get("priority", "medium")},
+        related_artifacts = task.context.get("related_artifacts", {})
+        if related_artifacts:
+            _LABELS = {
+                "depends_on": "Dependency", "parent_of": "Parent Requirement",
+                "related_to": "Related Requirement", "evolves_from": "Previous Version",
+                "conflicts_with": "Conflicting Requirement",
+            }
+            rel_parts = []
+            for rel_type, arts in related_artifacts.items():
+                label = _LABELS.get(rel_type, rel_type)
+                for art in arts[:5]:
+                    rel_parts.append(
+                        f"### [{label}] {art.get('title', '')} ({art.get('type', '')})\n"
+                        f"{art.get('content', '')[:3000]}"
                     )
+            if rel_parts:
+                parts.append("## Related Requirements Context\n\n" + "\n\n---\n\n".join(rel_parts))
+
+        req_desc = task.context.get("requirement_description", "")
+        if req_desc:
+            parts.append(f"## Requirement Description\n\n{req_desc}")
+
+        return "\n\n".join(parts)
+
+    async def _post_process(
+        self,
+        task: AgentTask,
+        structured: dict[str, Any],
+        rich_blocks: list[RichBlock],
+    ) -> None:
+        for story in structured.get("user_stories", []):
+            role = story.get("role", "user")
+            action = story.get("action", "")
+            rich_blocks.append(
+                RichBlock(
+                    type="code",
+                    language="markdown",
+                    content=f"As a {role}, I want to {action}",
+                    metadata={
+                        "title": f"User Story \u2013 {role}",
+                        "priority": story.get("priority", "medium"),
+                    },
                 )
-
-            msg = self._make_message(
-                task.workspace_id,
-                structured.get("summary", raw_reply[:200]),
-                rich_blocks=rich_blocks,
             )
-            await self.session.append(task.workspace_id, self.agent_type, msg)
-            await self.ws.publish_message(task.workspace_id, msg)
-
-            await _log(task.workspace_id, agent_name, "Execution complete.", level="success", task_id=task.task_id)
-
-            yield self._make_event(
-                "result",
-                task.workspace_id,
-                {
-                    "summary": structured.get("summary", raw_reply[:200]),
-                    "artifact_type": artifact_type,
-                    "task_title": task_title,
-                },
-            )
-        except Exception as exc:
-            try:
-                await _log(task.workspace_id, agent_name, f"Execution failed: {exc}", level="error", task_id=task.task_id)
-            except Exception:
-                pass
-            yield self._make_event("error", task.workspace_id, {"error": "execute failed"})
-            raise
-        finally:
-            try:
-                await self.ws.publish_agent_status(
-                    task.workspace_id, self.agent_type, AgentStatus.IDLE
-                )
-            except Exception:
-                pass

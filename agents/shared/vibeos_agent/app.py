@@ -1,6 +1,7 @@
 """Unified FastAPI app factory for VibeOS domain agents.
 
-Eliminates the near-identical ``main.py`` boilerplate across all agents.
+Every domain agent exposes a single streaming endpoint:
+``POST /api/conversation/stream`` accepting :class:`ConversationRequest`.
 
 Usage (in each agent's ``main.py``)::
 
@@ -11,8 +12,10 @@ Usage (in each agent's ``main.py``)::
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator
@@ -20,8 +23,8 @@ from typing import Any, AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
+from .conversation import ConversationRequest
 from .models import AgentTask
 from .telemetry import init_telemetry
 from .sse import (
@@ -36,16 +39,6 @@ from .sse import (
 _log = logging.getLogger(__name__)
 
 
-class ChatRequest(BaseModel):
-    workspace_id: str
-    message: str
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    rich_blocks: list[dict[str, Any]] = []
-
-
 def create_agent_app(
     agent_class: type,
     title: str,
@@ -55,9 +48,8 @@ def create_agent_app(
 ) -> FastAPI:
     """Build a fully-wired FastAPI app for ``agent_class``.
 
-    Registers the standard routes (``/health``, ``/api/execute``,
-    ``/api/execute/stream``, ``/api/chat``, ``/api/chat/stream``)
-    with correct SSE session labels derived from *agent_key*.
+    Registers the unified ``POST /api/conversation/stream`` endpoint and
+    ``GET /health``.
     """
 
     @asynccontextmanager
@@ -66,23 +58,8 @@ def create_agent_app(
         agent = agent_class()
         app.state.agent = agent
 
-        # Auto-discover agent-manifest.yaml next to the agent module
         _load_agent_manifest(agent)
-
-        try:
-            await agent.register_with_registry()
-            agent.start_heartbeat()
-        except Exception:
-            _log.warning(
-                "Registry registration failed for %s (service may be starting)", agent_key,
-            )
-
-        try:
-            await agent.register_descriptor()
-        except Exception:
-            _log.warning(
-                "Descriptor registration failed for %s (workspace-svc may be starting)", agent_key,
-            )
+        await agent.register()
         yield
         await agent.close()
 
@@ -118,75 +95,83 @@ def _load_agent_manifest(agent: Any) -> None:
 
 
 def _mount_routes(app: FastAPI, agent_key: str) -> None:
-    """Attach the standard five endpoints every agent exposes."""
+    """Attach the unified conversation/stream endpoint and health check."""
 
-    @app.post("/api/execute")
-    async def execute_task(task: AgentTask) -> dict[str, Any]:
-        agent = app.state.agent
-        last_event: dict[str, Any] = {}
-        try:
-            async for event in agent.execute(task):
-                last_event = event.model_dump(mode="json", exclude_none=True)
-        except Exception as exc:
-            err_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            _log.error("Agent %s execute failed: %s", agent_key, err_msg, exc_info=True)
-            return {"error": err_msg, "type": "error", "agent_type": agent_key}
-        return last_event
-
-    @app.post("/api/execute/stream")
-    async def execute_task_stream(task: AgentTask) -> StreamingResponse:
+    @app.post("/api/conversation/stream")
+    async def conversation_stream(req: ConversationRequest) -> StreamingResponse:
         agent = app.state.agent
 
-        async def event_gen() -> AsyncGenerator[str, None]:
-            sid, start = sse_session_start(agent_key, "agent_execute")
-            yield start
-            try:
-                async for event in agent.execute(task):
-                    data = event.model_dump(mode="json", exclude_none=True)
-                    yield sse_event("agent", event.type, data, sid=sid)
-            except Exception as exc:
-                yield sse_session_error(sid, str(exc))
-                yield sse_done()
-                return
-            yield sse_session_complete(sid)
-            yield sse_done()
-
-        return StreamingResponse(event_gen(), media_type="text/event-stream")
-
-    @app.post("/api/chat", response_model=ChatResponse)
-    async def chat(req: ChatRequest) -> ChatResponse:
-        agent = app.state.agent
-        last_msg = None
-        async for msg in agent.chat(req.message, workspace_id=req.workspace_id):
-            last_msg = msg
-
-        if last_msg is None:
-            return ChatResponse(reply="No response generated.")
-
-        return ChatResponse(
-            reply=last_msg.content,
-            rich_blocks=[
-                rb.model_dump(mode="json", exclude_none=True)
-                for rb in last_msg.rich_blocks
-            ],
+        if req.mode == "execute":
+            return StreamingResponse(
+                _execute_stream(agent, req, agent_key),
+                media_type="text/event-stream",
+            )
+        return StreamingResponse(
+            _conversation_stream(agent, req, agent_key),
+            media_type="text/event-stream",
         )
-
-    @app.post("/api/chat/stream")
-    async def chat_stream(req: ChatRequest) -> StreamingResponse:
-        agent = app.state.agent
-
-        async def token_gen() -> AsyncGenerator[str, None]:
-            sid, start = sse_session_start(agent_key, "agent_chat")
-            yield start
-            async for delta in agent.chat_stream(
-                req.message, workspace_id=req.workspace_id
-            ):
-                yield sse_delta(delta, sid=sid)
-            yield sse_session_complete(sid)
-            yield sse_done()
-
-        return StreamingResponse(token_gen(), media_type="text/event-stream")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": f"{agent_key}-agent"}
+
+
+async def _execute_stream(
+    agent: Any, req: ConversationRequest, agent_key: str,
+) -> AsyncGenerator[str, None]:
+    """Stream wrapper for mode=execute: converts AgentTask events to SSE."""
+    sid, start = sse_session_start(agent_key, "agent_execute")
+    yield start
+
+    task = AgentTask(
+        workspace_id=req.workspace_id,
+        intent=req.intent or req.message,
+        description=req.description or req.message,
+        user_message=req.message,
+        task_id=req.task_id,
+        context=req.context or {},
+        preferred_model=req.preferred_model,
+    )
+    if req.system_prompt:
+        task.system_prompt = req.system_prompt
+
+    try:
+        async for event in agent.execute(task):
+            data = event.model_dump(mode="json", exclude_none=True)
+            yield sse_event("agent", event.type, data, sid=sid)
+    except Exception as exc:
+        yield sse_session_error(sid, str(exc))
+        yield sse_done()
+        return
+
+    yield sse_session_complete(sid)
+    yield sse_done()
+
+
+async def _conversation_stream(
+    agent: Any, req: ConversationRequest, agent_key: str,
+) -> AsyncGenerator[str, None]:
+    """Stream wrapper for mode=conversation: runs the agent pipeline via SSE."""
+    sid, start = sse_session_start(agent_key, "agent_chat")
+    yield start
+
+    try:
+        async for event in agent._run_pipeline_stream(
+            workspace_id=req.workspace_id,
+            user_message=req.message,
+            task_context=req.context,
+            mode="conversation",
+        ):
+            if event.type == "content_delta":
+                yield sse_delta(event.payload.get("delta", ""), sid=sid)
+            else:
+                data = event.model_dump(mode="json", exclude_none=True)
+                yield sse_event("agent", event.type, data, sid=sid)
+    except Exception as exc:
+        _log.error("Agent %s conversation failed: %s", agent_key, exc, exc_info=True)
+        yield sse_session_error(sid, str(exc))
+        yield sse_done()
+        return
+
+    yield sse_session_complete(sid)
+    yield sse_done()

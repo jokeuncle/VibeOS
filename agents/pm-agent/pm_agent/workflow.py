@@ -22,6 +22,8 @@ import httpx
 
 from vibeos_agent import (
     AGENT_PHASE_MAP,
+    DEFAULT_PHASE_ORDER,
+    DEFAULT_PROJECT_GRAPH,
     PHASE_CONTRACTS,
     AgentStatus,
     AgentTask,
@@ -34,9 +36,11 @@ from vibeos_agent import (
     RegistryClient,
     WSGatewayClient,
     WorkspaceClient,
+    agent_for_phase,
     config,
 )
 from vibeos_agent.mcp_discovery import discover_and_register_mcp_tools
+from vibeos_agent.phases import AGENT_PHASE_MAP as PIPELINE_KEY_TO_PHASE
 from vibeos_agent.tools.mcp_provider import MCPServerConfig, MCPToolProvider
 from vibeos_agent.tools.provider import ToolManager
 
@@ -48,21 +52,6 @@ _logger = logging.getLogger(__name__)
 KNOWLEDGE_SVC_URL = os.getenv("KNOWLEDGE_SVC_URL", config.knowledge_svc_url)
 RAG_SVC_URL = os.getenv("RAG_SVC_URL", config.rag_svc_url)
 MEMORY_SVC_URL = os.getenv("MEMORY_SVC_URL", config.memory_svc_url)
-
-DEFAULT_PHASE_ORDER = [
-    "requirement", "architecture", "design",
-    "development", "testing", "deployment", "monitoring",
-]
-
-PIPELINE_KEY_TO_PHASE: dict[str, str] = {
-    "requirement": "requirement",
-    "architecture": "architecture",
-    "design": "design",
-    "development": "development",
-    "testing": "testing",
-    "cicd": "deployment",
-    "monitoring": "monitoring",
-}
 
 
 def _phase_key_from_cfg(cfg: dict[str, Any]) -> str:
@@ -112,13 +101,11 @@ async def _store_org_memory(workspace_id: str, content: str) -> None:
 
 
 def _agent_for_phase(phase_type: str) -> AgentType:
-    for agent_key, phase_key in AGENT_PHASE_MAP.items():
-        if phase_key == phase_type:
-            try:
-                return AgentType(agent_key)
-            except ValueError:
-                pass
-    return AgentType.DEVELOPMENT
+    key = agent_for_phase(phase_type)
+    try:
+        return AgentType(key)
+    except ValueError:
+        return AgentType.DEVELOPMENT
 
 
 class WorkflowEngine:

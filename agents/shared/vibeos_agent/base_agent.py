@@ -21,9 +21,9 @@ from .models import (
     AgentType,
     CapabilityContract,
     Message,
-    PhaseContract,
     RichBlock,
 )
+from .phases import AGENT_PHASE_MAP, PHASE_CONTEXT, PHASE_CONTRACTS, PHASE_TOOL_HINTS
 from .registry import AgentManifest, CapabilityDef, RegistryClient
 from .session import SessionManager
 from .skills import Skill, SkillRegistry, SkillToolProvider
@@ -32,122 +32,6 @@ from .tools import ToolManager
 from .tools.mcp_provider import MCPServerConfig, MCPToolProvider
 
 logger = logging.getLogger(__name__)
-
-# Phase dependency graph: each phase lists the upstream phases whose artifacts
-# should be injected as context.
-PHASE_CONTEXT: dict[str, list[str]] = {
-    "requirement": [],
-    "architecture": ["requirement"],
-    "design": ["requirement", "architecture"],
-    "development": ["requirement", "architecture", "design"],
-    "testing": ["development", "design"],
-    "deployment": ["development", "testing"],
-    "monitoring": ["deployment"],
-}
-
-# Maps agent type keys to their corresponding SDLC phase name.
-AGENT_PHASE_MAP: dict[str, str] = {
-    "requirement": "requirement",
-    "architecture": "architecture",
-    "design": "design",
-    "development": "development",
-    "testing": "testing",
-    "cicd": "deployment",
-    "monitoring": "monitoring",
-}
-
-# Static phase contracts: input/output artifact specs per phase.
-# Runtime values (require_approval, graph_id, etc.) are merged from
-# the ``agents`` DB table by ``WorkflowEngine.resolve_phase_contract()``.
-PHASE_CONTRACTS: dict[str, PhaseContract] = {
-    "requirement": PhaseContract(
-        phase_type="requirement",
-        agent_type="requirement",
-        upstream_phases=[],
-        required_artifact_types=[],
-        default_graph_key="requirement",
-        expected_artifact_types=["prd", "user_stories", "acceptance_criteria"],
-    ),
-    "architecture": PhaseContract(
-        phase_type="architecture",
-        agent_type="architecture",
-        upstream_phases=["requirement"],
-        required_artifact_types=["prd", "user_stories"],
-        default_graph_key="architecture",
-        expected_artifact_types=["architecture_doc", "adr", "tech_stack"],
-    ),
-    "design": PhaseContract(
-        phase_type="design",
-        agent_type="design",
-        upstream_phases=["requirement", "architecture"],
-        required_artifact_types=["prd", "architecture_doc"],
-        default_graph_key="design",
-        expected_artifact_types=["wireframe", "ui_spec", "component_spec"],
-    ),
-    "development": PhaseContract(
-        phase_type="development",
-        agent_type="development",
-        upstream_phases=["requirement", "architecture", "design"],
-        required_artifact_types=["architecture_doc", "ui_spec"],
-        default_graph_key="development",
-        expected_artifact_types=["source_code", "api_impl"],
-    ),
-    "testing": PhaseContract(
-        phase_type="testing",
-        agent_type="testing",
-        upstream_phases=["development", "design"],
-        required_artifact_types=["source_code"],
-        default_graph_key="testing",
-        expected_artifact_types=["test_suite", "test_report"],
-    ),
-    "deployment": PhaseContract(
-        phase_type="deployment",
-        agent_type="cicd",
-        upstream_phases=["development", "testing"],
-        required_artifact_types=["source_code", "test_report"],
-        default_graph_key="deployment",
-        expected_artifact_types=["pipeline_config", "deploy_manifest"],
-    ),
-    "monitoring": PhaseContract(
-        phase_type="monitoring",
-        agent_type="monitoring",
-        upstream_phases=["deployment"],
-        required_artifact_types=["deploy_manifest"],
-        default_graph_key="monitoring",
-        expected_artifact_types=["alert_rules", "dashboard_config"],
-    ),
-}
-
-
-PHASE_TOOL_HINTS: dict[str, list[str]] = {
-    "requirement": [
-        "workspace_create_artifact", "workspace_query_artifacts",
-        "workspace_create_task", "workspace_query_phases",
-    ],
-    "architecture": [
-        "workspace_create_artifact", "workspace_query_artifacts",
-        "workspace_create_task", "workspace_query_phases",
-    ],
-    "design": [
-        "workspace_create_artifact", "workspace_query_artifacts",
-        "workspace_create_task", "workspace_query_phases",
-    ],
-    "development": [
-        "workspace_create_artifact", "gitlab_push_file", "gitlab_create_mr",
-        "workspace_query_artifacts", "workspace_create_task",
-    ],
-    "testing": [
-        "workspace_create_artifact", "gitlab_push_file",
-        "workspace_query_artifacts", "workspace_create_task",
-    ],
-    "deployment": [
-        "workspace_create_artifact", "gitlab_push_file", "gitlab_create_mr",
-        "workspace_query_artifacts",
-    ],
-    "monitoring": [
-        "workspace_create_artifact", "workspace_query_artifacts",
-    ],
-}
 
 
 class BaseAgent(ABC):
@@ -263,6 +147,139 @@ class BaseAgent(ABC):
     @_tool_results.setter
     def _tool_results(self, val: list[dict[str, Any]]) -> None:
         self._tool_results_var.set(val)
+
+    # ------------------------------------------------------------------
+    # Middleware pipeline (shared with ConversationEngine)
+    # ------------------------------------------------------------------
+
+    def _build_pipeline(self):
+        """Construct the standard middleware stack for this agent.
+
+        Returns a :class:`MiddlewarePipeline` configured with the same
+        middleware layers that ``ConversationEngine`` uses, ensuring a
+        unified cross-cutting behaviour (observability, session, context
+        enrichment, memory persistence, WS status).
+
+        Subclasses may override to customise the stack.
+        """
+        from .middleware import (
+            ContextEnricherMiddleware,
+            MemoryWriterMiddleware,
+            MiddlewarePipeline,
+            ObservabilityMiddleware,
+            SessionMiddleware,
+            TokenBudget,
+            WSStatusMiddleware,
+        )
+
+        pipeline = MiddlewarePipeline()
+        pipeline.use(ObservabilityMiddleware())
+        pipeline.use(WSStatusMiddleware(self.ws))
+        pipeline.use(SessionMiddleware(self.session, budget=TokenBudget()))
+        if self.memory:
+            enricher = ContextEnricherMiddleware(
+                self.workspace_svc, self.memory, self.rag, self.knowledge,
+                tool_manager=self.tool_manager,
+            )
+            pipeline.use(enricher)
+            pipeline.use(MemoryWriterMiddleware(self.memory))
+        return pipeline
+
+    async def _make_tool_terminal(self, ctx):
+        """Terminal handler: runs the unified streaming tool loop."""
+        from .middleware.base import InvocationContext
+        from .tool_loop import run_tool_loop_stream
+
+        await self.tool_manager.ensure_workspace_providers(
+            self.workspace_svc, ctx.workspace_id,
+        )
+        tool_schemas = await self.tool_manager.get_schemas()
+        messages = self._build_pipeline_messages(ctx)
+
+        full_reply_parts: list[str] = []
+        async for evt in run_tool_loop_stream(
+            messages,
+            llm=self.llm,
+            tool_manager=self.tool_manager,
+            tool_schemas=tool_schemas or [],
+            workspace_id=ctx.workspace_id,
+            agent_type=ctx.agent_type,
+            task_context=ctx.task_context,
+            collect_results=ctx.tool_results,
+        ):
+            if evt.type == "content_delta":
+                full_reply_parts.append(evt.payload.get("delta", ""))
+            yield evt
+
+        ctx.reply = "".join(full_reply_parts)
+
+    def _build_pipeline_messages(self, ctx) -> list[dict[str, Any]]:
+        """Build the LLM message list from an InvocationContext."""
+        system = ctx.enriched_prompt or ctx.system_prompt
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
+        for msg in ctx.history:
+            messages.append({"role": msg.role, "content": msg.content})
+        if ctx.extra_messages:
+            messages.extend(ctx.extra_messages)
+        messages.append({"role": "user", "content": ctx.user_message})
+        return messages
+
+    async def _run_pipeline_stream(
+        self,
+        *,
+        workspace_id: str,
+        user_message: str,
+        task_context: dict[str, Any] | None = None,
+        repo_context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
+        mode: str = "execute",
+    ) -> AsyncIterator[AgentEvent]:
+        """Execute the full middleware pipeline in streaming mode.
+
+        This is the **preferred** execution path for all agent operations
+        (both task execution and conversation).  It replaces the former
+        ``_call_llm_with_tools`` + ``_build_enriched_prompt`` dual path.
+        """
+        from .middleware.base import InvocationContext
+
+        ctx = InvocationContext(
+            workspace_id=workspace_id,
+            agent_type=self.agent_type,
+            user_message=user_message,
+            mode=mode,
+            system_prompt=system_prompt or self._effective_system_prompt(),
+            task_context=task_context,
+            repo_context=repo_context,
+        )
+
+        pipeline = self._build_pipeline()
+        async for event in pipeline.run(ctx, terminal=self._make_tool_terminal):
+            yield event
+
+        self._tool_results = ctx.tool_results
+
+    async def _run_pipeline(
+        self,
+        *,
+        workspace_id: str,
+        user_message: str,
+        task_context: dict[str, Any] | None = None,
+        repo_context: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+    ) -> str:
+        """Non-streaming pipeline execution.  Returns the final reply text."""
+        reply_parts: list[str] = []
+        async for evt in self._run_pipeline_stream(
+            workspace_id=workspace_id,
+            user_message=user_message,
+            task_context=task_context,
+            repo_context=repo_context,
+            system_prompt=system_prompt,
+        ):
+            if evt.type == "content_delta":
+                reply_parts.append(evt.payload.get("delta", ""))
+        return "".join(reply_parts)
 
     # ------------------------------------------------------------------
     # Abstract / overridable interface
@@ -1085,7 +1102,7 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             "AGENT_BASE_URL",
             f"http://{hostname}:{_cfg.port}",
         )
-        execute_endpoint = f"{agent_base_url}/api/execute"
+        execute_endpoint = f"{agent_base_url}/api/conversation/stream"
         defs: list[CapabilityDef] = []
 
         for cap in self.capabilities:
@@ -1108,6 +1125,23 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             ))
 
         return defs
+
+    async def register(self) -> None:
+        """One-call registration: registry manifest + workspace-svc descriptor.
+
+        Replaces the separate ``register_with_registry`` +
+        ``register_descriptor`` + ``start_heartbeat`` calls in the
+        ``create_agent_app`` lifespan.
+        """
+        try:
+            await self.register_with_registry()
+            self.start_heartbeat()
+        except Exception:
+            logger.warning("Registry registration failed for %s", _enum_val(self.agent_type))
+        try:
+            await self.register_descriptor()
+        except Exception:
+            logger.warning("Descriptor registration failed for %s", _enum_val(self.agent_type))
 
     async def register_with_registry(self) -> None:
         """Register this agent's manifest (intents, templates, capabilities) globally.

@@ -82,6 +82,7 @@ async def execute_tool_calls(
     *,
     workspace_id: str = "",
     agent_type: AgentType | str = "",
+    task_context: dict[str, Any] | None = None,
     collect_results: list[dict[str, Any]] | None = None,
     ws_notify: WSNotifyFn | None = None,
     check_confirmation: bool = False,
@@ -90,6 +91,10 @@ async def execute_tool_calls(
     and return ``AgentEvent`` list for WS/SSE forwarding.
 
     This is the **single** tool-call execution path for the entire system.
+
+    *task_context* (optional) is merged into each tool's arguments under
+    the ``_context`` key so tools can access task-level metadata (e.g.
+    phase, task_id, upstream artifacts) without coupling to BaseAgent.
 
     When *check_confirmation* is ``True`` and a tool has
     ``requires_confirmation=True``, the tool is **not** executed.  Instead
@@ -165,6 +170,8 @@ async def execute_tool_calls(
                 logger.debug("ws_notify tool_start failed", exc_info=True)
 
         args["_workspace_id"] = workspace_id
+        if task_context:
+            args.setdefault("_context", task_context)
         t0 = time.monotonic()
         result = await tool_manager.execute(name, args)
         duration_ms = int((time.monotonic() - t0) * 1000)
@@ -208,6 +215,7 @@ async def run_tool_loop(
     agent_type: AgentType | str = "",
     model: str | None = None,
     llm_kw: dict[str, Any] | None = None,
+    task_context: dict[str, Any] | None = None,
     collect_results: list[dict[str, Any]] | None = None,
     ws_notify: WSNotifyFn | None = None,
 ) -> str:
@@ -231,6 +239,7 @@ async def run_tool_loop(
             tool_calls, tool_manager, messages,
             workspace_id=workspace_id,
             agent_type=agent_type,
+            task_context=task_context,
             collect_results=collect_results,
             ws_notify=ws_notify,
         )
@@ -254,6 +263,7 @@ async def run_tool_loop_stream(
     workspace_id: str = "",
     agent_type: AgentType | str = "",
     model: str | None = None,
+    task_context: dict[str, Any] | None = None,
     collect_results: list[dict[str, Any]] | None = None,
     ws_notify: WSNotifyFn | None = None,
     check_confirmation: bool = False,
@@ -318,6 +328,7 @@ async def run_tool_loop_stream(
                 tool_calls_acc, tool_manager, messages,
                 workspace_id=workspace_id,
                 agent_type=agent_type,
+                task_context=task_context,
                 collect_results=collect_results,
                 ws_notify=ws_notify,
                 check_confirmation=check_confirmation,

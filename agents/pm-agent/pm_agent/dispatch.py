@@ -1,4 +1,6 @@
-"""Agent dispatcher – routes tasks to domain agents and coordinates multi-agent work."""
+"""Agent dispatcher -- routes tasks to domain agents via the unified
+``/api/conversation/stream`` endpoint.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +37,6 @@ def _build_agent_endpoints() -> dict[str, str]:
 
 AGENT_ENDPOINTS: dict[str, str] = _build_agent_endpoints()
 
-# Agent 中文名称映射
 AGENT_NAME_CN: dict[str, str] = {
     "requirement": "需求",
     "architecture": "架构",
@@ -47,6 +48,21 @@ AGENT_NAME_CN: dict[str, str] = {
     "pm": "项目管理",
     "coding": "编码",
 }
+
+
+def _task_to_conversation_payload(task: AgentTask) -> dict[str, Any]:
+    """Convert an AgentTask to a ConversationRequest-compatible dict."""
+    return {
+        "workspace_id": task.workspace_id,
+        "message": task.user_message or task.description,
+        "mode": "execute",
+        "intent": task.intent,
+        "description": task.description,
+        "task_id": task.task_id,
+        "context": task.context,
+        "preferred_model": task.preferred_model,
+        "system_prompt": getattr(task, "system_prompt", None),
+    }
 
 
 class Dispatcher:
@@ -72,13 +88,29 @@ class Dispatcher:
             detail=f"Executing: {task.intent}",
         )
 
+        payload = _task_to_conversation_payload(task)
+        result: dict[str, Any] = {}
         try:
-            resp = await self._http.post(
-                f"{base}/api/execute",
-                json=task.model_dump(mode="json"),
-            )
-            resp.raise_for_status()
-            result = resp.json()
+            async with self._http.stream(
+                "POST",
+                f"{base}/api/conversation/stream",
+                json=payload,
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                            if data.get("type") in ("result", "error"):
+                                result = data
+                        except json.JSONDecodeError:
+                            pass
         except httpx.HTTPStatusError as exc:
             body = exc.response.text[:500] if exc.response else str(exc)
             await self.ws.publish_agent_status(
@@ -94,9 +126,7 @@ class Dispatcher:
             return {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
 
         await self.ws.publish_agent_status(
-            task.workspace_id,
-            agent_type,
-            AgentStatus.IDLE,
+            task.workspace_id, agent_type, AgentStatus.IDLE,
         )
         return result
 
@@ -105,12 +135,7 @@ class Dispatcher:
         agent_type: AgentType,
         task: AgentTask,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Forward agent execute as SSE stream, yielding parsed events.
-
-        Domain agents emit unified SSE (``event: category:action``).
-        We parse both ``event:`` and ``data:`` lines and yield structured dicts
-        with ``_category``, ``_action`` keys alongside the payload.
-        """
+        """Forward agent execute as SSE stream via /api/conversation/stream."""
         base = AGENT_ENDPOINTS.get(agent_type.value)
         if base is None:
             yield {"error": f"No endpoint registered for {agent_type}"}
@@ -121,11 +146,12 @@ class Dispatcher:
             detail=f"Executing: {task.intent}",
         )
 
+        payload = _task_to_conversation_payload(task)
         try:
             async with self._http.stream(
                 "POST",
-                f"{base}/api/execute/stream",
-                json=task.model_dump(mode="json"),
+                f"{base}/api/conversation/stream",
+                json=payload,
             ) as resp:
                 resp.raise_for_status()
                 current_event = ""
@@ -190,78 +216,6 @@ class Dispatcher:
             result = await self.dispatch(agent_type, task)
             results.append(result)
         return results
-
-    async def forward_chat(
-        self,
-        agent_type: AgentType,
-        workspace_id: str,
-        message: str,
-    ) -> dict[str, Any]:
-        base = AGENT_ENDPOINTS.get(agent_type.value)
-        if base is None:
-            return {"error": f"No endpoint registered for {agent_type}"}
-
-        try:
-            resp = await self._http.post(
-                f"{base}/api/chat",
-                json={"workspace_id": workspace_id, "message": message},
-            )
-            resp.raise_for_status()
-            return resp.json()
-        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-            name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
-            return {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
-
-    async def forward_chat_stream(
-        self,
-        agent_type: AgentType,
-        workspace_id: str,
-        message: str,
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Forward chat to agent's /api/chat/stream and yield SSE chunks.
-
-        Domain agents now emit unified SSE (``event: content:delta``).
-        We parse the ``event:`` + ``data:`` pairs and yield dicts.
-        """
-        base = AGENT_ENDPOINTS.get(agent_type.value)
-        if base is None:
-            yield {"error": f"No endpoint registered for {agent_type}"}
-            return
-
-        try:
-            async with self._http.stream(
-                "POST",
-                f"{base}/api/chat/stream",
-                json={"workspace_id": workspace_id, "message": message},
-            ) as resp:
-                resp.raise_for_status()
-                current_event = ""
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line or line.startswith(":"):
-                        continue
-                    if line.startswith("event: "):
-                        current_event = line[7:]
-                        continue
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            return
-                        try:
-                            data = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            current_event = ""
-                            continue
-                        if current_event:
-                            parts = current_event.split(":", 1)
-                            if len(parts) == 2:
-                                data["_category"] = parts[0]
-                                data["_action"] = parts[1]
-                        current_event = ""
-                        yield data
-        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-            name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
-            yield {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
 
     async def close(self) -> None:
         await self._http.aclose()

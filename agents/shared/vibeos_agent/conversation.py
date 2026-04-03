@@ -75,14 +75,29 @@ _LOCALE_HINTS = {
 
 
 class ConversationRequest(BaseModel):
-    """Unified request for all AI interactions."""
+    """Unified request for all AI interactions.
+
+    ``mode="conversation"`` is the default interactive chat path.
+    ``mode="execute"`` carries a structured task payload and is used
+    by the graph executor / workflow engine when invoking domain agents.
+    """
 
     workspace_id: str
     message: str
     locale: str = "auto"
+    mode: str = "conversation"
+
     context: dict[str, Any] | None = None
     target_agent: str | None = None
     graph_id: str | None = None
+
+    # Execute-mode fields (populated when mode="execute")
+    intent: str = ""
+    description: str = ""
+    task_id: str = ""
+    enabled_tools: list[str] | None = None
+    preferred_model: str | None = None
+    system_prompt: str | None = None
 
 
 class ConversationEngine:
@@ -117,6 +132,7 @@ class ConversationEngine:
         if memory_client:
             enricher = ContextEnricherMiddleware(
                 workspace_client, memory_client, rag_client, knowledge_client,
+                tool_manager=tool_manager,
             )
             self._pipeline.use(enricher)
             self._pipeline.use(MemoryWriterMiddleware(memory_client))

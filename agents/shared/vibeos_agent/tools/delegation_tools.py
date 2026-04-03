@@ -76,12 +76,13 @@ class DelegateToAgent(BaseTool):
         if not base_url:
             return self._json_result({"error": f"Unknown agent: {target}"})
 
-        task_payload = {
-            "task_id": f"delegation-{self._source}-to-{target}",
+        conv_payload = {
             "workspace_id": workspace_id,
+            "message": message or description,
+            "mode": "execute",
             "intent": intent,
             "description": description,
-            "user_message": message,
+            "task_id": f"delegation-{self._source}-to-{target}",
             "context": {
                 "delegated_from": self._source,
                 "delegation_intent": intent,
@@ -89,22 +90,32 @@ class DelegateToAgent(BaseTool):
         }
 
         try:
+            import json as _json
+            content_parts: list[str] = []
             async with httpx.AsyncClient(timeout=120) as client:
-                resp = await client.post(
-                    f"{base_url}/api/execute",
-                    json=task_payload,
-                )
-                resp.raise_for_status()
-                result = resp.json()
+                async with client.stream(
+                    "POST", f"{base_url}/api/conversation/stream", json=conv_payload,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                break
+                            try:
+                                data = _json.loads(data_str)
+                                if data.get("delta"):
+                                    content_parts.append(data["delta"])
+                            except _json.JSONDecodeError:
+                                pass
 
-            payload = result.get("payload", result)
-            summary = payload.get("summary", "") if isinstance(payload, dict) else str(payload)
-
+            summary = "".join(content_parts)
             return self._json_result({
                 "status": "completed",
                 "target_agent": target,
                 "summary": summary[:2000],
-                "result": payload,
             })
         except httpx.ConnectError:
             return self._json_result({
