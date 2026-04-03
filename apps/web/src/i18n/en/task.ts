@@ -59,7 +59,7 @@ const task = {
 
   'task.refLinks.title': 'Reference links',
   'task.refLinks.hint': 'Paste Feishu docs, Notion, Google Docs, or any HTTPS link.',
-  'task.refLinks.urlPlaceholder': 'https://xxx.feishu.cn/wiki/…',
+  'task.refLinks.urlPlaceholder': 'https://docs.example.com/wiki/…',
   'task.refLinks.labelPlaceholder': 'Display name (optional)',
   'task.refLinks.add': 'Add link',
   'task.refLinks.invalidUrl': 'Enter a valid http(s) URL',

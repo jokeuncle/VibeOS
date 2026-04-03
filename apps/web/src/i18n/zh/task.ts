@@ -58,7 +58,7 @@ const task = {
 
   'task.refLinks.title': '参考链接',
   'task.refLinks.hint': '可粘贴飞书文档、Notion、石墨、Google Docs 等任意 HTTPS 链接。',
-  'task.refLinks.urlPlaceholder': 'https://xxx.feishu.cn/wiki/…',
+  'task.refLinks.urlPlaceholder': 'https://docs.example.com/wiki/…',
   'task.refLinks.labelPlaceholder': '显示名称（可选）',
   'task.refLinks.add': '添加链接',
   'task.refLinks.invalidUrl': '请输入有效的 http(s) 链接',
