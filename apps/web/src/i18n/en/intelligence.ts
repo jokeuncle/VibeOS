@@ -237,10 +237,7 @@ const intelligence = {
   'traces.listHeader.details': 'Run',
   'traces.listHeader.timing': 'Steps · Duration · Time',
   'traces.filter.agent': 'Agent',
-  'traces.artifactsHint': 'Design docs, code, and exports from runs in this workspace.',
   'traces.tabsAria': 'Execution log or workspace artifacts',
-  'traces.filtersSyncedHint':
-    'Runs use Agent, Status, and Requirement. Artifacts with a linked run follow. Items without a stored run id only match Agent (Status or Requirement filters hide them).',
   'traces.artifactsNoMatchFilters': 'No artifacts for the current run filters. Loosen filters or switch tab to see more runs.',
   'traces.desc': 'Agent reasoning history — LLM calls, tool chains, and decision paths across all requirements in this workspace.',
   'traces.totalExecutions': 'Total executions',
@@ -257,7 +254,6 @@ const intelligence = {
   'traces.allRequirements': 'All requirements',
   'traces.toolCalls': 'Tool calls',
   'traces.totalLogsCount': 'logs',
-  'traces.emptyHint': 'Run a workflow or NLP command to see agent traces here.',
   'traces.noStepsRecorded': 'No execution steps were stored for this run.',
   'traces.noStepsHint': 'Steps are saved from tool calls (NLP) and phase/task events (workflow). Older runs may be empty until you run something again.',
 } as const

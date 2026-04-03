@@ -266,18 +266,11 @@ export default function ArtifactPanel({
     filteredArtifacts.length > 0
 
   const metaRow =
-    embedded && (activeRequirementId || displayArtifacts.length > 0) ? (
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        {activeRequirementId && (
-          <span className="rounded-md bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
-            {t('requirement.scoped' as TranslationKey)}
-          </span>
-        )}
-        {displayArtifacts.length > 0 && (
-          <span className="font-mono text-[10px] tabular-nums text-text-tertiary">
-            {displayArtifacts.length}
-          </span>
-        )}
+    embedded && activeRequirementId ? (
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+          {t('requirement.scoped' as TranslationKey)}
+        </span>
       </div>
     ) : null
 

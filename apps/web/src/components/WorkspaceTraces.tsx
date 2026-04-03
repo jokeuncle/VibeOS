@@ -314,12 +314,9 @@ export default function WorkspaceTraces() {
 
   const filterPanel = (
     <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-1/30">
-      <div className="border-b border-border-subtle bg-surface-2/15 px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-2">
-          <Filter className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden />
-          <span className="text-xs font-medium text-text-secondary">{t('traces.filtersHeading')}</span>
-        </div>
-        <p className="mt-1.5 text-[10px] leading-relaxed text-text-tertiary">{t('traces.filtersSyncedHint')}</p>
+      <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-2/15 px-4 py-3 sm:px-5">
+        <Filter className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden />
+        <span className="text-xs font-medium text-text-secondary">{t('traces.filtersHeading')}</span>
       </div>
       <div className="space-y-5 p-4 sm:p-5">
         <div className="min-w-0">
@@ -377,12 +374,10 @@ export default function WorkspaceTraces() {
           <Activity className="h-6 w-6 text-accent/80" />
         </div>
         <p className="text-sm font-medium text-text-primary">{t('traces.noResults')}</p>
-        <p className="mx-auto mt-2 max-w-sm text-[12px] leading-relaxed text-text-tertiary">{t('traces.emptyHint')}</p>
       </div>
     ) : filtered.length === 0 ? (
       <div className="py-16 text-center">
         <p className="text-[13px] text-text-secondary">{t('traces.noResults')}</p>
-        <p className="mx-auto mt-2 max-w-xs text-[11px] text-text-tertiary">{t('traces.emptyHint')}</p>
       </div>
     ) : (
       <div className="bg-surface-2/15">
@@ -528,9 +523,6 @@ export default function WorkspaceTraces() {
             )}
             {mainTab === 'artifacts' && (
               <div id={artifactsPanelId} role="tabpanel" aria-labelledby={artifactsTabId}>
-                <p className="border-b border-border-subtle px-4 py-3 text-[11px] leading-relaxed text-text-tertiary sm:px-5">
-                  {t('traces.artifactsHint')}
-                </p>
                 <div className="p-4 sm:p-5">
                   <ArtifactPanel
                     embedded
