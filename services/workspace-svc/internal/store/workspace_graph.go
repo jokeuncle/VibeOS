@@ -9,17 +9,27 @@ import (
 	"github.com/vibeos/shared/models"
 )
 
+const graphColumns = `id, workspace_id, name, description, source_template_id,
+		        graph_def, state_schema, config, scope, is_active, created_at, updated_at`
+
 // ---------------------------------------------------------------------------
 // Workspace Graph CRUD
 // ---------------------------------------------------------------------------
 
 func (s *PostgresStore) ListWorkspaceGraphs(ctx context.Context, workspaceID string) ([]models.WorkspaceGraph, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, workspace_id, name, description, source_template_id,
-		        graph_def, state_schema, config, is_active, created_at, updated_at
-		 FROM workspace_graphs
-		 WHERE workspace_id = $1
-		 ORDER BY is_active DESC, updated_at DESC`, workspaceID)
+	return s.ListWorkspaceGraphsByScope(ctx, workspaceID, "")
+}
+
+func (s *PostgresStore) ListWorkspaceGraphsByScope(ctx context.Context, workspaceID, scope string) ([]models.WorkspaceGraph, error) {
+	q := fmt.Sprintf(`SELECT %s FROM workspace_graphs WHERE workspace_id = $1`, graphColumns)
+	args := []any{workspaceID}
+	if scope != "" {
+		q += ` AND scope = $2`
+		args = append(args, scope)
+	}
+	q += ` ORDER BY is_active DESC, updated_at DESC`
+
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list workspace graphs: %w", err)
 	}
@@ -38,19 +48,19 @@ func (s *PostgresStore) ListWorkspaceGraphs(ctx context.Context, workspaceID str
 
 func (s *PostgresStore) GetWorkspaceGraph(ctx context.Context, id string) (*models.WorkspaceGraph, error) {
 	row := s.pool.QueryRow(ctx,
-		`SELECT id, workspace_id, name, description, source_template_id,
-		        graph_def, state_schema, config, is_active, created_at, updated_at
-		 FROM workspace_graphs WHERE id = $1`, id)
+		fmt.Sprintf(`SELECT %s FROM workspace_graphs WHERE id = $1`, graphColumns), id)
 	return scanWorkspaceGraph(row)
 }
 
 func (s *PostgresStore) GetActiveWorkspaceGraph(ctx context.Context, workspaceID string) (*models.WorkspaceGraph, error) {
+	return s.GetActiveWorkspaceGraphByScope(ctx, workspaceID, "phase")
+}
+
+func (s *PostgresStore) GetActiveWorkspaceGraphByScope(ctx context.Context, workspaceID, scope string) (*models.WorkspaceGraph, error) {
 	row := s.pool.QueryRow(ctx,
-		`SELECT id, workspace_id, name, description, source_template_id,
-		        graph_def, state_schema, config, is_active, created_at, updated_at
-		 FROM workspace_graphs
-		 WHERE workspace_id = $1 AND is_active = true
-		 LIMIT 1`, workspaceID)
+		fmt.Sprintf(`SELECT %s FROM workspace_graphs
+		 WHERE workspace_id = $1 AND scope = $2 AND is_active = true
+		 LIMIT 1`, graphColumns), workspaceID, scope)
 	g, err := scanWorkspaceGraph(row)
 	if err != nil {
 		return nil, err
@@ -72,6 +82,10 @@ func (s *PostgresStore) CreateWorkspaceGraph(ctx context.Context, workspaceID st
 	if len(cfg) == 0 {
 		cfg = []byte(`{"checkpointer":"memory","recursion_limit":25}`)
 	}
+	scope := req.Scope
+	if scope == "" {
+		scope = "phase"
+	}
 	isActive := false
 	if req.IsActive != nil {
 		isActive = *req.IsActive
@@ -84,17 +98,17 @@ func (s *PostgresStore) CreateWorkspaceGraph(ctx context.Context, workspaceID st
 
 	if isActive {
 		_, _ = s.pool.Exec(ctx,
-			`UPDATE workspace_graphs SET is_active = false, updated_at = $1 WHERE workspace_id = $2 AND is_active = true`,
-			now, workspaceID)
+			`UPDATE workspace_graphs SET is_active = false, updated_at = $1
+			 WHERE workspace_id = $2 AND scope = $3 AND is_active = true`,
+			now, workspaceID, scope)
 	}
 
 	row := s.pool.QueryRow(ctx,
-		`INSERT INTO workspace_graphs
-		   (workspace_id, name, description, source_template_id, graph_def, state_schema, config, is_active, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
-		 RETURNING id, workspace_id, name, description, source_template_id,
-		           graph_def, state_schema, config, is_active, created_at, updated_at`,
-		workspaceID, req.Name, req.Description, srcTplID, graphDef, stateSchema, cfg, isActive, now)
+		fmt.Sprintf(`INSERT INTO workspace_graphs
+		   (workspace_id, name, description, source_template_id, graph_def, state_schema, config, scope, is_active, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+		 RETURNING %s`, graphColumns),
+		workspaceID, req.Name, req.Description, srcTplID, graphDef, stateSchema, cfg, scope, isActive, now)
 	return scanWorkspaceGraph(row)
 }
 
@@ -134,8 +148,9 @@ func (s *PostgresStore) UpdateWorkspaceGraph(ctx context.Context, id string, req
 			current, err := s.GetWorkspaceGraph(ctx, id)
 			if err == nil && current != nil {
 				_, _ = s.pool.Exec(ctx,
-					`UPDATE workspace_graphs SET is_active = false, updated_at = $1 WHERE workspace_id = $2 AND is_active = true AND id != $3`,
-					now, current.WorkspaceID, id)
+					`UPDATE workspace_graphs SET is_active = false, updated_at = $1
+					 WHERE workspace_id = $2 AND scope = $3 AND is_active = true AND id != $4`,
+					now, current.WorkspaceID, current.Scope, id)
 			}
 		}
 		sets = append(sets, fmt.Sprintf("is_active = $%d", idx))
@@ -146,9 +161,8 @@ func (s *PostgresStore) UpdateWorkspaceGraph(ctx context.Context, id string, req
 	args = append(args, id)
 	q := fmt.Sprintf(
 		`UPDATE workspace_graphs SET %s WHERE id = $%d
-		 RETURNING id, workspace_id, name, description, source_template_id,
-		           graph_def, state_schema, config, is_active, created_at, updated_at`,
-		strings.Join(sets, ", "), idx)
+		 RETURNING %s`,
+		strings.Join(sets, ", "), idx, graphColumns)
 	return scanWorkspaceGraph(s.pool.QueryRow(ctx, q, args...))
 }
 
@@ -165,9 +179,14 @@ func (s *PostgresStore) DeleteWorkspaceGraph(ctx context.Context, id string) err
 
 func (s *PostgresStore) ActivateWorkspaceGraph(ctx context.Context, workspaceID, graphID string) error {
 	now := models.TimeNow()
+	current, err := s.GetWorkspaceGraph(ctx, graphID)
+	if err != nil {
+		return err
+	}
 	_, _ = s.pool.Exec(ctx,
-		`UPDATE workspace_graphs SET is_active = false, updated_at = $1 WHERE workspace_id = $2 AND is_active = true`,
-		now, workspaceID)
+		`UPDATE workspace_graphs SET is_active = false, updated_at = $1
+		 WHERE workspace_id = $2 AND scope = $3 AND is_active = true`,
+		now, workspaceID, current.Scope)
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE workspace_graphs SET is_active = true, updated_at = $1 WHERE id = $2 AND workspace_id = $3`,
 		now, graphID, workspaceID)
@@ -187,10 +206,9 @@ func (s *PostgresStore) ActivateWorkspaceGraph(ctx context.Context, workspaceID,
 func scanWorkspaceGraph(s rowScanner) (*models.WorkspaceGraph, error) {
 	var g models.WorkspaceGraph
 	err := s.Scan(&g.ID, &g.WorkspaceID, &g.Name, &g.Description, &g.SourceTemplateID,
-		&g.GraphDef, &g.StateSchema, &g.Config, &g.IsActive, &g.CreatedAt, &g.UpdatedAt)
+		&g.GraphDef, &g.StateSchema, &g.Config, &g.Scope, &g.IsActive, &g.CreatedAt, &g.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotFound
 	}
 	return &g, err
 }
-

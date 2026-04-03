@@ -128,6 +128,7 @@ class ToolManager:
         self._providers: list[ToolProvider] = [self._static]
         self._tool_index: dict[str, ToolProvider] = {}
         self._display_name_cache: dict[str, str] = {}
+        self._ws_loaded: dict[str, float] = {}
         self._strategy = strategy
         self._search_tool_registered = False
 
@@ -299,8 +300,6 @@ class ToolManager:
 
     # -- Workspace-scoped provider lifecycle -----------------------------------
 
-    _ws_loaded: dict[str, float] = {}
-
     async def ensure_workspace_providers(
         self,
         workspace_client,
@@ -309,9 +308,7 @@ class ToolManager:
         ttl: float = 300,
     ) -> None:
         """Load (or refresh after *ttl* seconds) MCP and Skill providers for
-        a workspace.  This is the **single** path for registering
-        workspace-scoped providers, replacing both
-        ``BaseAgent._ensure_workspace_tools`` and ``pm_agent._load_mcp_providers``.
+        a workspace.  Single path for registering workspace-scoped providers.
         """
         ts = self._ws_loaded.get(workspace_id)
         if ts is not None and (_time.monotonic() - ts) < ttl:

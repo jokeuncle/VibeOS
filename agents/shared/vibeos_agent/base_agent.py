@@ -23,13 +23,10 @@ from .models import (
     Message,
     RichBlock,
 )
-from .phases import AGENT_PHASE_MAP, PHASE_CONTEXT, PHASE_CONTRACTS, PHASE_TOOL_HINTS
-from .registry import AgentManifest, CapabilityDef, RegistryClient
+from .phases import AGENT_PHASE_MAP
+from .registry import AgentManifest, CapabilityDef
 from .session import SessionManager
-from .skills import Skill, SkillRegistry, SkillToolProvider
-from .tool_loop import _merge_discovered_schemas
 from .tools import ToolManager
-from .tools.mcp_provider import MCPServerConfig, MCPToolProvider
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +44,6 @@ class BaseAgent(ABC):
     def __init__(self) -> None:
         self.clients = ClientContainer()
         self.tool_manager = ToolManager()
-        self._workspace_tools_loaded: set[str] = set()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._task_context_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
             "task_context", default=None,
@@ -236,9 +232,8 @@ class BaseAgent(ABC):
     ) -> AsyncIterator[AgentEvent]:
         """Execute the full middleware pipeline in streaming mode.
 
-        This is the **preferred** execution path for all agent operations
-        (both task execution and conversation).  It replaces the former
-        ``_call_llm_with_tools`` + ``_build_enriched_prompt`` dual path.
+        This is the single execution path for all agent operations
+        (task execution, conversation, and chat).
         """
         from .middleware.base import InvocationContext
 
@@ -295,8 +290,8 @@ class BaseAgent(ABC):
     ) -> AsyncIterator[Message]:
         """Handle a free-form chat message and yield response messages.
 
-        Default implementation: append user message to session, call LLM,
-        persist reply, publish status transitions. Subclasses can override.
+        Uses the unified middleware pipeline for context enrichment, tool
+        use, session management, and memory persistence.
         """
         from .models import AgentStatus
 
@@ -307,7 +302,16 @@ class BaseAgent(ABC):
             await self.ws.publish_agent_status(
                 workspace_id, self.agent_type, AgentStatus.RUNNING
             )
-            reply_text = await self._call_llm(message, workspace_id=workspace_id)
+            reply_parts: list[str] = []
+            async for evt in self._run_pipeline_stream(
+                workspace_id=workspace_id,
+                user_message=message,
+                system_prompt=self.chat_prompt,
+                mode="conversation",
+            ):
+                if evt.type == "content_delta":
+                    reply_parts.append(evt.payload.get("delta", ""))
+            reply_text = "".join(reply_parts)
             reply_msg = self._make_message(workspace_id, reply_text)
             await self.session.append(workspace_id, self.agent_type, reply_msg)
             yield reply_msg
@@ -329,8 +333,8 @@ class BaseAgent(ABC):
     ) -> AsyncIterator[str]:
         """Stream chat response token-by-token as content deltas.
 
-        Default implementation uses ``chat_prompt`` (if set) as system prompt
-        override for conversational style. Subclasses can override.
+        Uses the unified middleware pipeline with ``chat_prompt`` (if set)
+        as the system prompt override for conversational style.
         """
         from .models import AgentStatus
 
@@ -342,13 +346,16 @@ class BaseAgent(ABC):
                 workspace_id, self.agent_type, AgentStatus.RUNNING
             )
             full_reply = ""
-            async for delta in self._call_llm_stream(
-                message,
+            async for evt in self._run_pipeline_stream(
                 workspace_id=workspace_id,
-                system_prompt_override=self.chat_prompt,
+                user_message=message,
+                system_prompt=self.chat_prompt,
+                mode="conversation",
             ):
-                full_reply += delta
-                yield delta
+                if evt.type == "content_delta":
+                    delta = evt.payload.get("delta", "")
+                    full_reply += delta
+                    yield delta
 
             reply_msg = self._make_message(workspace_id, full_reply)
             await self.session.append(workspace_id, self.agent_type, reply_msg)
@@ -399,523 +406,6 @@ class BaseAgent(ABC):
             timestamp=datetime.now(timezone.utc),
         )
 
-    async def _call_llm(
-        self,
-        user_message: str,
-        *,
-        workspace_id: str,
-        extra_messages: list[dict[str, str]] | None = None,
-        enrich_context: bool = True,
-        repo_context: dict[str, Any] | None = None,
-        model: str | None = None,
-    ) -> str:
-        enriched_system = self._effective_system_prompt()
-
-        if enrich_context:
-            enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message, repo_context=repo_context
-            )
-
-        history = await self.session.get_history(workspace_id, self.agent_type)
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": enriched_system}
-        ]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        if extra_messages:
-            messages.extend(extra_messages)
-        messages.append({"role": "user", "content": user_message})
-
-        task = self._get_current_task()
-        llm_kw: dict[str, Any] = {"workspace_id": workspace_id}
-        if task:
-            if getattr(task, "agent_type", None):
-                llm_kw["agent_type"] = task.agent_type
-            if getattr(task, "capability", None):
-                llm_kw["capability"] = task.capability
-        result = await self.llm.chat(messages, model=model, **llm_kw)
-        reply = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-        try:
-            await self.memory.add_memory(
-                f"User asked: {user_message}\nAgent replied: {reply[:500]}",
-                workspace_id=workspace_id,
-                agent_type=_enum_val(self.agent_type),
-            )
-        except Exception:
-            logger.debug("Failed to persist memory after _call_llm", exc_info=True)
-
-        return reply
-
-    async def _call_llm_stream(
-        self,
-        user_message: str,
-        *,
-        workspace_id: str,
-        extra_messages: list[dict[str, str]] | None = None,
-        enrich_context: bool = True,
-        system_prompt_override: str | None = None,
-        repo_context: dict[str, Any] | None = None,
-        model: str | None = None,
-    ) -> AsyncIterator[str]:
-        """Stream LLM response token-by-token. Yields content deltas."""
-        enriched_system = system_prompt_override or self.system_prompt
-        if enrich_context and not system_prompt_override:
-            enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message, repo_context=repo_context
-            )
-
-        history = await self.session.get_history(workspace_id, self.agent_type)
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": enriched_system}
-        ]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        if extra_messages:
-            messages.extend(extra_messages)
-        messages.append({"role": "user", "content": user_message})
-
-        full_reply = ""
-        async for chunk in self.llm.chat_stream(messages, model=model):
-            delta = (
-                chunk.get("choices", [{}])[0]
-                .get("delta", {})
-                .get("content", "")
-            )
-            if delta:
-                full_reply += delta
-                yield delta
-
-        try:
-            await self.memory.add_memory(
-                f"User asked: {user_message}\nAgent replied: {full_reply[:500]}",
-                workspace_id=workspace_id,
-                agent_type=_enum_val(self.agent_type),
-            )
-        except Exception:
-            logger.debug("Failed to persist memory after _call_llm_stream", exc_info=True)
-
-    async def _get_tool_schemas(self) -> list[dict[str, Any]] | None:
-        """Return tool schemas from all providers, filtered by task-level enabled_tools."""
-        if not self.tool_manager.has_tools:
-            return None
-        schemas = await self.tool_manager.get_schemas()
-        task = self._get_current_task()
-        enabled = getattr(task, "enabled_tools", None) if task else None
-        if enabled:
-            allowed = set(enabled)
-            schemas = [s for s in schemas if s.get("function", {}).get("name") in allowed]
-        return schemas or None
-
-    async def _process_tool_calls(
-        self,
-        tool_calls: list[dict[str, Any]],
-        workspace_id: str,
-        messages: list[dict[str, Any]],
-    ) -> None:
-        """Execute tool calls and append results to the message list."""
-        for tc in tool_calls:
-            fn = tc.get("function", {})
-            tool_name = fn.get("name", "")
-            raw_args = fn.get("arguments", "{}")
-            tc_id = tc.get("id", "")
-
-            if isinstance(raw_args, str):
-                try:
-                    parsed_args = json.loads(raw_args) if raw_args else {}
-                except json.JSONDecodeError:
-                    parsed_args = {}
-            else:
-                parsed_args = raw_args
-
-            parsed_args["_workspace_id"] = workspace_id
-            if self._current_task_context:
-                parsed_args.setdefault("_context", self._current_task_context)
-
-            logger.info(
-                "Tool call [%s] %s(%s)",
-                _enum_val(self.agent_type), tool_name, list(parsed_args.keys()),
-            )
-
-            try:
-                await self.ws.publish_log(
-                    workspace_id, _enum_val(self.agent_type),
-                    f"Calling tool: {tool_name}",
-                    level="info",
-                )
-            except Exception:
-                logger.debug("Failed to publish tool log for %s", tool_name, exc_info=True)
-
-            tool_result = await self.tool_manager.execute(tool_name, parsed_args)
-            self._tool_results.append({
-                "tool": tool_name,
-                "ok": tool_result.ok,
-                "result": tool_result.output[:500],
-            })
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc_id,
-                "content": tool_result.output,
-            })
-
-    async def _persist_memory(self, user_message: str, reply: str, workspace_id: str) -> None:
-        try:
-            await self.memory.add_memory(
-                f"User asked: {user_message}\nAgent replied: {reply[:500]}",
-                workspace_id=workspace_id,
-                agent_type=_enum_val(self.agent_type),
-            )
-        except Exception:
-            logger.debug("Failed to persist memory", exc_info=True)
-
-    async def _build_tool_loop_messages(
-        self,
-        user_message: str,
-        *,
-        workspace_id: str,
-        extra_messages: list[dict[str, Any]] | None = None,
-        enrich_context: bool = True,
-        repo_context: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Build the initial message list for a tool loop."""
-        enriched_system = self._effective_system_prompt()
-        if enrich_context:
-            enriched_system = await self._build_enriched_prompt(
-                workspace_id, user_message, repo_context=repo_context
-            )
-        history = await self.session.get_history(workspace_id, self.agent_type)
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": enriched_system}
-        ]
-        for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
-        if extra_messages:
-            messages.extend(extra_messages)
-        messages.append({"role": "user", "content": user_message})
-        return messages
-
-    async def _call_llm_with_tools(
-        self,
-        user_message: str,
-        *,
-        workspace_id: str,
-        extra_messages: list[dict[str, Any]] | None = None,
-        enrich_context: bool = True,
-        max_iterations: int = 5,
-        repo_context: dict[str, Any] | None = None,
-        model: str | None = None,
-    ) -> str:
-        """Call LLM with tool-use loop: if the model returns tool_calls, execute
-        them and feed results back until a final text response is produced.
-
-        Falls back to ``_call_llm`` behavior when no tools are registered.
-        """
-        await self._ensure_workspace_tools(workspace_id)
-        tool_schemas = await self._get_tool_schemas()
-        if not tool_schemas:
-            self._tool_results = []
-            return await self._call_llm(
-                user_message,
-                workspace_id=workspace_id,
-                extra_messages=extra_messages,
-                enrich_context=enrich_context,
-                repo_context=repo_context,
-                model=model,
-            )
-
-        self._tool_results = []
-        messages = await self._build_tool_loop_messages(
-            user_message,
-            workspace_id=workspace_id,
-            extra_messages=extra_messages,
-            enrich_context=enrich_context,
-            repo_context=repo_context,
-        )
-
-        task = self._get_current_task()
-        llm_kw: dict[str, Any] = {}
-        if task:
-            if getattr(task, "agent_type", None):
-                llm_kw["agent_type"] = task.agent_type
-            if getattr(task, "capability", None):
-                llm_kw["capability"] = task.capability
-        llm_kw["workspace_id"] = workspace_id
-
-        for _iteration in range(max_iterations):
-            result = await self.llm.chat(messages, tools=tool_schemas, model=model, **llm_kw)
-            choice = result.get("choices", [{}])[0]
-            msg = choice.get("message", {})
-            tool_calls = msg.get("tool_calls")
-
-            if not tool_calls:
-                reply = msg.get("content", "")
-                await self._persist_memory(user_message, reply, workspace_id)
-                return reply
-
-            messages.append(msg)
-            await self._process_tool_calls(tool_calls, workspace_id, messages)
-            _merge_discovered_schemas(tool_calls, messages, tool_schemas)
-
-        for msg in reversed(messages):
-            if isinstance(msg, dict) and msg.get("role") in ("assistant", "system"):
-                content = msg.get("content") or ""
-                if content:
-                    return content
-        return ""
-
-    async def _call_llm_with_tools_stream(
-        self,
-        user_message: str,
-        *,
-        workspace_id: str,
-        extra_messages: list[dict[str, Any]] | None = None,
-        enrich_context: bool = True,
-        max_iterations: int = 5,
-        repo_context: dict[str, Any] | None = None,
-        model: str | None = None,
-    ) -> AsyncIterator[str]:
-        """Like ``_call_llm_with_tools`` but yields content deltas for the final
-        text response. Tool-call iterations use streaming to detect tool_calls vs
-        text, but only yield deltas on the final (text) iteration.
-        Falls back to ``_call_llm_stream`` when no tools are registered.
-        """
-        await self._ensure_workspace_tools(workspace_id)
-        tool_schemas = await self._get_tool_schemas()
-        if not tool_schemas:
-            self._tool_results = []
-            async for delta in self._call_llm_stream(
-                user_message,
-                workspace_id=workspace_id,
-                extra_messages=extra_messages,
-                enrich_context=enrich_context,
-                repo_context=repo_context,
-                model=model,
-            ):
-                yield delta
-            return
-
-        self._tool_results = []
-        messages = await self._build_tool_loop_messages(
-            user_message,
-            workspace_id=workspace_id,
-            extra_messages=extra_messages,
-            enrich_context=enrich_context,
-            repo_context=repo_context,
-        )
-
-        full_reply = ""
-
-        for _iteration in range(max_iterations):
-            content_parts: list[str] = []
-            tool_calls_acc: list[dict[str, Any]] = []
-
-            async for chunk in self.llm.chat_stream(messages, tools=tool_schemas, model=model):
-                choice = chunk.get("choices", [{}])[0]
-                delta = choice.get("delta", {})
-
-                if delta.get("tool_calls"):
-                    for tc in delta["tool_calls"]:
-                        idx = tc.get("index", 0)
-                        while len(tool_calls_acc) <= idx:
-                            tool_calls_acc.append({
-                                "id": "", "type": "function",
-                                "function": {"name": "", "arguments": ""},
-                            })
-                        if tc.get("id"):
-                            tool_calls_acc[idx]["id"] = tc["id"]
-                        fn = tc.get("function", {})
-                        if fn.get("name"):
-                            tool_calls_acc[idx]["function"]["name"] = fn["name"]
-                        if fn.get("arguments"):
-                            tool_calls_acc[idx]["function"]["arguments"] += fn["arguments"]
-
-                content = delta.get("content", "") or ""
-                if content:
-                    content_parts.append(content)
-                    if not tool_calls_acc:
-                        full_reply += content
-                        yield content
-
-            if tool_calls_acc:
-                buffered_content = "".join(content_parts) if content_parts else None
-                assistant_msg: dict[str, Any] = {
-                    "role": "assistant",
-                    "content": buffered_content,
-                    "tool_calls": tool_calls_acc,
-                }
-                messages.append(assistant_msg)
-                await self._process_tool_calls(tool_calls_acc, workspace_id, messages)
-                _merge_discovered_schemas(tool_calls_acc, messages, tool_schemas)
-                continue
-
-            joined = "".join(content_parts)
-            remaining = joined[len(full_reply):]
-            if remaining:
-                full_reply += remaining
-                yield remaining
-            break
-
-        await self._persist_memory(user_message, full_reply, workspace_id)
-
-    async def _build_enriched_prompt(
-        self,
-        workspace_id: str,
-        user_message: str,
-        *,
-        repo_context: dict[str, Any] | None = None,
-    ) -> str:
-        """Compose a context-aware system prompt from Memory + RAG + Knowledge + Upstream Artifacts."""
-        sections = [self._effective_system_prompt()]
-
-        if repo_context and repo_context.get("gitlab_primary_project"):
-            primary_project = repo_context["gitlab_primary_project"]
-            gitlab_url = repo_context.get("gitlab_primary_url", "")
-            branch_strategy = repo_context.get("gitlab_branch_strategy", "feature")
-            branch_default = repo_context.get("gitlab_branch_default", "main")
-            computed_branch = repo_context.get("gitlab_branch", branch_default)
-
-            strategy_desc = {
-                "feature": "create a feature branch per task (feat/<slug>) and open a Merge Request to main",
-                "direct": f"commit directly to the default branch ({branch_default})",
-                "gitflow": "use feature/<slug> branch, merge via MR to develop",
-            }.get(branch_strategy, branch_strategy)
-
-            all_repos = repo_context.get("gitlab_repos", [])
-            extra_repos = [r for r in all_repos if r.get("projectId") != primary_project]
-
-            repo_section = f"""## Project Repository
-
-Primary: {primary_project}  ({gitlab_url})
-Branch strategy: {strategy_desc}
-Current branch: {computed_branch}
-Default branch: {branch_default}
-
-All source code changes MUST be committed to this repository using the `gitlab_push_file` tool.
-Use `project_id = "{primary_project}"` and `branch = "{computed_branch}"` for every file commit.
-After committing all files, call `gitlab_create_mr` to open a Merge Request to `{branch_default}`.
-"""
-            if extra_repos:
-                repo_lines = "\n".join(
-                    f"- {r.get('projectName', r.get('projectId'))} ({r.get('role', 'secondary')}): {r.get('projectId')}"
-                    for r in extra_repos
-                )
-                repo_section += f"\nAdditional repos (secondary):\n{repo_lines}\n"
-
-            sections.append(repo_section)
-
-        try:
-            upstream = await self._fetch_upstream_artifacts(workspace_id)
-            if upstream:
-                sections.append(upstream)
-        except Exception:
-            logger.warning("Failed to fetch upstream artifacts for ws=%s", workspace_id, exc_info=True)
-
-        try:
-            memory_ctx = await self.memory.assemble_context(
-                workspace_id, _enum_val(self.agent_type), user_message
-            )
-            if memory_ctx:
-                sections.append(
-                    f"## Context from past interactions and preferences\n{memory_ctx}"
-                )
-        except Exception:
-            logger.warning("Failed to assemble memory context for ws=%s", workspace_id, exc_info=True)
-
-        await self._inject_extensibility_context(workspace_id, sections)
-
-        try:
-            rag_results = await self.rag.search(
-                user_message, workspace_id=workspace_id, top_k=3
-            )
-            if rag_results:
-                chunks = "\n---\n".join(
-                    r.get("text", r.get("content", "")) for r in rag_results
-                )
-                sections.append(f"## Relevant project documents\n{chunks}")
-        except Exception:
-            logger.warning("RAG search failed for ws=%s", workspace_id, exc_info=True)
-
-        try:
-            patterns = await self.knowledge.search(
-                user_message, access_level="enterprise", limit=3
-            )
-            if patterns:
-                pattern_text = "\n".join(
-                    f"- {p.get('name', '')}: {p.get('description', '')}"
-                    for p in patterns
-                )
-                sections.append(f"## Organization best practices\n{pattern_text}")
-        except Exception:
-            logger.warning("Knowledge search failed for ws=%s", workspace_id, exc_info=True)
-
-        return "\n\n".join(sections)
-
-    async def _inject_extensibility_context(
-        self, workspace_id: str, sections: list[str]
-    ) -> None:
-        """Append MCP servers, skills, and user-context instructions to prompt sections."""
-        active_skills: list[str] = []
-
-        try:
-            user_ctx = await self.workspace_svc.get_user_context("system", workspace_id)
-            if isinstance(user_ctx, dict):
-                instructions = user_ctx.get("customInstructions", "")
-                if instructions:
-                    sections.append(f"## Custom instructions\n{instructions}")
-                active_skills = user_ctx.get("activeSkills", [])
-        except Exception:
-            logger.debug("Failed to load user context for ws=%s", workspace_id, exc_info=True)
-
-        try:
-            mcp_servers = await self.workspace_svc.list_mcp_servers(workspace_id)
-            if mcp_servers:
-                lines = [f"- {s.get('name', '?')}: {s.get('description', '')}" for s in mcp_servers[:10]]
-                sections.append("## Available MCP servers\n" + "\n".join(lines))
-
-                for provider in self.tool_manager._providers:
-                    try:
-                        resources = await provider.list_resources()
-                        if resources:
-                            res_lines = [
-                                f"- {r.get('name', '?')} ({r.get('uri', '')}): {r.get('description', '')}"
-                                for r in resources[:8]
-                            ]
-                            sections.append(
-                                f"## MCP Resources ({provider.provider_key})\n"
-                                + "\n".join(res_lines)
-                                + "\nUse read_mcp_resource tool to access content."
-                            )
-                    except Exception:
-                        pass
-        except Exception:
-            logger.debug("Failed to load MCP servers for ws=%s", workspace_id, exc_info=True)
-
-        try:
-            db_skills = await self.workspace_svc.list_skills(workspace_id)
-            if db_skills:
-                registry = SkillRegistry()
-                agent_key = _enum_val(self.agent_type)
-                for row in db_skills:
-                    sk = Skill.from_db_config(
-                        row.get("config", {}),
-                        id=row.get("id", ""),
-                        name=row.get("name", ""),
-                        description=row.get("description", ""),
-                        version=row.get("version", "1.0"),
-                        enabled=row.get("enabled", True),
-                    )
-                    if active_skills and sk.name not in active_skills:
-                        sk.enabled = False
-                    registry.register(sk)
-                combined = registry.get_combined_prompt(agent_key)
-                if combined:
-                    sections.append(f"## Active skills\n{combined}")
-                else:
-                    lines = [f"- {s.get('name', '?')}: {s.get('description', '')}" for s in db_skills[:10]]
-                    sections.append("## Available skills\n" + "\n".join(lines))
-        except Exception:
-            logger.debug("Failed to load skills for ws=%s", workspace_id, exc_info=True)
-
     def _make_event(
         self,
         event_type: str,
@@ -947,73 +437,6 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             timestamp=datetime.now(timezone.utc),
         )
 
-    async def _fetch_upstream_artifacts(self, workspace_id: str) -> str:
-        """Fetch artifacts from upstream phases for context enrichment."""
-        agent_key = _enum_val(self.agent_type)
-        phase_key = AGENT_PHASE_MAP.get(agent_key, agent_key)
-        upstream_phases = PHASE_CONTEXT.get(phase_key, [])
-        if not upstream_phases:
-            return ""
-
-        phase_to_agent = {v: k for k, v in AGENT_PHASE_MAP.items()}
-
-        sections: list[str] = []
-        for up_phase in upstream_phases:
-            upstream_agent = phase_to_agent.get(up_phase, up_phase)
-            try:
-                artifacts = await self.workspace_svc.list_artifacts(
-                    workspace_id, agent_type=upstream_agent
-                )
-                for art in artifacts[:5]:
-                    title = art.get("title", "untitled")
-                    content = art.get("content", "")[:2000]
-                    art_type = art.get("type", "unknown")
-                    sections.append(
-                        f"### [{up_phase}] {title} ({art_type})\n{content}"
-                    )
-            except Exception:
-                logger.warning(
-                    "Failed to fetch upstream artifacts for phase=%s agent=%s",
-                    up_phase, upstream_agent, exc_info=True,
-                )
-                continue
-
-        if not sections:
-            return ""
-        return "## Upstream Artifacts\n\n" + "\n\n---\n\n".join(sections)
-
-    async def _fetch_related_requirement_context(self, workspace_id: str, requirement_id: str) -> str:
-        """Load artifacts from related requirements based on relationship type."""
-        try:
-            related = await self.workspace_svc.get_related_artifacts(workspace_id, requirement_id)
-        except Exception:
-            logger.warning("Failed to fetch related requirement context: ws=%s req=%s", workspace_id, requirement_id, exc_info=True)
-            return ""
-
-        TRUNCATION = {
-            "depends_on": 3000, "parent_of": 2000, "related_to": 1500,
-            "evolves_from": 5000, "conflicts_with": 2000,
-        }
-        LABELS = {
-            "depends_on": "Dependency", "parent_of": "Parent Requirement",
-            "related_to": "Related Requirement", "evolves_from": "Previous Version",
-            "conflicts_with": "Conflicting Requirement",
-        }
-
-        sections: list[str] = []
-        for rel_type, artifacts in related.items():
-            limit = TRUNCATION.get(rel_type, 2000)
-            label = LABELS.get(rel_type, rel_type)
-            for art in artifacts[:5]:
-                content = art.get("content", "")[:limit]
-                title = art.get("title", "untitled")
-                art_type = art.get("type", "unknown")
-                sections.append(f"### [{label}] {title} ({art_type})\n{content}")
-
-        if not sections:
-            return ""
-        return "## Related Requirements Context\n\n" + "\n\n---\n\n".join(sections)
-
     async def _save_artifact(
         self,
         workspace_id: str,
@@ -1044,52 +467,6 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
         "development": "dev-agent",
         "testing": "test-agent",
     }
-
-    async def _ensure_workspace_tools(self, workspace_id: str) -> None:
-        """Lazy-load MCP + Skill providers for *workspace_id* (once per process)."""
-        if workspace_id in self._workspace_tools_loaded:
-            return
-        mcp_providers: list[MCPToolProvider] = []
-        try:
-            mcp_servers = await self.workspace_svc.list_mcp_servers(workspace_id)
-            for row in (mcp_servers or []):
-                if not row.get("enabled", True):
-                    continue
-                try:
-                    cfg = MCPServerConfig.from_db_row(row)
-                    provider = MCPToolProvider(cfg)
-                    provider.provider_key = f"mcp:{cfg.name}:{workspace_id}"
-                    self.tool_manager.register_provider(provider)
-                    mcp_providers.append(provider)
-                except Exception:
-                    logger.debug("Skip MCP server %s", row.get("name", "?"), exc_info=True)
-        except Exception:
-            logger.debug("Failed to load MCP servers for ws=%s", workspace_id, exc_info=True)
-
-        if mcp_providers:
-            from .tools.mcp_provider import ReadMCPResourceTool
-            self.tool_manager.register(ReadMCPResourceTool(mcp_providers))
-
-        try:
-            db_skills = await self.workspace_svc.list_skills(workspace_id)
-            if db_skills:
-                registry = SkillRegistry()
-                for s in db_skills:
-                    registry.register(Skill.from_db_config(
-                        s.get("config", {}),
-                        id=s.get("id", ""),
-                        name=s.get("name", ""),
-                        description=s.get("description", ""),
-                        version=s.get("version", "1.0"),
-                        enabled=s.get("enabled", True),
-                    ))
-                skill_provider = SkillToolProvider(registry)
-                skill_provider.provider_key = f"skill:{workspace_id}"
-                self.tool_manager.register_provider(skill_provider)
-        except Exception:
-            logger.debug("Failed to load skills for ws=%s", workspace_id, exc_info=True)
-
-        self._workspace_tools_loaded.add(workspace_id)
 
     def _build_capability_defs(self) -> list[CapabilityDef]:
         """Derive capability definitions from class-level capabilities + static tools."""
@@ -1159,7 +536,6 @@ After committing all files, call `gitlab_create_mr` to open a Merge Request to `
             merged_caps = list(self.manifest.capabilities)
             for ac in auto_caps:
                 if ac.name in yaml_cap_names:
-                    # Replace YAML entry with auto-built one (has correct endpoint)
                     merged_caps = [c if c.name != ac.name else ac for c in merged_caps]
                 else:
                     merged_caps.append(ac)

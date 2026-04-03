@@ -843,14 +843,17 @@ export interface WorkspaceGraph {
   graphDef: Record<string, unknown>
   stateSchema: Record<string, unknown>
   config: Record<string, unknown>
+  scope: 'phase' | 'project'
   isActive: boolean
   createdAt: string
   updatedAt: string
 }
 
 export const workspaceGraphApi = {
-  list: (workspaceId: string) =>
-    request<{ data: WorkspaceGraph[] }>(`/api/workspaces/${workspaceId}/graphs`).then(unwrap),
+  list: (workspaceId: string, scope?: 'phase' | 'project') => {
+    const qs = scope ? `?scope=${scope}` : ''
+    return request<{ data: WorkspaceGraph[] }>(`/api/workspaces/${workspaceId}/graphs${qs}`).then(unwrap)
+  },
 
   get: (workspaceId: string, graphId: string) =>
     request<{ data: WorkspaceGraph }>(`/api/workspaces/${workspaceId}/graphs/${graphId}`).then(unwrap),
@@ -865,6 +868,7 @@ export const workspaceGraphApi = {
     graphDef?: Record<string, unknown>
     stateSchema?: Record<string, unknown>
     config?: Record<string, unknown>
+    scope?: 'phase' | 'project'
     isActive?: boolean
   }) =>
     request<{ data: WorkspaceGraph }>(`/api/workspaces/${workspaceId}/graphs`, {

@@ -1,7 +1,8 @@
 """Backward-compatible re-export shim for vibeos_agent.protocol.
 
 The implementation has been split into focused modules:
-  - vibeos_agent.base_agent    → BaseAgent, PHASE_CONTEXT, AGENT_PHASE_MAP
+  - vibeos_agent.base_agent    → BaseAgent
+  - vibeos_agent.phases        → PHASE_CONTEXT, AGENT_PHASE_MAP, PHASE_CONTRACTS, PHASE_TOOL_HINTS
   - vibeos_agent.clients       → WorkspaceClient, LLMGatewayClient, WSGatewayClient,
                                   MemoryClient, RAGClient, KnowledgeClient
 
@@ -23,6 +24,7 @@ __all__ = [
     "AGENT_PHASE_MAP",
     "PHASE_CONTEXT",
     "PHASE_CONTRACTS",
+    "PHASE_TOOL_HINTS",
     "BaseAgent",
     "KnowledgeClient",
     "LLMGatewayClient",

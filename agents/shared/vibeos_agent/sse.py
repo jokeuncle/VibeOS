@@ -6,7 +6,7 @@ All SSE events follow the format:
     data: {"sid": "...", ...payload}
 
 Domain agents use these helpers to emit standardized SSE frames
-from ``/api/execute/stream`` and ``/api/chat/stream``.
+from ``/api/conversation/stream``.
 """
 
 from __future__ import annotations

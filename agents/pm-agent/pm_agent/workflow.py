@@ -23,7 +23,6 @@ import httpx
 from vibeos_agent import (
     AGENT_PHASE_MAP,
     DEFAULT_PHASE_ORDER,
-    DEFAULT_PROJECT_GRAPH,
     PHASE_CONTRACTS,
     AgentStatus,
     AgentTask,
@@ -31,6 +30,7 @@ from vibeos_agent import (
     GraphExecutor,
     HAS_LANGGRAPH,
     LLMGatewayClient,
+    PHASE_CONTEXT,
     PhaseContract,
     PhaseStatus,
     RegistryClient,
@@ -39,9 +39,6 @@ from vibeos_agent import (
     agent_for_phase,
     config,
 )
-from vibeos_agent.mcp_discovery import discover_and_register_mcp_tools
-from vibeos_agent.phases import AGENT_PHASE_MAP as PIPELINE_KEY_TO_PHASE
-from vibeos_agent.tools.mcp_provider import MCPServerConfig, MCPToolProvider
 from vibeos_agent.tools.provider import ToolManager
 
 from .dispatch import Dispatcher
@@ -134,7 +131,6 @@ class WorkflowEngine:
         self._active_runs: dict[str, str] = {}
         self._pending_approvals: dict[str, asyncio.Event] = {}
         self._approval_results: dict[str, bool] = {}
-        self._mcp_loaded_workspaces: set[str] = set()
         self._trace_by_sid: dict[str, list[dict[str, Any]]] = {}
 
     def _trace_ev(
@@ -178,33 +174,6 @@ class WorkflowEngine:
         if not steps:
             return None
         return json.dumps(steps, ensure_ascii=False)
-
-    async def _ensure_mcp_providers(self, workspace_id: str) -> None:
-        """Lazily load MCP tool providers for a workspace into the ToolManager."""
-        if not self.tool_manager or workspace_id in self._mcp_loaded_workspaces:
-            return
-        self._mcp_loaded_workspaces.add(workspace_id)
-        try:
-            servers = await self.ws_client.list_mcp_servers(workspace_id)
-            for srv in servers:
-                try:
-                    cfg = MCPServerConfig.from_db_row(srv)
-                except Exception:
-                    _logger.warning("Invalid MCP config: %s", srv.get("name", "?"), exc_info=True)
-                    continue
-                if cfg.enabled:
-                    provider = MCPToolProvider(cfg)
-                    self.tool_manager.register_provider(provider)
-            await self.tool_manager.refresh_index()
-        except Exception:
-            self._mcp_loaded_workspaces.discard(workspace_id)
-            _logger.warning("Failed to load MCP providers for ws=%s", workspace_id, exc_info=True)
-
-        if self.registry:
-            try:
-                await discover_and_register_mcp_tools(self.ws_client, self.registry, workspace_id)
-            except Exception:
-                _logger.debug("MCP discovery failed for ws=%s", workspace_id, exc_info=True)
 
     async def _resolve_agent_config(
         self, workspace_id: str, agent_type: str,
@@ -411,13 +380,7 @@ class WorkflowEngine:
         self, workspace_id: str, phase_type: str,
     ) -> list[dict[str, Any]]:
         """Fetch actual artifact dicts from upstream phases for graph state injection."""
-        upstream_phases = {
-            "requirement": [],
-            "architecture": ["requirement"],
-            "design": ["requirement", "architecture"],
-            "development": ["requirement", "architecture", "design"],
-            "testing": ["development", "design"],
-        }.get(phase_type, [])
+        upstream_phases = PHASE_CONTEXT.get(phase_type, [])
 
         phase_to_agent = {v: k for k, v in AGENT_PHASE_MAP.items()}
         results: list[dict[str, Any]] = []
@@ -445,7 +408,8 @@ class WorkflowEngine:
         if not self.graph_executor:
             yield self._trace_ev(sid, "phase", "skip", {"phase": phase_type, "reason": "GraphExecutor not available"})
             return
-        await self._ensure_mcp_providers(workspace_id)
+        if self.tool_manager:
+            await self.tool_manager.ensure_workspace_providers(self.ws_client, workspace_id)
 
         gitlab_ctx: dict[str, Any] = {}
         try:
@@ -971,7 +935,7 @@ class WorkflowEngine:
                 key = _phase_key_from_cfg(cfg)
                 if not key:
                     continue
-                enabled.add(PIPELINE_KEY_TO_PHASE.get(key, key))
+                enabled.add(AGENT_PHASE_MAP.get(key, key))
             if enabled:
                 return [p for p in DEFAULT_PHASE_ORDER if p in enabled]
         return list(DEFAULT_PHASE_ORDER)
@@ -988,7 +952,7 @@ class WorkflowEngine:
                 configs = await self._resolve_pipeline_configs(workspace_id)
             for cfg in configs:
                 key = _phase_key_from_cfg(cfg)
-                resolved = PIPELINE_KEY_TO_PHASE.get(key, key)
+                resolved = AGENT_PHASE_MAP.get(key, key)
                 if resolved == phase_type:
                     gate_expr = cfg.get("qualityGate")
                     break
@@ -1216,11 +1180,10 @@ class WorkflowEngine:
                 if "task:complete" in event_str:
                     phase_tasks += 1
                 if "task:error" in event_str:
-                    import json as _json
                     try:
                         for line in event_str.split("\n"):
                             if line.startswith("data: "):
-                                data = _json.loads(line[6:])
+                                data = json.loads(line[6:])
                                 failed_task_id = data.get("task_id")
                     except Exception:
                         pass

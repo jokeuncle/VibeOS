@@ -1,7 +1,6 @@
 """PM Agent -- unified conversation gateway.
 
 Single entry point for all AI interactions via ConversationEngine.
-Replaces the previous NLP/chat/workflow/home split.
 """
 
 from __future__ import annotations
@@ -9,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging as _logging
-import time as _time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator
@@ -26,25 +24,16 @@ from vibeos_agent import (
     ConversationRequest,
     GraphExecutor,
     HAS_LANGGRAPH,
-    LLMGatewayClient,
-    MemoryClient,
     RegistryClient,
-    WSGatewayClient,
     WorkspaceClient,
-    create_pm_tools,
     load_manifest_from_yaml,
 )
 from vibeos_agent.mcp_discovery import check_mcp_health, discover_and_register_mcp_tools
-from vibeos_agent.session import SessionManager as AgentSessionManager
-from vibeos_agent.tools.delegation_tools import create_delegation_tools
-from vibeos_agent.tools.dev_tools import create_dev_tools
-from vibeos_agent.tools.feishu_tools import create_feishu_tools
-from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
+from vibeos_agent.skills import Skill, SkillRegistry, SkillToolProvider
 from vibeos_agent.tools.mcp_provider import MCPToolProvider
-from vibeos_agent.tools.pipeline_tools import create_pipeline_tools
 from vibeos_agent.tools.provider import ToolManager
-from vibeos_agent.tools.workspace_tools import create_workspace_tools
 
+from .agent import PMAgent
 from .workflow import WorkflowEngine
 
 
@@ -54,79 +43,54 @@ from .workflow import WorkflowEngine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.llm = LLMGatewayClient()
-    app.state.ws = WSGatewayClient()
-    app.state.ws_client = WorkspaceClient()
-    app.state.memory = MemoryClient()
-    app.state.registry = RegistryClient()
-    app.state.session = AgentSessionManager()
-
-    tool_manager = ToolManager()
-    app.state.tool_manager = tool_manager
+    agent = PMAgent()
+    app.state.agent = agent
 
     if HAS_LANGGRAPH:
         from .dispatch import AGENT_ENDPOINTS
         app.state.graph_executor = GraphExecutor(
-            app.state.registry, llm=app.state.llm, tool_manager=tool_manager,
+            agent.clients.registry, llm=agent.llm, tool_manager=agent.tool_manager,
             endpoint_overrides=AGENT_ENDPOINTS,
         )
     else:
         app.state.graph_executor = None
 
     from .dispatch import Dispatcher
-    dispatcher = Dispatcher()
-    app.state.dispatcher = dispatcher
+    app.state.dispatcher = Dispatcher()
 
     from .session import SessionManager as PMSessionManager
-    app.state.sm = PMSessionManager(app.state.ws_client, app.state.ws)
+    app.state.sm = PMSessionManager(agent.workspace_svc, agent.ws)
 
     app.state.workflow = WorkflowEngine(
-        dispatcher, app.state.ws_client, app.state.ws, app.state.sm,
+        app.state.dispatcher, agent.workspace_svc, agent.ws, app.state.sm,
         graph_executor=app.state.graph_executor,
-        llm=app.state.llm,
-        tool_manager=tool_manager,
-        registry=app.state.registry,
+        llm=agent.llm,
+        tool_manager=agent.tool_manager,
+        registry=agent.clients.registry,
     )
 
-    tool_manager.register_many(create_pm_tools(
-        app.state.ws_client,
-        workflow_engine=app.state.workflow,
-        graph_executor=app.state.graph_executor,
-    ))
-    tool_manager.register_many(create_workspace_tools(app.state.ws_client, "pm"))
-    tool_manager.register_many(create_delegation_tools("pm"))
-    tool_manager.register_many(create_dev_tools(app.state.llm))
-    tool_manager.register_many(create_gitlab_tools())
-    tool_manager.register_many(create_pipeline_tools())
-    tool_manager.register_many(create_feishu_tools())
+    agent.register_pm_tools(app.state.workflow, app.state.graph_executor)
 
-    app.state.conversation = ConversationEngine(
-        llm=app.state.llm,
-        tool_manager=tool_manager,
-        session=app.state.session,
-        workspace_client=app.state.ws_client,
-        ws_gateway=app.state.ws,
-        memory_client=app.state.memory,
-    )
+    app.state.conversation = ConversationEngine(agent)
 
     _manifest_path = Path(__file__).resolve().parent.parent / "agent-manifest.yaml"
     if _manifest_path.exists():
         try:
             manifest = load_manifest_from_yaml(_manifest_path)
-            await app.state.registry.register_manifest(manifest)
+            await agent.clients.registry.register_manifest(manifest)
         except Exception:
             pass
 
     async def _capability_sync_loop() -> None:
         while True:
             await asyncio.sleep(60)
-            for ws_id in set(app.state.tool_manager._ws_loaded.keys()):
+            for ws_id in set(agent.tool_manager._ws_loaded.keys()):
                 try:
                     await discover_and_register_mcp_tools(
-                        app.state.ws_client, app.state.registry, ws_id
+                        agent.workspace_svc, agent.clients.registry, ws_id,
                     )
                     await check_mcp_health(
-                        app.state.ws_client, app.state.registry, ws_id
+                        agent.workspace_svc, agent.clients.registry, ws_id,
                     )
                 except Exception:
                     _log.debug("Sync loop error ws=%s", ws_id, exc_info=True)
@@ -136,16 +100,11 @@ async def lifespan(app: FastAPI):
     yield
 
     health_task.cancel()
-    for prov in tool_manager._providers:
+    for prov in agent.tool_manager._providers:
         if isinstance(prov, MCPToolProvider):
             await prov.close()
-    await app.state.llm.close()
+    await agent.close()
     await app.state.dispatcher.close()
-    await app.state.ws.close()
-    await app.state.ws_client.close()
-    await app.state.memory.close()
-    await app.state.registry.close()
-    await app.state.session.close()
 
 
 app = FastAPI(title="PM Agent", version="2.0.0", lifespan=lifespan)
@@ -156,24 +115,13 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# MCP provider loading (reused by capabilities sync)
-# ---------------------------------------------------------------------------
-
-async def _ensure_workspace_tools(workspace_id: str) -> None:
-    """Ensure workspace-scoped MCP/skill providers are loaded."""
-    tool_manager: ToolManager = app.state.tool_manager
-    ws_client: WorkspaceClient = app.state.ws_client
-    await tool_manager.ensure_workspace_providers(ws_client, workspace_id)
-
-
-# ---------------------------------------------------------------------------
 # Unified conversation endpoint
 # ---------------------------------------------------------------------------
 
 @app.get("/api/conversation/tools")
 async def list_tools() -> dict[str, Any]:
     """Return all registered tool descriptors for frontend dynamic display."""
-    tm: ToolManager = app.state.tool_manager
+    tm: ToolManager = app.state.agent.tool_manager
     descriptors = await tm.list_all_descriptors()
     return {
         "data": [
@@ -192,11 +140,6 @@ async def list_tools() -> dict[str, Any]:
 async def handle_conversation(req: ConversationRequest) -> StreamingResponse:
     """Single streaming endpoint for all AI interactions."""
     engine: ConversationEngine = app.state.conversation
-    tool_manager: ToolManager = app.state.tool_manager
-    ws_client: WorkspaceClient = app.state.ws_client
-
-    if req.workspace_id and req.workspace_id != "__home__":
-        await _ensure_workspace_tools(req.workspace_id)
 
     async def event_gen() -> AsyncGenerator[str, None]:
         async for sse_frame in engine.run(req):
@@ -223,8 +166,7 @@ class GraphValidateRequest(BaseModel):
 @app.post("/api/graph/execute")
 async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
     executor: GraphExecutor | None = app.state.graph_executor
-    registry: RegistryClient = app.state.registry
-    ws_client: WorkspaceClient = app.state.ws_client
+    agent: PMAgent = app.state.agent
     from .session import SessionManager as PMSessionManager
     sm: PMSessionManager = app.state.sm
 
@@ -236,9 +178,6 @@ async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
         )
         yield sm.session_start(sid, "graph", req.workspace_id or "__graph__")
 
-        if req.workspace_id:
-            await _ensure_workspace_tools(req.workspace_id)
-
         if not executor:
             yield sm.session_error(sid, "LangGraph not available")
             yield sm.done()
@@ -247,7 +186,7 @@ async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
         graph_def = req.graph_def
         if not graph_def and req.workspace_id:
             try:
-                resp = await ws_client._http.get(
+                resp = await agent.workspace_svc._http.get(
                     f"/api/workspaces/{req.workspace_id}/graphs/active"
                 )
                 if resp.status_code == 200:
@@ -261,7 +200,7 @@ async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
                 pass
 
         if not graph_def and req.template_id:
-            templates = await registry.list_templates(enabled_only=False)
+            templates = await agent.clients.registry.list_templates(enabled_only=False)
             for t in templates:
                 if t.get("id") == req.template_id:
                     graph_def = t.get("graphDef", {})
@@ -288,7 +227,7 @@ async def handle_graph_execute(req: GraphExecuteRequest) -> StreamingResponse:
 
 @app.post("/api/graph/validate")
 async def handle_graph_validate(req: GraphValidateRequest) -> dict[str, Any]:
-    registry: RegistryClient = app.state.registry
+    agent: PMAgent = app.state.agent
     errors: list[str] = []
     nodes = req.graphDef.get("nodes", [])
     edges = req.graphDef.get("edges", [])
@@ -309,7 +248,7 @@ async def handle_graph_validate(req: GraphValidateRequest) -> dict[str, Any]:
     ]
     if cap_refs:
         try:
-            caps = await registry.list_capabilities()
+            caps = await agent.clients.registry.list_capabilities()
             known = {c.get("name", "") for c in caps}
             for ref in cap_refs:
                 if ref and ref not in known:
@@ -330,34 +269,31 @@ class CapSyncRequest(BaseModel):
 
 @app.post("/api/capabilities/sync")
 async def handle_cap_sync(req: CapSyncRequest) -> dict[str, Any]:
-    ws_client: WorkspaceClient = app.state.ws_client
-    registry: RegistryClient = app.state.registry
-    tool_manager: ToolManager = app.state.tool_manager
+    agent: PMAgent = app.state.agent
     results: dict[str, Any] = {}
 
     if "mcp" in req.source_types:
-        app.state.tool_manager._ws_loaded.pop(req.workspace_id, None)
-        defs = await discover_and_register_mcp_tools(ws_client, registry, req.workspace_id)
+        agent.tool_manager._ws_loaded.pop(req.workspace_id, None)
+        defs = await discover_and_register_mcp_tools(
+            agent.workspace_svc, agent.clients.registry, req.workspace_id,
+        )
         results["mcp"] = [{"name": d.name, "provider": d.provider} for d in defs]
 
     if "skill" in req.source_types:
-        results["skill"] = await _sync_skills(ws_client, registry, tool_manager, req.workspace_id)
+        results["skill"] = await _sync_skills(agent, req.workspace_id)
 
     return {"data": results}
 
 
-async def _sync_skills(
-    ws_client: WorkspaceClient, registry: RegistryClient,
-    tool_manager: ToolManager, workspace_id: str,
-) -> list[dict[str, str]]:
+async def _sync_skills(agent: PMAgent, workspace_id: str) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     try:
-        db_skills = await ws_client.list_skills(workspace_id)
+        db_skills = await agent.workspace_svc.list_skills(workspace_id)
     except Exception:
         return result
 
     from vibeos_agent.registry import CapabilityDef
-    tool_manager.remove_providers(f"skill:{workspace_id}")
+    agent.tool_manager.remove_providers(f"skill:{workspace_id}")
     skill_registry = SkillRegistry()
     for row in db_skills:
         sk = Skill.from_db_config(
@@ -371,14 +307,14 @@ async def _sync_skills(
             source="skill",
         )
         try:
-            await registry.upsert_capability(cap)
+            await agent.clients.registry.upsert_capability(cap)
             result.append({"name": cap.name, "provider": cap.provider})
         except Exception:
             pass
 
     skill_prov = SkillToolProvider(skill_registry)
     skill_prov.provider_key = f"skill:{workspace_id}"
-    tool_manager.register_provider(skill_prov)
+    agent.tool_manager.register_provider(skill_prov)
     return result
 
 
@@ -398,11 +334,9 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/api/feedback")
 async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
-    memory: MemoryClient = app.state.memory
-    ws_client: WorkspaceClient = app.state.ws_client
-    llm: LLMGatewayClient = app.state.llm
+    agent: PMAgent = app.state.agent
     try:
-        result = await memory.record_feedback(
+        result = await agent.memory.record_feedback(
             workspace_id=req.workspace_id, agent_type=req.agent_type,
             action_type=req.action_type, context=req.context or {},
             original_output=req.original_output,
@@ -413,7 +347,7 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
 
     if req.action_type in ("approve", "reject") and req.agent_type:
         try:
-            await llm.report_trust_outcome(
+            await agent.llm.report_trust_outcome(
                 "default", req.agent_type,
                 success=(req.action_type == "approve"),
             )
@@ -429,7 +363,7 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
         }
         if req.modified_output:
             body["modifiedOutput"] = req.modified_output[:1000]
-        await ws_client._http.post(
+        await agent.workspace_svc._http.post(
             f"/api/workspaces/{req.workspace_id}/feedback", json=body,
         )
     except Exception:
@@ -459,28 +393,19 @@ class ToolConfirmRequest(BaseModel):
 
 @app.post("/api/conversation/confirm", response_model=None)
 async def handle_tool_confirmation(req: ToolConfirmRequest) -> StreamingResponse | dict[str, Any]:
-    """Resolve a pending tool confirmation.
-
-    When approved, executes the tool then injects the result as a proper
-    tool-call continuation so the LLM naturally incorporates the outcome.
-    When rejected, returns immediately -- no LLM call needed.
-    """
+    """Resolve a pending tool confirmation."""
     if not req.approved:
         return {"status": "rejected"}
 
     engine: ConversationEngine = app.state.conversation
-    tool_manager: ToolManager = app.state.tool_manager
-    ws_client: WorkspaceClient = app.state.ws_client
+    agent: PMAgent = app.state.agent
     ws_id = req.workspace_id or "__home__"
-
-    if ws_id != "__home__":
-        await _ensure_workspace_tools(ws_id)
 
     async def event_gen() -> AsyncGenerator[str, None]:
         args = dict(req.arguments)
         args["_workspace_id"] = ws_id
-        result = await tool_manager.execute(req.tool_name, args)
-        display = await tool_manager.get_display_name(req.tool_name)
+        result = await agent.tool_manager.execute(req.tool_name, args)
+        display = await agent.tool_manager.get_display_name(req.tool_name)
         call_id = req.confirmation_key.rsplit(":", 1)[-1] if req.confirmation_key else req.tool_name
 
         async for frame in engine.run_tool_continuation(

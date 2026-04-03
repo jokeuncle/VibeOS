@@ -1,8 +1,8 @@
 """Unified tool-calling loop (ReAct pattern).
 
-Both ``BaseAgent._call_llm_with_tools`` and ``ConversationEngine._agentic_terminal``
-delegate tool execution to helpers in this module, eliminating the duplicated
-tool-call processing logic.
+``BaseAgent._make_tool_terminal`` and ``ConversationEngine._agentic_terminal``
+delegate tool execution to helpers in this module, providing a single
+unified tool-call processing implementation.
 
 The optional ``ws_notify`` callback pushes tool events through the WebSocket
 gateway for real-time observability in the frontend.

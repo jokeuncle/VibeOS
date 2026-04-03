@@ -183,6 +183,7 @@ type WorkspaceGraph struct {
 	GraphDef         json.RawMessage `json:"graphDef" db:"graph_def"`
 	StateSchema      json.RawMessage `json:"stateSchema" db:"state_schema"`
 	Config           json.RawMessage `json:"config" db:"config"`
+	Scope            string          `json:"scope" db:"scope"`
 	IsActive         bool            `json:"isActive" db:"is_active"`
 	CreatedAt        time.Time       `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time       `json:"updatedAt" db:"updated_at"`
@@ -195,6 +196,7 @@ type CreateWorkspaceGraphReq struct {
 	GraphDef         json.RawMessage `json:"graphDef,omitempty"`
 	StateSchema      json.RawMessage `json:"stateSchema,omitempty"`
 	Config           json.RawMessage `json:"config,omitempty"`
+	Scope            string          `json:"scope,omitempty"`
 	IsActive         *bool           `json:"isActive,omitempty"`
 }
 

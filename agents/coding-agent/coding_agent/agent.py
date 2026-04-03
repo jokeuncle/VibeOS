@@ -21,7 +21,6 @@ from vibeos_agent import (
     AgentType,
     BaseAgent,
     CapabilityContract,
-    Message,
 )
 
 from .workspace_manager import WorkspaceManager
@@ -450,34 +449,3 @@ class CodingAgent(BaseAgent):
             ],
         )
 
-    async def chat(
-        self,
-        message: str,
-        *,
-        workspace_id: str,
-        context: dict[str, Any] | None = None,
-    ) -> AsyncIterator[Message]:
-        reply = await self._call_llm(
-            message,
-            workspace_id=workspace_id,
-            enrich_context=False,
-        )
-        yield Message(
-            workspace_id=workspace_id,
-            agent_type=AgentType.CODING,
-            content=reply,
-        )
-
-    async def chat_stream(
-        self,
-        message: str,
-        *,
-        workspace_id: str,
-        context: dict[str, Any] | None = None,
-    ) -> AsyncIterator[str]:
-        async for delta in self._call_llm_stream(
-            message,
-            workspace_id=workspace_id,
-            enrich_context=False,
-        ):
-            yield delta

@@ -22,7 +22,8 @@ func NewWorkspaceGraphHandler(s store.Store, log *slog.Logger) *WorkspaceGraphHa
 
 func (h *WorkspaceGraphHandler) List(w http.ResponseWriter, r *http.Request) {
 	wsID := chi.URLParam(r, "wsId")
-	graphs, err := h.store.ListWorkspaceGraphs(r.Context(), wsID)
+	scope := r.URL.Query().Get("scope")
+	graphs, err := h.store.ListWorkspaceGraphsByScope(r.Context(), wsID, scope)
 	if err != nil {
 		h.log.Error("list workspace graphs", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

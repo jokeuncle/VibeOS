@@ -1,9 +1,8 @@
 """ContextEnricherMiddleware -- builds enriched system prompt from external sources.
 
 Centralises all prompt enrichment logic: upstream artifacts, memory, RAG,
-knowledge graph, *and* user extensibility context (custom instructions, MCP
-resource hints, active skills).  This replaces the former
-``BaseAgent._build_enriched_prompt`` + ``BaseAgent._inject_extensibility_context``.
+knowledge graph, and user extensibility context (custom instructions, MCP
+resource hints, active skills).
 """
 
 from __future__ import annotations

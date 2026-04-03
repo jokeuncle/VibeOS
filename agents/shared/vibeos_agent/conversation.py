@@ -15,17 +15,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .clients.llm import LLMGatewayClient
-from .middleware.base import InvocationContext, MiddlewarePipeline
-from .middleware.context_enricher import ContextEnricherMiddleware
-from .middleware.memory_writer import MemoryWriterMiddleware
-from .middleware.observability import ObservabilityMiddleware
-from .middleware.session_mw import SessionMiddleware, TokenBudget
-from .middleware.ws_status import WSStatusMiddleware
+from .middleware.base import InvocationContext
 from .models import AgentEvent, AgentType
-from .session import SessionManager
 from .tool_loop import run_tool_loop_stream
-from .tools.provider import ToolManager
 
 logger = logging.getLogger(__name__)
 
@@ -101,41 +93,28 @@ class ConversationRequest(BaseModel):
 
 
 class ConversationEngine:
-    """Single agentic loop that replaces NLP/chat/workflow/home paths."""
+    """Single agentic loop that replaces NLP/chat/workflow/home paths.
+
+    Accepts a :class:`BaseAgent` instance and reuses its middleware pipeline,
+    tool manager, LLM client, and session manager -- eliminating duplicate
+    client/tool setup.
+    """
 
     def __init__(
         self,
+        agent: Any,
         *,
-        llm: LLMGatewayClient,
-        tool_manager: ToolManager,
-        session: SessionManager,
-        workspace_client: Any,
-        ws_gateway: Any,
-        memory_client: Any,
-        rag_client: Any | None = None,
-        knowledge_client: Any | None = None,
-        system_prompt: str = _DEFAULT_SYSTEM_PROMPT,
         max_iterations: int = 15,
     ) -> None:
-        self._llm = llm
-        self._tool_manager = tool_manager
-        self._session = session
-        self._ws_client = workspace_client
-        self._ws_gw = ws_gateway
-        self._system_prompt = system_prompt
+        self._agent = agent
+        self._llm = agent.llm
+        self._tool_manager = agent.tool_manager
+        self._session = agent.session
+        self._ws_client = agent.workspace_svc
+        self._ws_gw = agent.ws
+        self._system_prompt = agent.system_prompt
         self._max_iterations = max_iterations
-
-        self._pipeline = MiddlewarePipeline()
-        self._pipeline.use(ObservabilityMiddleware())
-        self._pipeline.use(WSStatusMiddleware(ws_gateway))
-        self._pipeline.use(SessionMiddleware(session, budget=TokenBudget()))
-        if memory_client:
-            enricher = ContextEnricherMiddleware(
-                workspace_client, memory_client, rag_client, knowledge_client,
-                tool_manager=tool_manager,
-            )
-            self._pipeline.use(enricher)
-            self._pipeline.use(MemoryWriterMiddleware(memory_client))
+        self._pipeline = agent._build_pipeline()
 
     def _build_system_prompt(self, req: ConversationRequest) -> str:
         prompt = self._system_prompt
@@ -375,6 +354,9 @@ class ConversationEngine:
         self, ctx: InvocationContext
     ) -> AsyncIterator[AgentEvent]:
         """Terminal handler: delegates to the unified streaming tool loop."""
+        await self._tool_manager.ensure_workspace_providers(
+            self._ws_client, ctx.workspace_id,
+        )
         messages = self._build_messages(ctx)
         tool_schemas = await self._tool_manager.get_schemas()
         if not tool_schemas:
