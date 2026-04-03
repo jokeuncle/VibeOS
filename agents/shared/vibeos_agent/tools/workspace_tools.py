@@ -62,6 +62,42 @@ class WorkspaceCreateRequirement(BaseTool):
         })
 
 
+class WorkspaceDeleteRequirement(BaseTool):
+    name = "workspace_delete_requirement"
+    display_name = "删除需求"
+    requires_confirmation = True
+    description = (
+        "Delete an existing requirement from the workspace. "
+        "Use when the user asks to remove/delete a requirement (需求). "
+        "Requires the requirement_id."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "requirement_id": {
+                "type": "string",
+                "description": "The ID of the requirement to delete",
+            },
+        },
+        "required": ["requirement_id"],
+    }
+
+    def __init__(self, ws_client: Any) -> None:
+        self._ws = ws_client
+
+    async def execute(self, **kwargs: Any) -> str:
+        workspace_id = kwargs.pop("_workspace_id", "")
+        requirement_id = kwargs.get("requirement_id", "")
+        try:
+            await self._ws.delete_requirement(workspace_id, requirement_id)
+        except Exception as exc:
+            return self._json_result({"error": str(exc)})
+        return self._json_result({
+            "status": "deleted",
+            "requirement_id": requirement_id,
+        })
+
+
 class WorkspaceCreateTask(BaseTool):
     name = "workspace_create_task"
     display_name = "创建任务"
@@ -309,6 +345,7 @@ def create_workspace_tools(ws_client: Any, agent_type: str, rag_client: Any = No
     """Factory: create all workspace tools with shared client."""
     return [
         WorkspaceCreateRequirement(ws_client),
+        WorkspaceDeleteRequirement(ws_client),
         WorkspaceCreateTask(ws_client),
         WorkspaceUpdateTaskStatus(ws_client),
         WorkspaceCreateArtifact(ws_client, agent_type, rag_client=rag_client),

@@ -27,6 +27,24 @@ import { useUIStore } from '../../ui'
 type SetState = StoreApi<WorkspaceState>['setState']
 type GetState = StoreApi<WorkspaceState>['getState']
 
+const _RESOLVED_KEY = 'vibeos:tool_confirmations'
+
+function _loadResolved(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(_RESOLVED_KEY) || '{}')
+  } catch { return {} }
+}
+
+function markConfirmationResolved(key: string, status: 'confirmed' | 'rejected') {
+  const map = _loadResolved()
+  map[key] = status
+  try { localStorage.setItem(_RESOLVED_KEY, JSON.stringify(map)) } catch { /* quota */ }
+}
+
+export function getConfirmationResolution(key: string): 'confirmed' | 'rejected' | null {
+  return (_loadResolved()[key] as 'confirmed' | 'rejected') || null
+}
+
 function makeMsg(
   partial: Partial<Message> & { id: string; role: Message['role']; content: string; contextType: ConversationContext },
 ): Message {
@@ -327,8 +345,31 @@ export function buildChatSlice(set: SetState, get: GetState) {
     sendToolConfirmation: (confirmationKey: string, approved: boolean, toolName: string, args?: Record<string, unknown>) => {
       const wsId = get().activeWorkspaceId || '__home__'
       const isHome = wsId === '__home__'
-      const msgId = crypto.randomUUID()
 
+      markConfirmationResolved(confirmationKey, approved ? 'confirmed' : 'rejected')
+
+      const newStatus = approved ? 'confirmed' as const : 'rejected' as const
+      const patchSeg = (msgs: Message[]) =>
+        msgs.map((m) => {
+          if (!m.segments) return m
+          const updated = m.segments.map((seg) =>
+            seg.kind === 'tool_confirmation' && seg.invocation.confirmationKey === confirmationKey
+              ? { ...seg, invocation: { ...seg.invocation, status: newStatus } }
+              : seg,
+          )
+          const changed = updated.some((s, i) => s !== m.segments![i])
+          return changed ? { ...m, segments: updated } : m
+        })
+
+      if (isHome) {
+        set((s) => ({ homeMessages: patchSeg(s.homeMessages) }))
+      } else {
+        set((s) => ({ messages: patchSeg(s.messages) }))
+      }
+
+      if (!approved) return
+
+      const msgId = crypto.randomUUID()
       const agentMsg = makeMsg({
         id: msgId, role: 'agent', content: '', agentType: 'pm',
         contextType: isHome ? 'home' : 'workspace', workspaceId: wsId,
@@ -405,7 +446,7 @@ export function buildChatSlice(set: SetState, get: GetState) {
         try {
           await session.run('/api/conversation/confirm', {
             confirmation_key: confirmationKey,
-            approved,
+            approved: true,
             workspace_id: wsId,
             tool_name: toolName,
             arguments: args || {},

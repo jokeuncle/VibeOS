@@ -363,6 +363,10 @@ class WorkspaceClient:
         resp.raise_for_status()
         return resp.json().get("data", [])
 
+    async def delete_requirement(self, workspace_id: str, requirement_id: str) -> None:
+        resp = await self._http.delete(f"/api/workspaces/{workspace_id}/requirements/{requirement_id}")
+        resp.raise_for_status()
+
     async def update_requirement(self, workspace_id: str, requirement_id: str, **updates: Any) -> dict[str, Any]:
         resp = await self._http.patch(
             f"/api/workspaces/{workspace_id}/requirements/{requirement_id}", json=updates

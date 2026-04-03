@@ -1,16 +1,28 @@
-import { useState, useCallback } from 'react'
+import { useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { ShieldQuestion, Check, X } from 'lucide-react'
+import { ShieldQuestion, Check, X, CheckCircle2, XCircle } from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspace'
+import { getConfirmationResolution } from '../stores/workspace/slices/chatSlice'
 import { getToolDisplay } from '../lib/toolDisplayRegistry'
 import { ToolInputRenderer } from './ToolOutputRenderer'
 import type { ToolInvocation } from '../types'
 
-type ConfirmState = 'pending' | 'approved' | 'rejected'
+function resolveState(invocation: ToolInvocation): 'pending' | 'approved' | 'rejected' {
+  if (invocation.status === 'confirmed' || invocation.status === 'completed')
+    return 'approved'
+  if (invocation.status === 'rejected' || invocation.status === 'error')
+    return 'rejected'
+  if (invocation.confirmationKey) {
+    const stored = getConfirmationResolution(invocation.confirmationKey)
+    if (stored === 'confirmed') return 'approved'
+    if (stored === 'rejected') return 'rejected'
+  }
+  return 'pending'
+}
 
 export function ToolConfirmationCard({ invocation }: { invocation: ToolInvocation }) {
   const { toolName, displayName, input, confirmationKey } = invocation
-  const [state, setState] = useState<ConfirmState>('pending')
+  const state = resolveState(invocation)
   const sendConfirmation = useWorkspaceStore((s) => s.sendToolConfirmation)
 
   const display = getToolDisplay(toolName)
@@ -21,13 +33,34 @@ export function ToolConfirmationCard({ invocation }: { invocation: ToolInvocatio
   const handleResolve = useCallback(
     (approved: boolean) => {
       if (!confirmationKey) return
-      setState(approved ? 'approved' : 'rejected')
       sendConfirmation(confirmationKey, approved, toolName, input)
     },
     [confirmationKey, toolName, input, sendConfirmation],
   )
 
-  const resolved = state !== 'pending'
+  if (state === 'approved') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-2/20 px-3 py-1.5">
+        <div className="w-5 h-5 rounded-md bg-surface-2/40 flex items-center justify-center shrink-0">
+          <Icon className="w-3 h-3 text-text-tertiary" />
+        </div>
+        <span className="text-[11px] text-text-secondary truncate flex-1">{label}</span>
+        <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+      </div>
+    )
+  }
+
+  if (state === 'rejected') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-2/20 px-3 py-1.5">
+        <div className="w-5 h-5 rounded-md bg-surface-2/40 flex items-center justify-center shrink-0">
+          <Icon className="w-3 h-3 text-text-tertiary" />
+        </div>
+        <span className="text-[11px] text-text-tertiary truncate flex-1 line-through">{label}</span>
+        <XCircle className="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+      </div>
+    )
+  }
 
   return (
     <motion.div
@@ -44,13 +77,7 @@ export function ToolConfirmationCard({ invocation }: { invocation: ToolInvocatio
           <span className="text-[11px] font-medium text-text-primary truncate block">
             {label}
           </span>
-          <span className="text-[10px] text-text-tertiary">
-            {resolved
-              ? state === 'approved'
-                ? '已确认执行'
-                : '已取消'
-              : '需要确认后执行'}
-          </span>
+          <span className="text-[10px] text-text-tertiary">需要确认后执行</span>
         </div>
         <div className="w-5 h-5 rounded-md bg-surface-2/60 flex items-center justify-center shrink-0">
           <Icon className="w-3 h-3 text-text-secondary" />
@@ -64,35 +91,22 @@ export function ToolConfirmationCard({ invocation }: { invocation: ToolInvocatio
         </div>
       )}
 
-      {!resolved && (
-        <div className="flex gap-2 px-3 pb-2.5">
-          <button
-            onClick={() => handleResolve(true)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-accent text-white text-[11px] font-medium cursor-pointer hover:bg-accent-hover transition-colors"
-          >
-            <Check className="w-3 h-3" />
-            确认执行
-          </button>
-          <button
-            onClick={() => handleResolve(false)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-border-subtle bg-surface-2/40 text-[11px] font-medium text-text-secondary cursor-pointer hover:bg-surface-2/60 transition-colors"
-          >
-            <X className="w-3 h-3" />
-            取消
-          </button>
-        </div>
-      )}
-
-      {state === 'approved' && (
-        <div className="px-3 pb-2 text-[10px] text-success flex items-center gap-1">
-          <Check className="w-3 h-3" /> 已批准，正在执行...
-        </div>
-      )}
-      {state === 'rejected' && (
-        <div className="px-3 pb-2 text-[10px] text-text-tertiary flex items-center gap-1">
-          <X className="w-3 h-3" /> 操作已取消
-        </div>
-      )}
+      <div className="flex gap-2 px-3 pb-2.5">
+        <button
+          onClick={() => handleResolve(true)}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-accent text-white text-[11px] font-medium cursor-pointer hover:bg-accent-hover transition-colors"
+        >
+          <Check className="w-3 h-3" />
+          确认执行
+        </button>
+        <button
+          onClick={() => handleResolve(false)}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-border-subtle bg-surface-2/40 text-[11px] font-medium text-text-secondary cursor-pointer hover:bg-surface-2/60 transition-colors"
+        >
+          <X className="w-3 h-3" />
+          取消
+        </button>
+      </div>
     </motion.div>
   )
 }

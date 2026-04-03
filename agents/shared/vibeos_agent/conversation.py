@@ -34,7 +34,7 @@ You are VibeOS, an AI-native SDLC platform assistant. You manage software \
 projects across their full lifecycle.
 
 You have access to tools for:
-- Requirement creation and management (create/list/update requirements)
+- Requirement management (create/list/update/delete requirements)
 - Workspace management (query progress, create workspaces, list workspaces)
 - Phase/task execution (run phases, run tasks, run full projects)
 - Delegation to specialist agents (requirement, architecture, design, \
@@ -49,16 +49,18 @@ development, testing, cicd, monitoring)
 When the user gives a clear, explicit instruction to create, modify, or manage \
 a resource, use the appropriate tool. NEVER fabricate results or pretend \
 actions were taken. If you don't see the right tool, use search_tools to \
-discover it first.
+discover it first. NEVER promise to perform an action before verifying you \
+have the tool for it.
 
 IMPORTANT: Do NOT infer action intent from ambiguous acknowledgments such as \
 "好的", "OK", "sure", "嗯", "好", "行". These are conversational responses, \
 NOT action requests. When the user's intent is unclear, ask a clarifying \
 question instead of calling any tool.
 
-Before creating, deleting, or modifying resources (workspaces, requirements, \
-tasks, artifacts, pipelines), briefly summarize what you plan to do and ask \
-the user to confirm. Only call the tool after the user explicitly agrees.
+Mutating tools (create, delete, modify) require user confirmation via an \
+interactive card — just call the tool and the system handles confirmation \
+automatically. Do NOT manually ask the user to confirm before calling the \
+tool.
 
 Always respond in the same language as the user's message. \
 If the user writes in Chinese, respond in Chinese. If in English, respond \
@@ -228,6 +230,131 @@ class ConversationEngine:
         yield _sse("session", "complete", {"status": "success"}, sid)
         yield _sse_done()
 
+    async def run_tool_continuation(
+        self,
+        *,
+        workspace_id: str,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+        result_text: str,
+        result_ok: bool = True,
+        display_name: str = "",
+        locale: str = "auto",
+    ) -> AsyncIterator[str]:
+        """Continue conversation after a confirmed tool execution.
+
+        Instead of a synthetic user message, injects the tool call + result
+        as proper assistant/tool messages so the LLM naturally incorporates
+        the outcome in a single follow-up turn.
+        """
+        sid = uuid.uuid4().hex
+        agent_type = AgentType.PM
+        label = display_name or tool_name
+
+        execution_persisted = False
+        if workspace_id and workspace_id not in ("", "__home__"):
+            try:
+                await self._ws_client.create_execution(
+                    workspace_id,
+                    execution_id=sid,
+                    intent_type="conversation",
+                    intent_summary=f"确认执行: {label}",
+                    triggered_by="tool_confirmation",
+                    user_message=f"[confirmed] {label}",
+                    agent_type="pm",
+                    result_type="general",
+                )
+                execution_persisted = True
+            except Exception:
+                logger.debug("create_execution for tool_continuation skipped", exc_info=True)
+
+        yield _sse("session", "start", {
+            "type": "conversation", "workspaceId": workspace_id,
+        }, sid)
+
+        step_accum: list[dict[str, Any]] = []
+        status_str = "completed" if result_ok else "error"
+        step_accum.append({
+            "id": tool_call_id, "label": label, "status": status_str,
+            "detail": result_text[:1500],
+        })
+
+        yield _sse("tool", "start", {
+            "call_id": tool_call_id, "tool_name": tool_name,
+            "display_name": display_name, "input": arguments,
+        }, sid)
+        yield _sse("tool", "result", {
+            "call_id": tool_call_id, "tool_name": tool_name,
+            "display_name": display_name,
+            "status": status_str, "output": result_text,
+        }, sid)
+        yield _sse("timeline", "step", {
+            "step_id": tool_call_id, "label": label, "status": status_str,
+        }, sid)
+
+        history = await self._session.get_history(workspace_id, agent_type, limit=50)
+        system = self._build_system_prompt(ConversationRequest(
+            workspace_id=workspace_id, message="", locale=locale,
+        ))
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+        messages.append({
+            "role": "assistant", "content": None,
+            "tool_calls": [{
+                "id": tool_call_id, "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": json.dumps(arguments, ensure_ascii=False),
+                },
+            }],
+        })
+        messages.append({
+            "role": "tool", "tool_call_id": tool_call_id,
+            "content": result_text,
+        })
+
+        reply_parts: list[str] = []
+        try:
+            async for chunk in self._llm.chat_stream(messages, tools=[]):
+                choice = chunk.get("choices", [{}])[0]
+                delta = choice.get("delta", {})
+                content = delta.get("content", "") or ""
+                if content:
+                    reply_parts.append(content)
+                    yield _sse("content", "delta", {"delta": content}, sid)
+        except Exception as exc:
+            logger.error("Tool continuation LLM call failed: %s", exc, exc_info=True)
+            yield _sse("session", "error", {"error": str(exc)}, sid)
+            yield _sse_done()
+            return
+
+        reply = "".join(reply_parts)
+
+        from .models import Message
+        await self._session.append(
+            workspace_id, agent_type,
+            Message(role="user", content=f"[确认执行: {label}]", workspace_id=workspace_id),
+        )
+        if reply:
+            await self._session.append(
+                workspace_id, agent_type,
+                Message(role="assistant", content=reply, workspace_id=workspace_id),
+            )
+
+        if execution_persisted:
+            try:
+                await self._ws_client.update_execution(
+                    workspace_id, sid, status="success",
+                    steps=json.dumps(step_accum, ensure_ascii=False),
+                )
+            except Exception:
+                logger.debug("update_execution (tool_continuation) skipped", exc_info=True)
+
+        yield _sse("session", "complete", {"status": "success"}, sid)
+        yield _sse_done()
+
     async def _agentic_terminal(
         self, ctx: InvocationContext
     ) -> AsyncIterator[AgentEvent]:
@@ -267,6 +394,8 @@ class ConversationEngine:
         messages.append({"role": "user", "content": ctx.user_message})
         return messages
 
+    _HIDDEN_TOOLS = frozenset({"search_tools"})
+
     def _event_to_sse(
         self,
         sid: str,
@@ -281,6 +410,8 @@ class ConversationEngine:
 
         if etype == "tool_start":
             name = payload.get("tool", "")
+            if name in self._HIDDEN_TOOLS:
+                return []
             call_id = payload.get("call_id", f"tool_{name}")
             display_name = payload.get("display_name", "")
             label = display_name or name
@@ -302,6 +433,8 @@ class ConversationEngine:
 
         if etype == "tool_result":
             name = payload.get("tool", "")
+            if name in self._HIDDEN_TOOLS:
+                return []
             call_id = payload.get("call_id", f"tool_{name}")
             display_name = payload.get("display_name", "")
             label = display_name or name

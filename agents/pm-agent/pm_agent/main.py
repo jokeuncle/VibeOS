@@ -479,14 +479,17 @@ class ToolConfirmRequest(BaseModel):
     arguments: dict[str, Any] = {}
 
 
-@app.post("/api/conversation/confirm")
-async def handle_tool_confirmation(req: ToolConfirmRequest) -> StreamingResponse:
+@app.post("/api/conversation/confirm", response_model=None)
+async def handle_tool_confirmation(req: ToolConfirmRequest) -> StreamingResponse | dict[str, Any]:
     """Resolve a pending tool confirmation.
 
-    When approved, executes the tool directly and sends a follow-up
-    conversation turn so the LLM can incorporate the result.
-    When rejected, sends a rejection message into the conversation.
+    When approved, executes the tool then injects the result as a proper
+    tool-call continuation so the LLM naturally incorporates the outcome.
+    When rejected, returns immediately -- no LLM call needed.
     """
+    if not req.approved:
+        return {"status": "rejected"}
+
     engine: ConversationEngine = app.state.conversation
     tool_manager: ToolManager = app.state.tool_manager
     ws_client: WorkspaceClient = app.state.ws_client
@@ -496,25 +499,22 @@ async def handle_tool_confirmation(req: ToolConfirmRequest) -> StreamingResponse
         await _load_mcp_providers(ws_client, tool_manager, ws_id)
 
     async def event_gen() -> AsyncGenerator[str, None]:
-        if req.approved and req.tool_name:
-            args = dict(req.arguments)
-            args["_workspace_id"] = ws_id
-            result = await tool_manager.execute(req.tool_name, args)
-            display = await tool_manager.get_display_name(req.tool_name)
-            label = display or req.tool_name
-            summary = (
-                f'用户已确认执行「{label}」。工具返回结果：{result.output[:800]}'
-                if result.ok
-                else f'用户已确认执行「{label}」，但执行出错：{result.output[:800]}'
-            )
-        else:
-            summary = "用户取消了操作，不需要执行。"
+        args = dict(req.arguments)
+        args["_workspace_id"] = ws_id
+        result = await tool_manager.execute(req.tool_name, args)
+        display = await tool_manager.get_display_name(req.tool_name)
+        call_id = req.confirmation_key.rsplit(":", 1)[-1] if req.confirmation_key else req.tool_name
 
-        async for sse_frame in engine.run(ConversationRequest(
+        async for frame in engine.run_tool_continuation(
             workspace_id=ws_id,
-            message=summary,
-        )):
-            yield sse_frame
+            tool_call_id=call_id,
+            tool_name=req.tool_name,
+            arguments=req.arguments,
+            result_text=result.output[:2000],
+            result_ok=result.ok,
+            display_name=display or req.tool_name,
+        ):
+            yield frame
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 

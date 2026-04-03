@@ -332,7 +332,7 @@ export interface ToolInvocation {
   id: string
   toolName: string
   displayName: string
-  status: 'calling' | 'completed' | 'error' | 'awaiting_confirmation'
+  status: 'calling' | 'completed' | 'error' | 'awaiting_confirmation' | 'confirmed' | 'rejected'
   input?: Record<string, unknown>
   output?: string
   error?: string
