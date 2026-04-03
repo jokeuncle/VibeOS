@@ -8,8 +8,9 @@
   </p>
   <p align="center">
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+    <a href="https://github.com/jokeuncle/VibeOS/stargazers"><img src="https://img.shields.io/github/stars/jokeuncle/VibeOS?style=social" alt="Stars"></a>
     <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-3_commands-green.svg" alt="Quick Start"></a>
-    <a href="https://github.com/anthropics/vibeos/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
+    <a href="https://github.com/jokeuncle/VibeOS/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   </p>
 </p>
 
@@ -156,8 +157,8 @@ Built-in **model routing** with capability contracts, **token budget control**, 
 ### 1. Clone and Configure
 
 ```bash
-git clone https://github.com/anthropics/vibeos.git
-cd vibeos
+git clone https://github.com/jokeuncle/VibeOS.git
+cd VibeOS
 cp .env.example .env
 ```
 
