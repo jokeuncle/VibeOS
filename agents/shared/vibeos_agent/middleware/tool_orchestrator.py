@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from ..models import AgentEvent
@@ -75,7 +75,7 @@ class ToolOrchestratorMiddleware(Middleware):
 
     async def process(
         self, ctx: InvocationContext, next_fn: NextFn
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         async for event in next_fn(ctx):
             yield event
 

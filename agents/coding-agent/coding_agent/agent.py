@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -72,7 +72,7 @@ class CodingAgent(BaseAgent):
         super().__init__()
         self.workspace_mgr = WorkspaceManager()
 
-    async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
+    async def execute(self, task: AgentTask) -> AsyncGenerator[AgentEvent, None]:
         workspace_id = task.workspace_id
         ctx = task.context
 

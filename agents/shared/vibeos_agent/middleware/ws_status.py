@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from ..clients._utils import _enum_val
 from ..models import AgentEvent, AgentStatus
@@ -25,7 +25,7 @@ class WSStatusMiddleware(Middleware):
 
     async def process(
         self, ctx: InvocationContext, next_fn: NextFn
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         try:
             await self._ws.publish_agent_status(
                 ctx.workspace_id, ctx.agent_type, AgentStatus.RUNNING

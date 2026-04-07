@@ -8,7 +8,7 @@ resource hints, active skills).
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from ..phases import AGENT_PHASE_MAP, PHASE_CONTEXT, agent_for_phase
@@ -43,7 +43,7 @@ class ContextEnricherMiddleware(Middleware):
 
     async def process(
         self, ctx: InvocationContext, next_fn: NextFn
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         enriched = await self._enrich(ctx)
         ctx.enriched_prompt = enriched
         async for event in next_fn(ctx):

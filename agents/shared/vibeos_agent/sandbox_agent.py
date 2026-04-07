@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from .base_agent import BaseAgent
@@ -31,7 +31,7 @@ class SandboxAgent(BaseAgent):
     (LLM gateway without sandbox).
     """
 
-    async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
+    async def execute(self, task: AgentTask) -> AsyncGenerator[AgentEvent, None]:
         agent_name = _enum_val(self.agent_type)
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
 

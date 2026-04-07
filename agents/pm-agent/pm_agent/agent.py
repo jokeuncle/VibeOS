@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from vibeos_agent import AgentEvent, AgentTask, AgentType, BaseAgent
@@ -78,7 +78,7 @@ in English.\
         self.tool_manager.register_many(create_pipeline_tools())
         self.tool_manager.register_many(create_feishu_tools())
 
-    async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
+    async def execute(self, task: AgentTask) -> AsyncGenerator[AgentEvent, None]:
         """PM delegates execution through the pipeline."""
         async for evt in self._run_pipeline_stream(
             workspace_id=task.workspace_id,

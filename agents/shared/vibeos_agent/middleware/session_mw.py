@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 from ..models import AgentEvent
@@ -44,7 +44,7 @@ class SessionMiddleware(Middleware):
 
     async def process(
         self, ctx: InvocationContext, next_fn: NextFn
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         history = await self._session.get_history(
             ctx.workspace_id, ctx.agent_type, limit=self._limit
         )

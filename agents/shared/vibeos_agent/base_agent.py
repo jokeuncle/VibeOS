@@ -9,9 +9,9 @@ import logging
 import re as _re
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from .clients._utils import _enum_val
 from .container import ClientContainer
@@ -281,9 +281,10 @@ class BaseAgent(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
+    async def execute(self, task: AgentTask) -> AsyncGenerator[AgentEvent, None]:
         """Run a structured task and yield progress events."""
-        ...
+        if False:  # pragma: no cover — yield keeps this an async generator for type checkers
+            yield cast(AgentEvent, None)
 
     async def chat(
         self, message: str, *, workspace_id: str, context: dict[str, Any] | None = None

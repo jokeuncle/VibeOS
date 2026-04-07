@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from ..models import AgentEvent, AgentType
 
@@ -56,9 +56,10 @@ class Middleware(ABC):
         self,
         ctx: InvocationContext,
         next_fn: NextFn,
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         """Process the invocation; call ``next_fn(ctx)`` to continue the chain."""
-        ...
+        if False:  # pragma: no cover — yield marks async generator for static analysis
+            yield cast(AgentEvent, None)
 
 
 class MiddlewarePipeline:
@@ -79,10 +80,10 @@ class MiddlewarePipeline:
         self,
         ctx: InvocationContext,
         terminal: NextFn | None = None,
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         """Execute the pipeline, ending with *terminal* (or an empty handler)."""
 
-        async def _empty_terminal(_ctx: InvocationContext) -> AsyncIterator[AgentEvent]:
+        async def _empty_terminal(_ctx: InvocationContext) -> AsyncGenerator[AgentEvent, None]:
             return
             yield  # noqa: unreachable -- makes this a proper async generator
 
@@ -99,7 +100,7 @@ class MiddlewarePipeline:
 
 
 def _wrap(mw: Middleware, next_fn: NextFn) -> NextFn:
-    async def _handler(ctx: InvocationContext) -> AsyncIterator[AgentEvent]:
+    async def _handler(ctx: InvocationContext) -> AsyncGenerator[AgentEvent, None]:
         async for event in mw.process(ctx, next_fn):
             yield event
 

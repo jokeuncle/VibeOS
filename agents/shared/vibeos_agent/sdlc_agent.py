@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -49,7 +49,7 @@ class SDLCAgent(BaseAgent):
     phase_key: str = ""
     artifact_configs: list[ArtifactConfig] = []
 
-    async def execute(self, task: AgentTask) -> AsyncIterator[AgentEvent]:
+    async def execute(self, task: AgentTask) -> AsyncGenerator[AgentEvent, None]:
         yield self._make_event("status", task.workspace_id, {"status": AgentStatus.RUNNING})
         agent_name = _enum_val(self.agent_type)
         _log = self.ws.publish_log
