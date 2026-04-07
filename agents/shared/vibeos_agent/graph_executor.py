@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Annotated, AsyncIterator
+from typing import Any, Annotated, AsyncIterator, ClassVar, cast
 
 from .registry import RegistryClient
 
@@ -26,8 +26,36 @@ try:
     from langgraph.checkpoint.memory import MemorySaver
 
     HAS_LANGGRAPH = True
+
+    def _append_reducer(existing: list[Any], new: list[Any] | Any) -> list[Any]:
+        if isinstance(new, list):
+            return existing + new
+        return [*existing, new]
+
+    def _replace_reducer(_existing: Any, new: Any) -> Any:
+        return new
+
+    REDUCERS: dict[str, Any] = {
+        "append": _append_reducer,
+        "add_messages": add_messages,
+        "replace": _replace_reducer,
+    }
 except ImportError:
     HAS_LANGGRAPH = False
+    REDUCERS = {}
+    # Placeholders — GraphExecutor.__init__ raises without langgraph; names must exist for analysis.
+    StateGraph = None  # type: ignore[assignment, misc]
+    LG_END = "__lg_end__"
+    MemorySaver = None  # type: ignore[assignment, misc]
+
+
+def _ensure_langgraph_loaded() -> None:
+    """Raise if optional langgraph deps are missing (also narrows types for pyright)."""
+    if not HAS_LANGGRAPH or StateGraph is None or MemorySaver is None:
+        raise ImportError(
+            "langgraph is required for GraphExecutor. "
+            "Install with: pip install vibeos-agent[graph]"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -103,28 +131,6 @@ class ParsedGraphDef:
 
 
 # ---------------------------------------------------------------------------
-# Reducer helpers
-# ---------------------------------------------------------------------------
-
-REDUCERS: dict[str, Any] = {}
-
-if HAS_LANGGRAPH:
-    def _append_reducer(existing: list, new: list | Any) -> list:
-        if isinstance(new, list):
-            return existing + new
-        return [*existing, new]
-
-    def _replace_reducer(_existing: Any, new: Any) -> Any:
-        return new
-
-    REDUCERS = {
-        "append": _append_reducer,
-        "add_messages": add_messages,
-        "replace": _replace_reducer,
-    }
-
-
-# ---------------------------------------------------------------------------
 # GraphExecutor
 # ---------------------------------------------------------------------------
 
@@ -159,7 +165,9 @@ class GraphExecutor:
             self._capability_cache[key] = c
         return self._capability_cache.get(ref)
 
-    _INTERNAL_FIELDS: dict[str, tuple[type, Any]] = {
+    # tuple[Any, Any]: (annotation type, default). Wider than tuple[type, Any] so
+    # literal defaults ("" / False / []) match under invariant tuple typing.
+    _INTERNAL_FIELDS: ClassVar[dict[str, tuple[Any, Any]]] = {
         "_last_node": (str, ""),
         "_error": (str, ""),
         "_result": (Any, None),
@@ -603,6 +611,8 @@ class GraphExecutor:
         required for interrupt support; if none is supplied and interrupts
         are needed, an in-memory ``MemorySaver`` is created automatically.
         """
+        _ensure_langgraph_loaded()
+        assert StateGraph is not None and MemorySaver is not None
         parsed = ParsedGraphDef.from_dict(graph_def)
         state_type = self._build_state_type(parsed.state_schema)
         graph = StateGraph(state_type)
@@ -610,7 +620,7 @@ class GraphExecutor:
         interrupt_nodes: list[str] = []
         for node_def in parsed.nodes:
             fn = self._make_node_fn(node_def)
-            graph.add_node(node_def.id, fn)
+            graph.add_node(node_def.id, cast(Any, fn))
             if node_def.type == "human_in_loop":
                 interrupt_nodes.append(node_def.id)
 
@@ -649,7 +659,7 @@ class GraphExecutor:
 
         recursion_limit = parsed.config.get("recursion_limit", 25)
         compiled = graph.compile(**compile_kwargs)
-        compiled.recursion_limit = recursion_limit
+        setattr(compiled, "recursion_limit", recursion_limit)
         return compiled
 
     async def execute(
@@ -666,6 +676,8 @@ class GraphExecutor:
         before them and yields a ``graph:node_awaiting_approval`` event.
         Call ``resume()`` with the same ``thread_id`` to continue.
         """
+        _ensure_langgraph_loaded()
+        assert MemorySaver is not None
         tid = thread_id or uuid.uuid4().hex
 
         # Reuse or create checkpointer so resume() can find it
@@ -901,8 +913,9 @@ async def _execute_skill(
     return output
 
 
-def _resolve_type(type_str: str) -> type:
-    mapping: dict[str, type] = {
+def _resolve_type(type_str: str) -> Any:
+    """Map graph schema type strings to Python types or ``typing.Any``."""
+    mapping: dict[str, Any] = {
         "string": str,
         "str": str,
         "int": int,
