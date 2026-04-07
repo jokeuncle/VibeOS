@@ -33,7 +33,7 @@ class InvocationContext:
 
     system_prompt: str = ""
     enriched_prompt: str | None = None
-    messages: list[dict[str, Any]] = field(default_factory=list)
+    # messages: list[dict[str, Any]] = field(default_factory=list)
     history: list[Any] = field(default_factory=list)
     extra_messages: list[dict[str, Any]] = field(default_factory=list)
 
