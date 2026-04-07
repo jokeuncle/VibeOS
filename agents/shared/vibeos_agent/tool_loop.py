@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 
 WSNotifyFn = Callable[[AgentEvent], Awaitable[None]]
 
+
+def _agent_type_for_event(agent_type: AgentType | str) -> AgentType:
+    """Coerce caller-supplied agent id to :class:`AgentType` for :class:`AgentEvent`."""
+    if isinstance(agent_type, AgentType):
+        return agent_type
+    if isinstance(agent_type, str) and agent_type.strip():
+        try:
+            return AgentType(agent_type)
+        except ValueError:
+            logger.debug("Unknown agent_type %r, defaulting to PM", agent_type)
+    return AgentType.PM
+
 _CONFIRMATION_PENDING_RESULT = (
     '{"status":"confirmation_pending","message":'
     '"This action requires user confirmation. '
@@ -103,10 +115,12 @@ async def execute_tool_calls(
     """
     events: list[AgentEvent] = []
 
+    at = _agent_type_for_event(agent_type)
+
     def _evt(etype: str, **payload: Any) -> AgentEvent:
         return AgentEvent(
             type=etype,
-            agent_type=agent_type,
+            agent_type=at,
             workspace_id=workspace_id,
             payload=payload,
         )
@@ -276,10 +290,12 @@ async def run_tool_loop_stream(
     terminates so the LLM stops generating further calls.
     """
 
+    at = _agent_type_for_event(agent_type)
+
     def _evt(etype: str, **payload: Any) -> AgentEvent:
         return AgentEvent(
             type=etype,
-            agent_type=agent_type,
+            agent_type=at,
             workspace_id=workspace_id,
             payload=payload,
         )
