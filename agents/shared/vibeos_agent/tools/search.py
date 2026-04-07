@@ -204,10 +204,12 @@ def score_tools(
         corpus.append(_tokenize(doc_text))
 
     bm25 = BM25Okapi(corpus)
-    scores = bm25.get_scores(query_tokens)
+    score_list = [float(s) for s in bm25.get_scores(query_tokens)]
 
     scored = sorted(
-        zip(descriptors, scores), key=lambda x: x[1], reverse=True
+        zip(descriptors, score_list, strict=True),
+        key=lambda x: x[1],
+        reverse=True,
     )
 
     positive_count = sum(1 for _, s in scored if s > 0)
