@@ -211,14 +211,7 @@ class BaseAgent(ABC):
 
     def _build_pipeline_messages(self, ctx) -> list[dict[str, Any]]:
         """Build the LLM message list from an InvocationContext."""
-        system = ctx.enriched_prompt or ctx.system_prompt
-        messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
-        for msg in ctx.history:
-            messages.append({"role": msg.role, "content": msg.content})
-        if ctx.extra_messages:
-            messages.extend(ctx.extra_messages)
-        messages.append({"role": "user", "content": ctx.user_message})
-        return messages
+        return ctx.build_messages()
 
     async def _run_pipeline_stream(
         self,

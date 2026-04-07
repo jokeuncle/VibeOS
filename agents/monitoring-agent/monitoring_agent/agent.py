@@ -76,7 +76,3 @@ class MonitoringAgent(SDLCAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        from vibeos_agent.tools.workspace_tools import create_workspace_tools
-        from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self.tool_manager.register_many(create_workspace_tools(self.workspace_svc, "monitoring"))
-        self.tool_manager.register_many(create_delegation_tools("monitoring"))

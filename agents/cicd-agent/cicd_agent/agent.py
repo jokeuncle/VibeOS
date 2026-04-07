@@ -72,14 +72,8 @@ class CicdAgent(SDLCAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        from vibeos_agent.tools.workspace_tools import create_workspace_tools
-        from vibeos_agent.tools.gitlab_tools import create_gitlab_tools
         from vibeos_agent.tools.pipeline_tools import create_pipeline_tools
-        from vibeos_agent.tools.delegation_tools import create_delegation_tools
-        self.tool_manager.register_many(create_workspace_tools(self.workspace_svc, "cicd"))
-        self.tool_manager.register_many(create_gitlab_tools())
         self.tool_manager.register_many(create_pipeline_tools())
-        self.tool_manager.register_many(create_delegation_tools("cicd"))
 
     async def _resolve_repo_context(self, task: AgentTask) -> dict[str, Any] | None:
         ctx = task.context or {}

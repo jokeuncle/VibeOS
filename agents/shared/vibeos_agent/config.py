@@ -5,6 +5,29 @@ from __future__ import annotations
 import os
 
 
+_AGENT_ENDPOINT_DEFAULTS: dict[str, tuple[str, str]] = {
+    "architecture": ("ARCHITECTURE_AGENT_URL", "http://architecture-agent:8041"),
+    "requirement": ("REQUIREMENT_AGENT_URL", "http://requirement-agent:8042"),
+    "design": ("DESIGN_AGENT_URL", "http://design-agent:8043"),
+    "development": ("DEVELOPMENT_AGENT_URL", "http://dev-agent:8044"),
+    "testing": ("TESTING_AGENT_URL", "http://test-agent:8045"),
+    "cicd": ("CICD_AGENT_URL", "http://cicd-agent:8046"),
+    "monitoring": ("MONITORING_AGENT_URL", "http://monitoring-agent:8047"),
+    "coding": ("CODING_AGENT_URL", "http://coding-agent:8048"),
+}
+
+
+def get_agent_endpoints() -> dict[str, str]:
+    """Canonical agent endpoint map. All consumers should use this."""
+    return {
+        k: os.getenv(env, default)
+        for k, (env, default) in _AGENT_ENDPOINT_DEFAULTS.items()
+    }
+
+
+AGENT_ENDPOINTS: dict[str, str] = get_agent_endpoints()
+
+
 class Config:
     """Simple env-var-backed configuration shared by all agents."""
 

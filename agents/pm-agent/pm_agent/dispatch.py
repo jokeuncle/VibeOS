@@ -4,39 +4,20 @@
 
 from __future__ import annotations
 
-import json
-import os
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
 from vibeos_agent import (
-    AgentEvent,
     AgentStatus,
     AgentTask,
     AgentType,
     WSGatewayClient,
     execute_payload_from_agent_task,
 )
-
-
-def _build_agent_endpoints() -> dict[str, str]:
-    """Build agent endpoint registry from env vars with sensible defaults."""
-    defaults = {
-        "architecture": ("ARCHITECTURE_AGENT_URL", "http://localhost:8041"),
-        "requirement": ("REQUIREMENT_AGENT_URL", "http://localhost:8042"),
-        "design": ("DESIGN_AGENT_URL", "http://localhost:8043"),
-        "development": ("DEVELOPMENT_AGENT_URL", "http://localhost:8044"),
-        "testing": ("TESTING_AGENT_URL", "http://localhost:8045"),
-        "cicd": ("CICD_AGENT_URL", "http://localhost:8046"),
-        "monitoring": ("MONITORING_AGENT_URL", "http://localhost:8047"),
-        "coding": ("CODING_AGENT_URL", "http://localhost:8048"),
-    }
-    return {k: os.getenv(env, default) for k, (env, default) in defaults.items()}
-
-
-AGENT_ENDPOINTS: dict[str, str] = _build_agent_endpoints()
+from vibeos_agent.agent_call import collect_agent_result, iter_agent_sse
+from vibeos_agent.config import AGENT_ENDPOINTS
 
 AGENT_NAME_CN: dict[str, str] = {
     "requirement": "需求",
@@ -75,28 +56,10 @@ class Dispatcher:
         )
 
         payload = execute_payload_from_agent_task(task)
-        result: dict[str, Any] = {}
         try:
-            async with self._http.stream(
-                "POST",
-                f"{base}/api/conversation/stream",
-                json=payload,
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line or line.startswith(":"):
-                        continue
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(data_str)
-                            if data.get("type") in ("result", "error"):
-                                result = data
-                        except json.JSONDecodeError:
-                            pass
+            result = await collect_agent_result(
+                base, payload, http_client=self._http,
+            )
         except httpx.HTTPStatusError as exc:
             body = exc.response.text[:500] if exc.response else str(exc)
             await self.ws.publish_agent_status(
@@ -110,6 +73,13 @@ class Dispatcher:
             )
             name = AGENT_NAME_CN.get(agent_type.value, agent_type.value)
             return {"error": f"{name} Agent 服务未启动，请先启动对应的 Agent 服务"}
+
+        if result.get("error"):
+            await self.ws.publish_agent_status(
+                task.workspace_id, agent_type, AgentStatus.ERROR,
+                detail=result["error"][:200],
+            )
+            return result
 
         await self.ws.publish_agent_status(
             task.workspace_id, agent_type, AgentStatus.IDLE,
@@ -134,36 +104,15 @@ class Dispatcher:
 
         payload = execute_payload_from_agent_task(task)
         try:
-            async with self._http.stream(
-                "POST",
-                f"{base}/api/conversation/stream",
-                json=payload,
-            ) as resp:
-                resp.raise_for_status()
-                current_event = ""
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line or line.startswith(":"):
-                        continue
-                    if line.startswith("event: "):
-                        current_event = line[7:]
-                        continue
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            return
-                        try:
-                            data = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            current_event = ""
-                            continue
-                        if current_event:
-                            parts = current_event.split(":", 1)
-                            if len(parts) == 2:
-                                data["_category"] = parts[0]
-                                data["_action"] = parts[1]
-                        current_event = ""
-                        yield data
+            async for event_type, data in iter_agent_sse(
+                base, payload, http_client=self._http,
+            ):
+                if event_type:
+                    parts = event_type.split(":", 1)
+                    if len(parts) == 2:
+                        data["_category"] = parts[0]
+                        data["_action"] = parts[1]
+                yield data
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
             await self.ws.publish_agent_status(
                 task.workspace_id, agent_type, AgentStatus.ERROR, detail=str(exc),

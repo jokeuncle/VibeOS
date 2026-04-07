@@ -203,46 +203,11 @@ class GraphExecutor:
 
         Returns ``{"summary": ..., "result": ..., "artifacts": [...], "error": ...}``.
         """
-        import httpx, json as _json
+        from .agent_call import collect_agent_result
 
-        url = f"{endpoint_base.rstrip('/')}/api/conversation/stream"
-        result: dict[str, Any] = {"summary": "", "result": None, "artifacts": [], "error": ""}
-        content_parts: list[str] = []
-
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream("POST", url, json=req_payload) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line or line.startswith(":"):
-                            continue
-                        if line.startswith("data: "):
-                            data_str = line[6:]
-                            if data_str.strip() == "[DONE]":
-                                break
-                            try:
-                                data = _json.loads(data_str)
-                                if data.get("delta"):
-                                    content_parts.append(data["delta"])
-                                if data.get("summary"):
-                                    result["summary"] = data["summary"]
-                                if data.get("artifacts"):
-                                    result["artifacts"].extend(data["artifacts"])
-                            except _json.JSONDecodeError:
-                                pass
-                        elif line.startswith("event: "):
-                            event_type = line[7:].strip()
-                            if event_type == "session:error":
-                                pass
-                            elif "agent:result" in event_type:
-                                pass
-        except Exception as exc:
-            result["error"] = str(exc)
-            logger.warning("Agent stream call to %s failed: %s", url, exc)
-
-        if content_parts:
-            result["result"] = "".join(content_parts)
-        return result
+        return await collect_agent_result(
+            endpoint_base, req_payload, timeout=timeout,
+        )
 
     def _build_state_type(self, schema: dict[str, StateFieldDef]) -> type:
         """Build a TypedDict-like class with Annotated reducer fields."""

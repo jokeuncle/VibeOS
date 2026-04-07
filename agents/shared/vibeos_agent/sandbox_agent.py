@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from .base_agent import BaseAgent

@@ -44,6 +44,17 @@ class InvocationContext:
 
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def build_messages(self) -> list[dict[str, Any]]:
+        """Assemble the LLM message list from context fields."""
+        system = self.enriched_prompt or self.system_prompt
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
+        for msg in self.history:
+            messages.append({"role": msg.role, "content": msg.content})
+        if self.extra_messages:
+            messages.extend(self.extra_messages)
+        messages.append({"role": "user", "content": self.user_message})
+        return messages
+
 
 class Middleware(ABC):
     """Base class for agent middleware.

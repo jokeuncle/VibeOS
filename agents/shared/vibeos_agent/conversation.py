@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from .middleware.base import InvocationContext
 from .models import AgentEvent, AgentType
+from .sse import sse_done, sse_event
 from .tool_loop import run_tool_loop_stream
 
 logger = logging.getLogger(__name__)
@@ -176,9 +177,9 @@ class ConversationEngine:
             },
         )
 
-        yield _sse("session", "start", {
+        yield sse_event("session", "start", {
             "type": "conversation", "workspaceId": req.workspace_id,
-        }, sid)
+        }, sid=sid)
 
         try:
             async for event in self._pipeline.run(ctx, terminal=self._agentic_terminal):
@@ -199,8 +200,8 @@ class ConversationEngine:
                     )
                 except Exception:
                     logger.debug("update_execution (failed) skipped", exc_info=True)
-            yield _sse("session", "error", {"error": str(exc)}, sid)
-            yield _sse_done()
+            yield sse_event("session", "error", {"error": str(exc)}, sid=sid)
+            yield sse_done()
             return
 
         if execution_persisted:
@@ -214,7 +215,6 @@ class ConversationEngine:
             except Exception:
                 logger.debug("update_execution (success) skipped", exc_info=True)
 
-        # Persist to session history
         from .models import Message
         user_msg = Message(role="user", content=req.message, workspace_id=req.workspace_id)
         await self._session.append(req.workspace_id, agent_type, user_msg)
@@ -222,8 +222,8 @@ class ConversationEngine:
             asst_msg = Message(role="assistant", content=ctx.reply, workspace_id=req.workspace_id)
             await self._session.append(req.workspace_id, agent_type, asst_msg)
 
-        yield _sse("session", "complete", {"status": "success"}, sid)
-        yield _sse_done()
+        yield sse_event("session", "complete", {"status": "success"}, sid=sid)
+        yield sse_done()
 
     async def run_tool_continuation(
         self,
@@ -264,9 +264,9 @@ class ConversationEngine:
             except Exception:
                 logger.debug("create_execution for tool_continuation skipped", exc_info=True)
 
-        yield _sse("session", "start", {
+        yield sse_event("session", "start", {
             "type": "conversation", "workspaceId": workspace_id,
-        }, sid)
+        }, sid=sid)
 
         step_accum: list[dict[str, Any]] = []
         status_str = "completed" if result_ok else "error"
@@ -275,18 +275,18 @@ class ConversationEngine:
             "detail": result_text[:1500],
         })
 
-        yield _sse("tool", "start", {
+        yield sse_event("tool", "start", {
             "call_id": tool_call_id, "tool_name": tool_name,
             "display_name": display_name, "input": arguments,
-        }, sid)
-        yield _sse("tool", "result", {
+        }, sid=sid)
+        yield sse_event("tool", "result", {
             "call_id": tool_call_id, "tool_name": tool_name,
             "display_name": display_name,
             "status": status_str, "output": result_text,
-        }, sid)
-        yield _sse("timeline", "step", {
+        }, sid=sid)
+        yield sse_event("timeline", "step", {
             "step_id": tool_call_id, "label": label, "status": status_str,
-        }, sid)
+        }, sid=sid)
 
         history = await self._session.get_history(workspace_id, agent_type, limit=50)
         system = self._build_system_prompt(ConversationRequest(
@@ -318,11 +318,11 @@ class ConversationEngine:
                 content = delta.get("content", "") or ""
                 if content:
                     reply_parts.append(content)
-                    yield _sse("content", "delta", {"delta": content}, sid)
+                    yield sse_event("content", "delta", {"delta": content}, sid=sid)
         except Exception as exc:
             logger.error("Tool continuation LLM call failed: %s", exc, exc_info=True)
-            yield _sse("session", "error", {"error": str(exc)}, sid)
-            yield _sse_done()
+            yield sse_event("session", "error", {"error": str(exc)}, sid=sid)
+            yield sse_done()
             return
 
         reply = "".join(reply_parts)
@@ -347,8 +347,8 @@ class ConversationEngine:
             except Exception:
                 logger.debug("update_execution (tool_continuation) skipped", exc_info=True)
 
-        yield _sse("session", "complete", {"status": "success"}, sid)
-        yield _sse_done()
+        yield sse_event("session", "complete", {"status": "success"}, sid=sid)
+        yield sse_done()
 
     async def _agentic_terminal(
         self, ctx: InvocationContext
@@ -381,16 +381,7 @@ class ConversationEngine:
         ctx.reply = "".join(full_reply_parts)
 
     def _build_messages(self, ctx: InvocationContext) -> list[dict[str, Any]]:
-        system = ctx.enriched_prompt or ctx.system_prompt
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system},
-        ]
-        for msg in ctx.history:
-            messages.append({"role": msg.role, "content": msg.content})
-        if ctx.extra_messages:
-            messages.extend(ctx.extra_messages)
-        messages.append({"role": "user", "content": ctx.user_message})
-        return messages
+        return ctx.build_messages()
 
     _HIDDEN_TOOLS = frozenset({"search_tools"})
 
@@ -404,7 +395,7 @@ class ConversationEngine:
         payload = event.payload or {}
 
         if etype == "content_delta":
-            return [_sse("content", "delta", {"delta": payload.get("delta", "")}, sid)]
+            return [sse_event("content", "delta", {"delta": payload.get("delta", "")}, sid=sid)]
 
         if etype == "tool_start":
             name = payload.get("tool", "")
@@ -416,17 +407,17 @@ class ConversationEngine:
             if step_accum is not None:
                 step_accum.append({"id": call_id, "label": label, "status": "running"})
             return [
-                _sse("tool", "start", {
+                sse_event("tool", "start", {
                     "call_id": call_id,
                     "tool_name": name,
                     "display_name": display_name,
                     "input": payload.get("arguments"),
-                }, sid),
-                _sse("timeline", "step", {
+                }, sid=sid),
+                sse_event("timeline", "step", {
                     "step_id": call_id,
                     "label": label,
                     "status": "running",
-                }, sid),
+                }, sid=sid),
             ]
 
         if etype == "tool_result":
@@ -457,19 +448,19 @@ class ConversationEngine:
                         "detail": detail[:1500] if isinstance(detail, str) else "",
                     })
             return [
-                _sse("tool", "result", {
+                sse_event("tool", "result", {
                     "call_id": call_id,
                     "tool_name": name,
                     "display_name": display_name,
                     "status": "completed" if ok else "error",
                     "output": payload.get("output", ""),
                     "duration_ms": payload.get("duration_ms"),
-                }, sid),
-                _sse("timeline", "step", {
+                }, sid=sid),
+                sse_event("timeline", "step", {
                     "step_id": call_id,
                     "label": label,
                     "status": st,
-                }, sid),
+                }, sid=sid),
             ]
 
         if etype == "tool_confirmation":
@@ -483,28 +474,18 @@ class ConversationEngine:
                     "status": "awaiting_confirmation",
                 })
             return [
-                _sse("tool", "confirmation", {
+                sse_event("tool", "confirmation", {
                     "call_id": call_id,
                     "tool_name": name,
                     "display_name": display_name,
                     "arguments": payload.get("arguments"),
                     "confirmation_key": payload.get("confirmation_key", ""),
-                }, sid),
-                _sse("timeline", "step", {
+                }, sid=sid),
+                sse_event("timeline", "step", {
                     "step_id": call_id,
                     "label": label,
                     "status": "awaiting_confirmation",
-                }, sid),
+                }, sid=sid),
             ]
 
-        return [_sse("content", "payload", {"payload": payload}, sid)]
-
-
-def _sse(category: str, action: str, payload: dict[str, Any], sid: str) -> str:
-    data: dict[str, Any] = {"sid": sid}
-    data.update(payload)
-    return f"event: {category}:{action}\ndata: {json.dumps(data)}\n\n"
-
-
-def _sse_done() -> str:
-    return "data: [DONE]\n\n"
+        return [sse_event("content", "payload", {"payload": payload}, sid=sid)]

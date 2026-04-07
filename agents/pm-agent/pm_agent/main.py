@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     app.state.agent = agent
 
     if HAS_LANGGRAPH:
-        from .dispatch import AGENT_ENDPOINTS
+        from vibeos_agent.config import AGENT_ENDPOINTS
         app.state.graph_executor = GraphExecutor(
             agent.clients.registry, llm=agent.llm, tool_manager=agent.tool_manager,
             endpoint_overrides=AGENT_ENDPOINTS,

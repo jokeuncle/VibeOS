@@ -1,6 +1,6 @@
 """vibeos-agent – shared framework for VibeOS domain agents."""
 
-from .config import Config, config
+from .config import AGENT_ENDPOINTS, Config, config
 from .models import (
     Activity,
     Agent,
@@ -32,8 +32,8 @@ from .phases import (
     phase_for_agent,
     upstream_phases,
 )
-from .protocol import (
-    BaseAgent,
+from .base_agent import BaseAgent
+from .clients import (
     KnowledgeClient,
     LLMGatewayClient,
     MemoryClient,
@@ -78,6 +78,7 @@ __all__ = [
     "AgentTask",
     "AgentType",
     "Artifact",
+    "AGENT_ENDPOINTS",
     "AGENT_PHASE_MAP",
     "ApprovalStatus",
     "BaseAgent",
@@ -155,5 +156,5 @@ __all__ = [
     "sse_session_error",
 ]
 
-# Lazy import for adapters — available via vibeos_agent.adapters
+# Adapters are experimental/internal — used by pipeline_tools.
 # Usage: from vibeos_agent.adapters import AdapterRegistry, GitLabPipelineAdapter

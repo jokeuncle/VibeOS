@@ -57,7 +57,7 @@ Cross-cutting concerns are composable middleware (`vibeos_agent.middleware`):
 - `SessionMiddleware` — history with token budget trimming
 - `MemoryWriterMiddleware` — auto-persist interactions
 - `ObservabilityMiddleware` — structured logging + OpenTelemetry spans
-- `ToolOrchestratorMiddleware` — tool loop with pluggable strategies
+The tool execution loop lives in `vibeos_agent.tool_loop` (`run_tool_loop_stream`).
 
 ## FastAPI App Factory
 

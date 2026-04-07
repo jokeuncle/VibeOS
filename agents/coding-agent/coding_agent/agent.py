@@ -19,8 +19,8 @@ from vibeos_agent import (
     AgentStatus,
     AgentTask,
     AgentType,
-    BaseAgent,
     CapabilityContract,
+    SandboxAgent,
 )
 
 from .workspace_manager import WorkspaceManager
@@ -56,7 +56,7 @@ Guidelines:
 """
 
 
-class CodingAgent(BaseAgent):
+class CodingAgent(SandboxAgent):
     agent_type = AgentType.CODING
     system_prompt = CODING_SYSTEM_PROMPT
 
@@ -72,17 +72,9 @@ class CodingAgent(BaseAgent):
         super().__init__()
         self.workspace_mgr = WorkspaceManager()
 
-    async def execute(self, task: AgentTask) -> AsyncGenerator[AgentEvent, None]:
+    async def _run_sandbox(self, task: AgentTask) -> AsyncGenerator[AgentEvent, None]:
         workspace_id = task.workspace_id
         ctx = task.context
-
-        yield AgentEvent(
-            type="status",
-            agent_type=AgentType.CODING,
-            workspace_id=workspace_id,
-            payload={"status": AgentStatus.RUNNING, "message": "Preparing workspace…"},
-            timestamp=datetime.now(timezone.utc),
-        )
 
         gitlab_url = ctx.get("gitlab_url") or ctx.get("gitlab_primary_url") or os.getenv("GITLAB_URL", "")
         project_path = ctx.get("gitlab_project_path", "")
@@ -95,34 +87,20 @@ class CodingAgent(BaseAgent):
                      gitlab_url, project_path, branch, credential_id, list(ctx.keys()))
 
         if not gitlab_url or not project_path:
-            yield AgentEvent(
-                type="error",
-                agent_type=AgentType.CODING,
-                workspace_id=workspace_id,
-                payload={"error": f"Missing gitlab_url={gitlab_url!r} or project_path={project_path!r} in task context. ctx keys: {list(ctx.keys())}"},
-                timestamp=datetime.now(timezone.utc),
-            )
+            yield self._make_event("error", workspace_id, {
+                "error": f"Missing gitlab_url={gitlab_url!r} or project_path={project_path!r} in task context. ctx keys: {list(ctx.keys())}",
+            })
             return
 
         session_id = f"{workspace_id}-{task.task_id}"
 
-        try:
-            ws_path = await self.workspace_mgr.create_workspace(
-                session_id=session_id,
-                gitlab_url=gitlab_url,
-                project_path=project_path,
-                branch=branch,
-                credential_id=credential_id,
-            )
-        except Exception as exc:
-            yield AgentEvent(
-                type="error",
-                agent_type=AgentType.CODING,
-                workspace_id=workspace_id,
-                payload={"error": f"Failed to clone repo: {exc}"},
-                timestamp=datetime.now(timezone.utc),
-            )
-            return
+        ws_path = await self.workspace_mgr.create_workspace(
+            session_id=session_id,
+            gitlab_url=gitlab_url,
+            project_path=project_path,
+            branch=branch,
+            credential_id=credential_id,
+        )
 
         feature_branch = f"vibeos/coding-{uuid.uuid4().hex[:8]}"
         try:
@@ -131,45 +109,20 @@ class CodingAgent(BaseAgent):
             logger.warning("Could not create branch %s, working on current branch", feature_branch)
             feature_branch = branch
 
-        yield AgentEvent(
-            type="progress",
-            agent_type=AgentType.CODING,
-            workspace_id=workspace_id,
-            payload={"message": f"Repo cloned. Starting coding on branch {feature_branch}…"},
-            timestamp=datetime.now(timezone.utc),
-        )
+        yield self._make_event("progress", workspace_id, {
+            "message": f"Repo cloned. Starting coding on branch {feature_branch}…",
+        })
 
         task_prompt = task.user_message or task.description or task.intent
-        result_text = ""
-        error_text = ""
-
-        try:
-            result_text = await self._run_openhands(
-                ws_path=str(ws_path),
-                prompt=task_prompt,
-                workspace_id=workspace_id,
-            )
-        except Exception as exc:
-            error_text = str(exc)
-            logger.exception("OpenHands execution failed")
-
-        if error_text:
-            yield AgentEvent(
-                type="error",
-                agent_type=AgentType.CODING,
-                workspace_id=workspace_id,
-                payload={"error": error_text},
-                timestamp=datetime.now(timezone.utc),
-            )
-            return
-
-        yield AgentEvent(
-            type="progress",
-            agent_type=AgentType.CODING,
+        result_text = await self._run_openhands(
+            ws_path=str(ws_path),
+            prompt=task_prompt,
             workspace_id=workspace_id,
-            payload={"message": "Coding complete. Committing and pushing…"},
-            timestamp=datetime.now(timezone.utc),
         )
+
+        yield self._make_event("progress", workspace_id, {
+            "message": "Coding complete. Committing and pushing…",
+        })
 
         commit_msg = f"feat(vibeos): {task.intent[:72]}"
         try:
@@ -191,17 +144,11 @@ class CodingAgent(BaseAgent):
 
         self.workspace_mgr.cleanup(session_id)
 
-        yield AgentEvent(
-            type="result",
-            agent_type=AgentType.CODING,
-            workspace_id=workspace_id,
-            payload={
-                "summary": result_text[:500],
-                "branch": feature_branch,
-                "push_result": push_result,
-            },
-            timestamp=datetime.now(timezone.utc),
-        )
+        yield self._make_event("result", workspace_id, {
+            "summary": result_text[:500],
+            "branch": feature_branch,
+            "push_result": push_result,
+        })
 
     def _publish_progress(self, workspace_id: str, message: str) -> None:
         """Publish a progress event to ws-gateway (sync, fire-and-forget)."""

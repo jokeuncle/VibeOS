@@ -1,5 +1,10 @@
 """BaseAdapter — uniform interface isolating AI from traditional infrastructure.
 
+.. note::
+
+    **Experimental / internal.** Prefer ``BaseTool`` for new integrations.
+    See ``adapters/__init__.py`` for details.
+
 Every adapter (GitLab Pipeline, SSH, script runner, etc.) must implement three
 methods so the orchestration layer never touches infrastructure details directly.
 """

@@ -3,24 +3,15 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import httpx
 
+from ..agent_call import collect_agent_result
+from ..config import AGENT_ENDPOINTS
 from .base import BaseTool
 
 logger = logging.getLogger(__name__)
-
-_AGENT_ENDPOINTS: dict[str, str] = {
-    "architecture": os.getenv("ARCHITECTURE_AGENT_URL", "http://architecture-agent:8041"),
-    "requirement": os.getenv("REQUIREMENT_AGENT_URL", "http://requirement-agent:8042"),
-    "design": os.getenv("DESIGN_AGENT_URL", "http://design-agent:8043"),
-    "development": os.getenv("DEVELOPMENT_AGENT_URL", "http://dev-agent:8044"),
-    "testing": os.getenv("TESTING_AGENT_URL", "http://test-agent:8045"),
-    "cicd": os.getenv("CICD_AGENT_URL", "http://cicd-agent:8046"),
-    "monitoring": os.getenv("MONITORING_AGENT_URL", "http://monitoring-agent:8047"),
-}
 
 
 class DelegateToAgent(BaseTool):
@@ -72,7 +63,7 @@ class DelegateToAgent(BaseTool):
         if target == self._source:
             return self._json_result({"error": "Cannot delegate to self"})
 
-        base_url = _AGENT_ENDPOINTS.get(target)
+        base_url = AGENT_ENDPOINTS.get(target)
         if not base_url:
             return self._json_result({"error": f"Unknown agent: {target}"})
 
@@ -90,28 +81,13 @@ class DelegateToAgent(BaseTool):
         }
 
         try:
-            import json as _json
-            content_parts: list[str] = []
-            async with httpx.AsyncClient(timeout=120) as client:
-                async with client.stream(
-                    "POST", f"{base_url}/api/conversation/stream", json=conv_payload,
-                ) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line:
-                            continue
-                        if line.startswith("data: "):
-                            data_str = line[6:]
-                            if data_str.strip() == "[DONE]":
-                                break
-                            try:
-                                data = _json.loads(data_str)
-                                if data.get("delta"):
-                                    content_parts.append(data["delta"])
-                            except _json.JSONDecodeError:
-                                pass
-
-            summary = "".join(content_parts)
+            result = await collect_agent_result(base_url, conv_payload, timeout=120)
+            if result.get("error"):
+                return self._json_result({
+                    "error": result["error"],
+                    "target_agent": target,
+                })
+            summary = result.get("summary", "") or result.get("result", "")
             return self._json_result({
                 "status": "completed",
                 "target_agent": target,
