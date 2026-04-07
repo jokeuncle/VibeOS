@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Annotated, AsyncIterator, ClassVar, cast
 
+from .conversation_payload import build_graph_node_execute_payload
 from .registry import RegistryClient
 
 logger = logging.getLogger(__name__)
@@ -838,28 +839,20 @@ def _build_conversation_request(
     if upstream:
         context["upstream_result"] = upstream
 
-    payload: dict[str, Any] = {
-        "workspace_id": workspace_id,
-        "message": user_msg,
-        "mode": "execute",
-        "intent": f"execute_{node_def.capability_ref}" if node_def.capability_ref else node_def.id,
-        "description": task_title,
-        "task_id": f"graph-{node_def.id}-{uuid.uuid4().hex[:8]}",
-        "context": context,
-        "preferred_model": node_config.get("model") or state.get("preferred_model"),
-    }
-    if state.get("system_prompt"):
-        payload["system_prompt"] = state["system_prompt"]
-    if state.get("enabled_tools"):
-        raw_tools = state["enabled_tools"]
-        if raw_tools and isinstance(raw_tools[0], dict):
-            payload["enabled_tools"] = [
-                t.get("function", {}).get("name", "") or t.get("name", "")
-                for t in raw_tools if isinstance(t, dict)
-            ]
-        else:
-            payload["enabled_tools"] = raw_tools
-    return payload
+    intent = (
+        f"execute_{node_def.capability_ref}" if node_def.capability_ref else node_def.id
+    )
+    return build_graph_node_execute_payload(
+        workspace_id=workspace_id,
+        message=user_msg,
+        intent=intent,
+        description=task_title,
+        task_id=f"graph-{node_def.id}-{uuid.uuid4().hex[:8]}",
+        context=context,
+        preferred_model=node_config.get("model") or state.get("preferred_model"),
+        system_prompt=state.get("system_prompt") or None,
+        enabled_tools_raw=state.get("enabled_tools"),
+    )
 
 
 def _get_upstream_context(state: dict[str, Any]) -> str:

@@ -58,6 +58,11 @@ from .skills import Skill, SkillRegistry, SkillToolProvider
 from .builtin_skills import BUILTIN_SKILLS, SDLC_ARTIFACT_DISCIPLINE, REQUIREMENT_PLAYBOOK, GITLAB_COMMIT_WORKFLOW
 from .user_context import UserContext, UserContextClient
 from .conversation import ConversationEngine, ConversationRequest
+from .conversation_payload import (
+    build_graph_node_execute_payload,
+    execute_payload_from_agent_task,
+    normalize_enabled_tools_for_execute_payload,
+)
 from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
 from .session import SessionManager
 from .sse import sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
@@ -83,6 +88,9 @@ __all__ = [
     "Config",
     "ConversationEngine",
     "ConversationRequest",
+    "build_graph_node_execute_payload",
+    "execute_payload_from_agent_task",
+    "normalize_enabled_tools_for_execute_payload",
     "GraphExecutor",
     "HAS_LANGGRAPH",
     "IntentDef",

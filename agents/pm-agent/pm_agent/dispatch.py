@@ -17,6 +17,7 @@ from vibeos_agent import (
     AgentTask,
     AgentType,
     WSGatewayClient,
+    execute_payload_from_agent_task,
 )
 
 
@@ -50,21 +51,6 @@ AGENT_NAME_CN: dict[str, str] = {
 }
 
 
-def _task_to_conversation_payload(task: AgentTask) -> dict[str, Any]:
-    """Convert an AgentTask to a ConversationRequest-compatible dict."""
-    return {
-        "workspace_id": task.workspace_id,
-        "message": task.user_message or task.description,
-        "mode": "execute",
-        "intent": task.intent,
-        "description": task.description,
-        "task_id": task.task_id,
-        "context": task.context,
-        "preferred_model": task.preferred_model,
-        "system_prompt": getattr(task, "system_prompt", None),
-    }
-
-
 class Dispatcher:
     """Routes tasks to the correct domain agent and reports status."""
 
@@ -88,7 +74,7 @@ class Dispatcher:
             detail=f"Executing: {task.intent}",
         )
 
-        payload = _task_to_conversation_payload(task)
+        payload = execute_payload_from_agent_task(task)
         result: dict[str, Any] = {}
         try:
             async with self._http.stream(
@@ -146,7 +132,7 @@ class Dispatcher:
             detail=f"Executing: {task.intent}",
         )
 
-        payload = _task_to_conversation_payload(task)
+        payload = execute_payload_from_agent_task(task)
         try:
             async with self._http.stream(
                 "POST",
