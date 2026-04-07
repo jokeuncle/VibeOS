@@ -769,6 +769,17 @@ export const workflowApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     }),
+
+  resumeGraph: (params: {
+    workspace_id: string
+    graph_def: Record<string, unknown>
+    thread_id: string
+  }) =>
+    fetch('/api/workflow/resume-graph', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
 }
 
 // ---------------------------------------------------------------------------

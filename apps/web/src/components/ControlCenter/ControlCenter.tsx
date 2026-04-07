@@ -7,6 +7,7 @@ import { useGraphStore } from './useGraphStore'
 import ElementTree from './ElementTree'
 import GraphCanvas from './GraphCanvas'
 import NodeConfigPanel from './NodeConfigPanel'
+import PhaseContextPanel from './PhaseContextPanel'
 import GraphToolbar from './GraphToolbar'
 import ResizableSidebar from '../ui/ResizableSidebar'
 
@@ -122,6 +123,11 @@ export default function ControlCenter({ hideHeader = false }: ControlCenterProps
             storageKey="vibeos.controlCenter.configWidth"
           >
             <NodeConfigPanel />
+            {graphScope === 'project' && (
+              <div className="border-t border-border-subtle">
+                <PhaseContextPanel />
+              </div>
+            )}
           </ResizableSidebar>
         </div>
       </div>

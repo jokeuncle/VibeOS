@@ -185,14 +185,26 @@ class ToolManager:
                     provider.provider_key, exc_info=True,
                 )
 
-    async def get_schemas(self, *, force_eager: bool = False) -> list[dict[str, Any]]:
+    async def get_schemas(
+        self,
+        *,
+        force_eager: bool = False,
+        agent_type: str | None = None,
+        phase_type: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Return OpenAI-compatible tool schemas.
 
         When strategy is ``lazy`` (or ``auto`` with many tools), only the
         ``search_tools`` meta-tool schema is returned.  The LLM uses it to
         discover real tools on demand, keeping the initial context small.
+
+        Optional *agent_type* / *phase_type* filter tools by scope — skill
+        providers whose ``applicable_agents`` list doesn't include the
+        requested agent are excluded.
         """
-        all_descriptors = await self._all_descriptors()
+        all_descriptors = await self._all_descriptors(
+            agent_type=agent_type, phase_type=phase_type,
+        )
         use_lazy = self._should_use_lazy(len(all_descriptors)) and not force_eager
 
         if use_lazy:
@@ -230,12 +242,39 @@ class ToolManager:
         candidates = [d for d in descriptors if d.name != "search_tools"]
         return score_tools(query, candidates, limit=limit)
 
-    async def _all_descriptors(self) -> list[ToolDescriptor]:
-        """Collect descriptors from all providers (de-duped, ordered)."""
+    async def _all_descriptors(
+        self,
+        *,
+        agent_type: str | None = None,
+        phase_type: str | None = None,
+    ) -> list[ToolDescriptor]:
+        """Collect descriptors from all providers (de-duped, ordered).
+
+        When *agent_type* or *phase_type* are provided, skill-provider
+        tools whose ``applicable_agents`` don't include the agent are
+        excluded.
+        """
         result: list[ToolDescriptor] = []
         seen: set[str] = set()
         for provider in self._providers:
             try:
+                if agent_type and hasattr(provider, '_registry'):
+                    from ..skills import SkillToolProvider
+                    if isinstance(provider, SkillToolProvider):
+                        for skill in provider._registry._skills.values():
+                            if not skill.enabled:
+                                continue
+                            if skill.applicable_agents and agent_type not in skill.applicable_agents:
+                                continue
+                            for tool_name in skill.tools:
+                                if tool_name in seen:
+                                    continue
+                                for desc in await provider.list_tools():
+                                    if desc.name == tool_name and desc.name not in seen:
+                                        result.append(desc)
+                                        seen.add(desc.name)
+                        continue
+
                 for desc in await provider.list_tools():
                     if desc.name not in seen:
                         result.append(desc)
@@ -307,8 +346,8 @@ class ToolManager:
         *,
         ttl: float = 300,
     ) -> None:
-        """Load (or refresh after *ttl* seconds) MCP and Skill providers for
-        a workspace.  Single path for registering workspace-scoped providers.
+        """Load (or refresh after *ttl* seconds) MCP, Skill, and ToolConfig
+        providers for a workspace.
         """
         ts = self._ws_loaded.get(workspace_id)
         if ts is not None and (_time.monotonic() - ts) < ttl:
@@ -316,9 +355,11 @@ class ToolManager:
 
         self.remove_providers(f"mcp:{workspace_id}")
         self.remove_providers(f"skill:{workspace_id}")
+        self.remove_providers(f"toolcfg:{workspace_id}")
 
         mcp_providers = await self._load_mcp(workspace_client, workspace_id)
         await self._load_skills(workspace_client, workspace_id)
+        await self._load_tool_configs(workspace_client, workspace_id)
 
         if mcp_providers:
             from .mcp_provider import ReadMCPResourceTool
@@ -347,6 +388,18 @@ class ToolManager:
             logger.debug("Failed to load MCP servers ws=%s", workspace_id, exc_info=True)
         return providers
 
+    async def _load_tool_configs(self, workspace_client, workspace_id: str) -> None:
+        """Load ToolConfig rows from workspace-svc as a provider."""
+        try:
+            configs = await workspace_client.list_tool_configs(workspace_id)
+            if not configs:
+                return
+            prov = ToolConfigProvider(configs)
+            prov.provider_key = f"toolcfg:{workspace_id}"
+            self.register_provider(prov)
+        except Exception:
+            logger.debug("Failed to load tool configs ws=%s", workspace_id, exc_info=True)
+
     async def _load_skills(self, workspace_client, workspace_id: str) -> None:
         from ..skills import Skill, SkillRegistry, SkillToolProvider
 
@@ -364,8 +417,74 @@ class ToolManager:
                     version=s.get("version", "1.0"),
                     enabled=s.get("enabled", True),
                 ))
-            skill_prov = SkillToolProvider(registry)
+            skill_prov = SkillToolProvider(registry, fallback_manager=self)
             skill_prov.provider_key = f"skill:{workspace_id}"
             self.register_provider(skill_prov)
         except Exception:
             logger.debug("Failed to load skills ws=%s", workspace_id, exc_info=True)
+
+
+class ToolConfigProvider(ToolProvider):
+    """Serves tools defined via ``tool_configs`` DB rows.
+
+    Each ``ToolConfig`` has a ``parameters`` schema and an
+    ``implementation`` JSONB blob.  Implementation types:
+
+    - ``{"type": "http", "url": "...", "method": "POST"}``
+    - ``{"type": "script", "command": "..."}``
+
+    Unsupported types return an error on execute.
+    """
+
+    provider_key = "toolcfg"
+
+    def __init__(self, configs: list[dict[str, Any]]) -> None:
+        self._configs = [c for c in configs if c.get("enabled", True)]
+
+    async def list_tools(self) -> list[ToolDescriptor]:
+        return [
+            ToolDescriptor(
+                name=c.get("name", ""),
+                description=c.get("description", ""),
+                parameters=c.get("parameters") or {"type": "object", "properties": {}},
+                provider_key=self.provider_key,
+            )
+            for c in self._configs
+        ]
+
+    async def execute(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
+        cfg = next((c for c in self._configs if c.get("name") == tool_name), None)
+        if cfg is None:
+            return ToolResult.error(json.dumps({"error": f"ToolConfig not found: {tool_name}"}))
+
+        impl = cfg.get("implementation") or {}
+        if isinstance(impl, str):
+            try:
+                impl = json.loads(impl)
+            except Exception:
+                impl = {}
+
+        impl_type = impl.get("type", "")
+        if impl_type == "http":
+            return await self._execute_http(impl, arguments)
+
+        return ToolResult.error(json.dumps({
+            "error": f"Unsupported ToolConfig implementation type: {impl_type}",
+        }))
+
+    async def _execute_http(
+        self, impl: dict[str, Any], arguments: dict[str, Any],
+    ) -> ToolResult:
+        import httpx
+
+        url = impl.get("url", "")
+        method = impl.get("method", "POST").upper()
+        headers = impl.get("headers") or {}
+        timeout = impl.get("timeout", 30)
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.request(method, url, json=arguments, headers=headers)
+                return ToolResult.success(resp.text[:_MAX_TOOL_OUTPUT])
+        except Exception as exc:
+            return ToolResult.error(json.dumps({"error": f"HTTP tool failed: {exc}"}))

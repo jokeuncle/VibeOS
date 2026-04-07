@@ -176,6 +176,7 @@ type UpdateAgentReq struct {
 	QualityGate          *string          `json:"qualityGate,omitempty"`
 	GraphID              *string          `json:"graphId,omitempty"`
 	TrustThreshold       *float64         `json:"trustThreshold,omitempty"`
+	ContextConfig        *json.RawMessage `json:"contextConfig,omitempty"`
 }
 
 // UpsertManifestReq is sent by agents at boot to register code-level defaults.

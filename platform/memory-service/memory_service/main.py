@@ -246,6 +246,43 @@ async def assemble_context(req: ContextAssembleRequest) -> dict[str, Any]:
     }
 
 
+# ── L1 Working Memory (session-scoped) ───────────────────────────
+
+
+class WorkingMemoryRequest(BaseModel):
+    content: str
+    session_id: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/api/memory/working/add")
+async def add_working_memory(req: WorkingMemoryRequest) -> dict[str, Any]:
+    assert memory_client is not None
+    result = await asyncio.to_thread(
+        memory_client.add_working_memory,
+        content=req.content,
+        session_id=req.session_id,
+        metadata=req.metadata if req.metadata else None,
+    )
+    return {"status": "ok", "result": result}
+
+
+@app.get("/api/memory/working/search")
+async def search_working_memory(
+    query: str,
+    session_id: str,
+    limit: int = Query(default=5, ge=1, le=50),
+) -> dict[str, Any]:
+    assert memory_client is not None
+    results = await asyncio.to_thread(
+        memory_client.search_working_memory,
+        query=query,
+        session_id=session_id,
+        limit=limit,
+    )
+    return {"memories": results}
+
+
 # ── Org Memory (cross-workspace) ─────────────────────────────────
 
 

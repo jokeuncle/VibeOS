@@ -197,6 +197,25 @@ class ApprovalStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class PhaseResult(BaseModel):
+    """Typed output contract for a completed SDLC phase execution.
+
+    Produced by the phase runner callback inside project-level graph
+    orchestration.  Accumulated in ``_phase_results`` graph state so
+    downstream phase nodes can access upstream outputs.
+    """
+    phase_type: str
+    status: str = "completed"  # completed | failed | skipped | gate_failed
+    tasks_completed: int = 0
+    tasks_failed: int = 0
+    tasks_total: int = 0
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    decisions: list[str] = Field(default_factory=list)
+    summary: str = ""
+    quality_gate: str | None = None
+    error: str | None = None
+
+
 class PhaseContract(BaseModel):
     """Binds a SDLC phase to its agent config, graph, and I/O contracts.
 
@@ -228,3 +247,4 @@ class PhaseContract(BaseModel):
     # Runtime agent profile (populated by resolve_phase_contract)
     enabled: bool = True
     preferred_model: str | None = None
+    context_config: dict[str, Any] = Field(default_factory=dict)

@@ -6,7 +6,7 @@ import type { WorkspaceGraph } from '../../lib/api'
 
 export interface GraphNodeData {
   label: string
-  nodeType: 'capability' | 'llm_call' | 'human_in_loop' | 'condition' | 'subgraph' | 'intent' | 'agentic'
+  nodeType: 'capability' | 'llm_call' | 'human_in_loop' | 'condition' | 'subgraph' | 'intent' | 'agentic' | 'phase'
   capabilityRef?: string
   config: Record<string, unknown>
   [key: string]: unknown
@@ -68,6 +68,8 @@ interface GraphState {
   setRunning: (running: boolean) => void
   addExecutionEvent: (event: { category: string; action: string; data: Record<string, unknown> }) => void
   clearExecutionLog: () => void
+  /** Push a WS-delivered workflow event into the execution log for overlay rendering */
+  injectWorkflowEvent: (category: string, action: string, data: Record<string, unknown>) => void
   reset: () => void
 
   setWorkspaceId: (id: string | null) => void
@@ -168,6 +170,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   addExecutionEvent: (event) =>
     set((s) => ({ executionLog: [...s.executionLog, event] })),
   clearExecutionLog: () => set({ executionLog: [] }),
+
+  injectWorkflowEvent: (category, action, data) =>
+    set((s) => ({
+      executionLog: [...s.executionLog, { category, action, data }],
+      running: action === 'start' || category === 'project' && action === 'start' ? true : s.running,
+    })),
 
   reset: () => set({ ...initialState, workspaceId: get().workspaceId, templates: get().templates }),
 

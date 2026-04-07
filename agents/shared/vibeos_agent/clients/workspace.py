@@ -479,6 +479,19 @@ class WorkspaceClient:
         items = data.get("data", data) if isinstance(data, dict) else data
         return [s for s in items if s.get("enabled", True)] if isinstance(items, list) else []
 
+    async def list_tool_configs(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Fetch enabled tool configs for a workspace."""
+        try:
+            resp = await self._http.get(
+                "/api/ext/tool-configs", params={"workspaceId": workspace_id},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("data", data) if isinstance(data, dict) else data
+            return [t for t in items if t.get("enabled", True)] if isinstance(items, list) else []
+        except Exception:
+            return []
+
     async def get_user_context(
         self, user_id: str, workspace_id: str | None = None
     ) -> dict[str, Any]:

@@ -124,17 +124,42 @@ class WorkspaceIndexer:
         filters: dict[str, Any] | None = None,
         rerank: bool = False,
     ) -> list[dict[str, Any]]:
-        """Search documents in a workspace's collection."""
+        """Search documents in a workspace's collection.
+
+        *filters* is a dict of metadata field -> value pairs applied as
+        Qdrant ``must`` match conditions.  Example::
+
+            {"doc_type": "api_spec", "phase": "architecture"}
+        """
         collection = _collection_name(workspace_id)
         if not self.qdrant.collection_exists(collection):
             return []
 
-        vector_store = QdrantVectorStore(client=self.qdrant, collection_name=collection)
+        qdrant_filters = None
+        if filters:
+            must_conditions = [
+                models.FieldCondition(
+                    key=k,
+                    match=models.MatchValue(value=v),
+                )
+                for k, v in filters.items()
+                if v is not None
+            ]
+            if must_conditions:
+                qdrant_filters = models.Filter(must=must_conditions)
+
+        vector_store = QdrantVectorStore(
+            client=self.qdrant,
+            collection_name=collection,
+        )
         index = VectorStoreIndex.from_vector_store(
             vector_store, embed_model=self.embed_model
         )
 
-        retriever = index.as_retriever(similarity_top_k=top_k)
+        retriever_kwargs: dict[str, Any] = {"similarity_top_k": top_k}
+        if qdrant_filters:
+            retriever_kwargs["filters"] = qdrant_filters
+        retriever = index.as_retriever(**retriever_kwargs)
         nodes: list[NodeWithScore] = await retriever.aretrieve(query)
 
         if rerank:

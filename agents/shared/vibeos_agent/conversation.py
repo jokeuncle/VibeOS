@@ -358,7 +358,11 @@ class ConversationEngine:
             self._ws_client, ctx.workspace_id,
         )
         messages = self._build_messages(ctx)
-        tool_schemas = await self._tool_manager.get_schemas()
+        agent_key = str(ctx.agent_type) if ctx.agent_type else None
+        phase_key = (ctx.task_context or {}).get("phase_type")
+        tool_schemas = await self._tool_manager.get_schemas(
+            agent_type=agent_key, phase_type=phase_key,
+        )
         if not tool_schemas:
             tool_schemas = []
 

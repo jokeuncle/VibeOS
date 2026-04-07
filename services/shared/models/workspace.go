@@ -180,6 +180,7 @@ type Agent struct {
 	QualityGate          *string         `json:"qualityGate,omitempty" db:"quality_gate"`
 	GraphID              *string         `json:"graphId,omitempty" db:"graph_id"`
 	TrustThreshold       float64         `json:"trustThreshold" db:"trust_threshold"`
+	ContextConfig        json.RawMessage `json:"contextConfig" db:"context_config"`
 	CreatedAt            time.Time       `json:"createdAt" db:"created_at"`
 	UpdatedAt            time.Time       `json:"updatedAt" db:"updated_at"`
 }

@@ -129,6 +129,14 @@ const settings = {
   'controlCenter.skillCaps': '技能',
   'controlCenter.agenticSystemPrompt': '系统提示词',
   'controlCenter.agenticMaxIter': '最大迭代次数',
+  'controlCenter.phaseGraphId': '关联阶段图',
+  'controlCenter.qualityGate': '质量门禁',
+  'controlCenter.requireApproval': '下一阶段前需要审批',
+  'controlCenter.contextReview': '上下文审查',
+  'controlCenter.contextReview.title': '阶段上下文',
+  'controlCenter.contextReview.artifacts': '产物',
+  'controlCenter.contextReview.decisions': '决策',
+  'controlCenter.contextReview.empty': '该阶段暂无上下文数据',
 
   // Capability names - PM
   'capability.pm.create_task': '创建任务',

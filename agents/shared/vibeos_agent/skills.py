@@ -95,13 +95,28 @@ class SkillToolProvider(ToolProvider):
 
     This provider makes skill-defined tool references available to the
     ToolManager alongside static and MCP tools.
+
+    When a skill references a tool by name, the provider first checks local
+    implementations (registered via ``register_tool``), then delegates to
+    a fallback ``ToolManager`` for auto-discovery across all other providers
+    (MCP, static, etc.).
     """
 
     provider_key = "skill"
 
-    def __init__(self, skill_registry: SkillRegistry) -> None:
+    def __init__(
+        self,
+        skill_registry: SkillRegistry,
+        *,
+        fallback_manager: Any | None = None,
+    ) -> None:
         self._registry = skill_registry
         self._tool_implementations: dict[str, BaseTool] = {}
+        self._fallback_manager = fallback_manager
+
+    def set_fallback_manager(self, manager: Any) -> None:
+        """Set the parent ToolManager for auto-discovery of tool impls."""
+        self._fallback_manager = manager
 
     def register_tool(self, tool: BaseTool) -> None:
         """Register a concrete tool implementation for a skill tool reference."""
@@ -117,6 +132,7 @@ class SkillToolProvider(ToolProvider):
                 if tool_name in seen:
                     continue
                 seen.add(tool_name)
+
                 impl = self._tool_implementations.get(tool_name)
                 if impl:
                     descriptors.append(ToolDescriptor(
@@ -125,15 +141,36 @@ class SkillToolProvider(ToolProvider):
                         parameters=impl.parameters,
                         provider_key=self.provider_key,
                     ))
+                    continue
+
+                if self._fallback_manager:
+                    try:
+                        all_descs = await self._fallback_manager._all_descriptors()
+                        for d in all_descs:
+                            if d.name == tool_name:
+                                descriptors.append(ToolDescriptor(
+                                    name=d.name,
+                                    description=d.description,
+                                    parameters=d.parameters,
+                                    provider_key=self.provider_key,
+                                    display_name=d.display_name,
+                                ))
+                                break
+                    except Exception:
+                        logger.debug("Fallback lookup failed for skill tool %s", tool_name)
         return descriptors
 
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
         impl = self._tool_implementations.get(tool_name)
-        if impl is None:
-            return ToolResult.error(json.dumps({"error": f"Skill tool not found: {tool_name}"}))
-        try:
-            result = await impl.execute(**arguments)
-            return ToolResult.success(result)
-        except Exception as exc:
-            logger.exception("Skill tool %s failed", tool_name)
-            return ToolResult.error(json.dumps({"error": str(exc)}))
+        if impl is not None:
+            try:
+                result = await impl.execute(**arguments)
+                return ToolResult.success(result)
+            except Exception as exc:
+                logger.exception("Skill tool %s failed", tool_name)
+                return ToolResult.error(json.dumps({"error": str(exc)}))
+
+        if self._fallback_manager:
+            return await self._fallback_manager.execute(tool_name, arguments)
+
+        return ToolResult.error(json.dumps({"error": f"Skill tool not found: {tool_name}"}))

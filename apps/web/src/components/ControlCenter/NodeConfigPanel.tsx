@@ -8,15 +8,22 @@ import NumberStepper from '../ui/NumberStepper'
 const TYPE_OPTIONS = ['string', 'int', 'float', 'bool', 'list', 'dict', 'any']
 const REDUCER_OPTIONS = ['', 'append', 'replace', 'add_messages']
 
-// 节点类型选项
 const NODE_TYPE_OPTIONS = [
   { value: 'capability', label: 'Capability' },
+  { value: 'phase', label: 'Phase' },
   { value: 'intent', label: 'Intent' },
   { value: 'condition', label: 'Condition' },
   { value: 'human_in_loop', label: 'Human Gate' },
   { value: 'llm_call', label: 'LLM Call' },
   { value: 'subgraph', label: 'Subgraph' },
   { value: 'agentic', label: 'Agentic' },
+]
+
+const GATE_OPTIONS = [
+  { value: '', label: 'None' },
+  { value: 'manual', label: 'Manual Approval' },
+  { value: 'artifact_check', label: 'Artifact Check' },
+  { value: 'llm_review', label: 'LLM Review' },
 ]
 
 // Shared input class
@@ -150,6 +157,57 @@ export default function NodeConfigPanel() {
                       })
                     }
                   />
+                </div>
+              </>
+            )}
+
+            {selectedNode.data.nodeType === 'phase' && (
+              <>
+                <div>
+                  <label className={LABEL_CLS}>{t('controlCenter.phaseGraphId')}</label>
+                  <input
+                    value={(selectedNode.data.config?.graph_id as string) || ''}
+                    onChange={(e) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { ...selectedNode.data.config, graph_id: e.target.value },
+                      })
+                    }
+                    placeholder="Linked phase graph UUID"
+                    className={INPUT_CLS}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL_CLS}>{t('controlCenter.qualityGate')}</label>
+                  <FormSelect
+                    size="sm"
+                    value={(selectedNode.data.config?.quality_gate as string) || ''}
+                    options={GATE_OPTIONS}
+                    onChange={(v) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { ...selectedNode.data.config, quality_gate: v },
+                      })
+                    }
+                    fullWidth
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id={`require-approval-${selectedNode.id}`}
+                    checked={!!selectedNode.data.config?.require_approval}
+                    onChange={(e) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { ...selectedNode.data.config, require_approval: e.target.checked },
+                      })
+                    }
+                    className="rounded border-border-subtle"
+                  />
+                  <label
+                    htmlFor={`require-approval-${selectedNode.id}`}
+                    className="text-[10px] font-medium text-text-secondary cursor-pointer"
+                  >
+                    {t('controlCenter.requireApproval')}
+                  </label>
                 </div>
               </>
             )}

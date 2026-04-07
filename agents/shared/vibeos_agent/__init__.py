@@ -14,6 +14,7 @@ from .models import (
     Message,
     Phase,
     PhaseContract,
+    PhaseResult,
     PhaseStatus,
     PhaseType,
     RichAction,
@@ -63,7 +64,7 @@ from .conversation_payload import (
     execute_payload_from_agent_task,
     normalize_enabled_tools_for_execute_payload,
 )
-from .graph_executor import GraphExecutor, ParsedGraphDef, HAS_LANGGRAPH
+from .graph_executor import GraphExecutor, ParsedGraphDef, PhaseRunnerFn, HAS_LANGGRAPH
 from .session import SessionManager
 from .sse import sse_event, sse_delta, sse_done, sse_session_start, sse_session_complete, sse_session_error
 from .telemetry import get_meter, get_tracer, init_telemetry
@@ -105,6 +106,7 @@ __all__ = [
     "PHASE_TOOL_HINTS",
     "ParsedGraphDef",
     "PhaseContract",
+    "PhaseResult",
     "RAGClient",
     "Message",
     "Phase",

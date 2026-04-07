@@ -130,6 +130,14 @@ const settings = {
   'controlCenter.skillCaps': 'Skills',
   'controlCenter.agenticSystemPrompt': 'System Prompt',
   'controlCenter.agenticMaxIter': 'Max Iterations',
+  'controlCenter.phaseGraphId': 'Linked Phase Graph',
+  'controlCenter.qualityGate': 'Quality Gate',
+  'controlCenter.requireApproval': 'Require approval before next phase',
+  'controlCenter.contextReview': 'Context Review',
+  'controlCenter.contextReview.title': 'Phase Context',
+  'controlCenter.contextReview.artifacts': 'Artifacts',
+  'controlCenter.contextReview.decisions': 'Decisions',
+  'controlCenter.contextReview.empty': 'No context data available for this phase',
 
   // Capability names - PM
   'capability.pm.create_task': 'Create Task',

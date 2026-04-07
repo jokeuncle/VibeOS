@@ -189,7 +189,11 @@ class BaseAgent(ABC):
         await self.tool_manager.ensure_workspace_providers(
             self.workspace_svc, ctx.workspace_id,
         )
-        tool_schemas = await self.tool_manager.get_schemas()
+        agent_key = str(ctx.agent_type) if ctx.agent_type else None
+        phase_key = (ctx.task_context or {}).get("phase_type")
+        tool_schemas = await self.tool_manager.get_schemas(
+            agent_type=agent_key, phase_type=phase_key,
+        )
         messages = self._build_pipeline_messages(ctx)
 
         full_reply_parts: list[str] = []

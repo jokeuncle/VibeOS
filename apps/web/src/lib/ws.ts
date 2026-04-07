@@ -208,6 +208,18 @@ function handleWSEvent(event: Record<string, any>) {
     if (workflowEventTypes.includes(eventType)) {
       const [category, action] = eventType.split(':')
       store.appendWorkflowEvent({ category: category as any, action, data: event, sid: sid || '' })
+
+      if (store.nlpLoading) {
+        store.injectWorkflowStepToChat({ category, action, data: event as Record<string, unknown> })
+      }
+
+      // Feed graph overlay — map phase/node events into node IDs
+      const nodeId = payload.phase || payload.node || ''
+      if (nodeId) {
+        import('../components/ControlCenter/useGraphStore').then(({ useGraphStore }) => {
+          useGraphStore.getState().injectWorkflowEvent(category, action, { ...event, node: nodeId })
+        })
+      }
     }
   }
 

@@ -548,6 +548,40 @@ export function buildChatSlice(set: SetState, get: GetState) {
         })
       }).catch((err) => console.error('Failed to load older messages:', err))
     },
+    injectWorkflowStepToChat: (event: { category: string; action: string; data: Record<string, unknown> }) => {
+      if (!get().nlpLoading) return
+      const msgs = get().messages
+      const activeMsg = [...msgs].reverse().find((m) => m.role === 'agent' && !m.content?.trim())
+      if (!activeMsg) return
+
+      const label =
+        event.data.phase
+          ? `${event.data.phase}:${event.action}`
+          : event.data.task_title
+            ? `${event.data.task_title}`
+            : `${event.category}:${event.action}`
+      const step: ExecutionStep = {
+        id: `ws-${event.category}-${event.action}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        label: label as string,
+        status: event.action === 'error' ? 'error' : event.action === 'complete' ? 'completed' : event.action === 'start' ? 'running' : 'pending',
+        detail: (event.data.result_summary || event.data.error || event.data.reason || '') as string,
+      }
+
+      const existing = activeMsg.richBlocks || []
+      const timelineIdx = existing.findIndex((b) => b.type === 'execution_timeline')
+      const timelineBlock: RichBlock = timelineIdx >= 0
+        ? { ...existing[timelineIdx], steps: [...(existing[timelineIdx].steps || []), step] }
+        : { type: 'execution_timeline', steps: [step] }
+      const newBlocks = timelineIdx >= 0
+        ? existing.map((b, i) => (i === timelineIdx ? timelineBlock : b))
+        : [timelineBlock, ...existing]
+
+      set((s) => ({
+        messages: s.messages.map((m) =>
+          m.id === activeMsg.id ? { ...m, richBlocks: newBlocks } : m,
+        ),
+      }))
+    },
   } satisfies Pick<
     WorkspaceState,
     | 'messages' | 'messagesCursor' | 'messagesHasMore'
@@ -558,5 +592,6 @@ export function buildChatSlice(set: SetState, get: GetState) {
     | 'sendHomeNLPStream' | 'sendToolConfirmation'
     | 'clearHomeMessages' | 'clearWorkspaceConversation'
     | 'fetchMessages' | 'fetchWorkspaceMessages' | 'loadOlderMessages'
+    | 'injectWorkflowStepToChat'
   >
 }

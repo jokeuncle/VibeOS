@@ -27,6 +27,7 @@ from vibeos_agent import (
     RegistryClient,
     WorkspaceClient,
     load_manifest_from_yaml,
+    sse_event,
 )
 from vibeos_agent.mcp_discovery import check_mcp_health, discover_and_register_mcp_tools
 from vibeos_agent.skills import Skill, SkillRegistry, SkillToolProvider
@@ -371,15 +372,54 @@ async def handle_feedback(req: FeedbackRequest) -> dict[str, Any]:
     return {"status": "ok", "result": result}
 
 
-@app.post("/api/workflow/approve")
-async def handle_approval(req: dict[str, Any]) -> dict[str, Any]:
+@app.post("/api/workflow/approve", response_model=None)
+async def handle_approval(req: dict[str, Any]) -> dict[str, Any] | StreamingResponse:
     workflow: WorkflowEngine = app.state.workflow
-    resolved = workflow.resolve_approval(
-        req.get("approval_key", ""), req.get("approved", False)
-    )
+    approval_key = req.get("approval_key", "")
+    approved = req.get("approved", False)
+
+    if approval_key.startswith("graph:") and approved:
+        ctx = workflow._pending_graph_approvals.pop(approval_key, None)
+        if not ctx:
+            return {"status": "not_found", "message": "No pending graph approval with that key"}
+
+        async def event_gen() -> AsyncGenerator[str, None]:
+            try:
+                async for evt in workflow.resume_graph(ctx["workspace_id"], ctx["graph_def"], ctx["thread_id"]):
+                    yield evt
+            except Exception as exc:
+                _log.error("resume_graph via approve failed: %s", exc)
+                yield sse_event("task", "error", {"error": str(exc)})
+
+        return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+    if approval_key.startswith("graph:") and not approved:
+        workflow._pending_graph_approvals.pop(approval_key, None)
+        return {"status": "ok", "approved": False, "message": "Graph approval rejected"}
+
+    resolved = workflow.resolve_approval(approval_key, approved)
     if not resolved:
         return {"status": "not_found", "message": "No pending approval with that key"}
-    return {"status": "ok", "approved": req.get("approved")}
+    return {"status": "ok", "approved": approved}
+
+
+@app.post("/api/workflow/resume-graph", response_model=None)
+async def handle_resume_graph(req: dict[str, Any]) -> StreamingResponse:
+    """Resume a graph paused at a human_in_loop node after approval."""
+    workflow: WorkflowEngine = app.state.workflow
+    ws_id = req.get("workspace_id", "")
+    graph_def = req.get("graph_def", {})
+    thread_id = req.get("thread_id", "")
+
+    async def event_gen() -> AsyncGenerator[str, None]:
+        try:
+            async for evt in workflow.resume_graph(ws_id, graph_def, thread_id):
+                yield evt
+        except Exception as exc:
+            _log.error("resume_graph failed: %s", exc)
+            yield sse_event("task", "error", {"error": str(exc)})
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 class ToolConfirmRequest(BaseModel):

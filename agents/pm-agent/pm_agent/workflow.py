@@ -33,6 +33,7 @@ from vibeos_agent import (
     LLMGatewayClient,
     PHASE_CONTEXT,
     PhaseContract,
+    PhaseResult,
     PhaseStatus,
     RegistryClient,
     WSGatewayClient,
@@ -40,6 +41,7 @@ from vibeos_agent import (
     agent_for_phase,
     config,
 )
+from vibeos_agent.sse import sse_event
 from vibeos_agent.tools.provider import ToolManager
 
 from .dispatch import Dispatcher
@@ -132,6 +134,7 @@ class WorkflowEngine:
         self._active_runs: dict[str, str] = {}
         self._pending_approvals: dict[str, asyncio.Event] = {}
         self._approval_results: dict[str, bool] = {}
+        self._pending_graph_approvals: dict[str, dict[str, Any]] = {}
         self._trace_by_sid: dict[str, list[dict[str, Any]]] = {}
 
     def _trace_ev(
@@ -303,6 +306,58 @@ class WorkflowEngine:
         self._approval_results[approval_key] = approved
         event.set()
         return True
+
+    async def resume_graph(
+        self,
+        workspace_id: str,
+        graph_def: dict[str, Any],
+        thread_id: str,
+    ) -> AsyncIterator[str]:
+        """Resume a paused graph (after human_in_loop approval).
+
+        Yields SSE events identical to ``_execute_graph_for_phase``
+        for the remainder of the graph execution.
+        """
+        if not self.graph_executor:
+            yield sse_event("task", "error", {"error": "GraphExecutor not available"})
+            return
+
+        sid = await self.sm.create(
+            "graph_resume", workspace_id,
+            intent_type="resume_graph", intent_summary=f"Resuming graph thread {thread_id}",
+            agent_type="pm", triggered_by="approval",
+        )
+        yield self.sm.session_start(sid, "graph_resume", workspace_id)
+
+        async for event in self.graph_executor.resume(graph_def, thread_id):
+            evt_type = event.get("event", "")
+            data = event.get("data", {})
+            if evt_type == "graph:node_complete":
+                output = data.get("output", {})
+                node_error = output.get("_error", "") if isinstance(output, dict) else ""
+                node_id = data.get("node", "")
+                if node_error:
+                    payload = {"task_id": node_id, "task_title": node_id, "error": node_error[:500], "source": "graph_resume"}
+                    yield self._trace_ev(sid, "task", "error", payload)
+                    await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
+                else:
+                    payload = {"task_id": node_id, "task_title": node_id, "result_summary": str(output)[:200], "source": "graph_resume"}
+                    yield self._trace_ev(sid, "task", "complete", payload)
+                    await self.sm.broadcast(workspace_id, sid, "task", "complete", payload)
+            elif evt_type == "graph:node_awaiting_approval":
+                approval_payload = {"thread_id": data.get("thread_id", ""), "node": data.get("node", ""), "summary": data.get("summary", ""), "source": "graph_resume"}
+                yield self._trace_ev(sid, "phase", "awaiting_approval", approval_payload)
+                await self.sm.broadcast(workspace_id, sid, "phase", "awaiting_approval", approval_payload)
+                yield self.sm.session_complete(sid, "paused")
+                await self.sm.finish(sid, workspace_id, "paused", steps=self._dump_trace(sid))
+                return
+            elif evt_type == "graph:error":
+                payload = {"error": data.get("error", "unknown"), "source": "graph_resume"}
+                yield self._trace_ev(sid, "task", "error", payload)
+                await self.sm.broadcast(workspace_id, sid, "task", "error", payload)
+
+        yield self.sm.session_complete(sid, "success")
+        await self.sm.finish(sid, workspace_id, "success", steps=self._dump_trace(sid))
 
     def _get_lock(self, workspace_id: str) -> asyncio.Lock:
         if workspace_id not in self._workspace_locks:
@@ -549,6 +604,44 @@ class WorkflowEngine:
                         payload = {"phase": phase_type, "task_id": task_id, "task_title": task_title, "result_summary": str(output)[:200], "source": "graph"}
                         yield self._trace_ev(sid, "task", "complete", payload)
                         await self.sm.broadcast(workspace_id, sid, "task", "complete", payload)
+                elif evt_type == "graph:node_awaiting_approval":
+                    thread_id = data.get("thread_id", "")
+                    paused_node = data.get("node", "")
+                    summary = data.get("summary", "")
+                    graph_approval_key = f"graph:{thread_id}:{paused_node}"
+
+                    self._pending_graph_approvals[graph_approval_key] = {
+                        "workspace_id": workspace_id,
+                        "graph_def": graph_def,
+                        "thread_id": thread_id,
+                        "phase_type": phase_type,
+                    }
+
+                    approval_payload = {
+                        "phase": phase_type,
+                        "thread_id": thread_id,
+                        "node": paused_node,
+                        "summary": summary,
+                        "approval_key": graph_approval_key,
+                        "source": "graph",
+                    }
+                    yield self._trace_ev(sid, "phase", "awaiting_approval", approval_payload)
+                    await self.sm.broadcast(workspace_id, sid, "phase", "awaiting_approval", approval_payload)
+                    await self.ws_gw.publish({
+                        "type": "notification",
+                        "workspaceId": workspace_id,
+                        "payload": {
+                            "kind": "approval",
+                            "title": f"Graph node '{paused_node}' awaiting approval",
+                            "phase": phase_type,
+                            "thread_id": thread_id,
+                            "node": paused_node,
+                            "summary": summary,
+                            "approval_key": graph_approval_key,
+                        },
+                    })
+                    return
+
                 elif evt_type == "graph:error":
                     payload = {"phase": phase_type, "error": data.get("error", "unknown graph error"), "source": "graph"}
                     yield self._trace_ev(sid, "task", "error", payload)
@@ -1184,6 +1277,105 @@ class WorkflowEngine:
             _logger.warning("LLM quality gate error for %s: %s", phase_type, exc)
             return True  # fail open on LLM error
 
+    # ------------------------------------------------------------------
+    # Phase runner factory (bridges GraphExecutor ↔ _run_phase_inner)
+    # ------------------------------------------------------------------
+
+    def _make_phase_runner(
+        self,
+        workspace_id: str,
+        sid: str,
+        pipeline_configs: list[dict[str, Any]],
+        *,
+        start_phase: str | None = None,
+    ):
+        """Return a ``PhaseRunnerFn`` closure that wraps ``_run_phase_inner``.
+
+        The callback enriches the user message with cross-phase artifacts,
+        runs the phase, checks the quality gate, and returns a
+        ``PhaseResult``-compatible dict.
+        """
+        _completed_phases: list[str] = []
+        _started = False
+
+        async def _run(ws_id: str, phase_type: str, user_msg: str) -> dict[str, Any]:
+            nonlocal _started
+
+            if start_phase and not _started:
+                if phase_type != start_phase:
+                    idx_current = DEFAULT_PHASE_ORDER.index(phase_type) if phase_type in DEFAULT_PHASE_ORDER else 999
+                    idx_start = DEFAULT_PHASE_ORDER.index(start_phase) if start_phase in DEFAULT_PHASE_ORDER else 0
+                    if idx_current < idx_start:
+                        return {
+                            "phase_type": phase_type, "status": "skipped",
+                            "tasks_completed": 0, "tasks_failed": 0, "tasks_total": 0,
+                            "summary": f"Skipped (start_phase={start_phase})",
+                        }
+                _started = True
+
+            enriched = user_msg
+            if _completed_phases:
+                artifact_ctx = await self._build_cross_phase_context(ws_id, _completed_phases)
+                if artifact_ctx:
+                    enriched += "\n\n" + artifact_ctx
+
+            tasks_ok = 0
+            tasks_fail = 0
+            failed_task_id: str | None = None
+            phase_error = False
+
+            async for event_str in self._run_phase_inner(
+                ws_id, phase_type, enriched, pipeline_configs=pipeline_configs,
+            ):
+                if "task:complete" in event_str:
+                    tasks_ok += 1
+                elif "task:error" in event_str:
+                    tasks_fail += 1
+                    try:
+                        for line in event_str.split("\n"):
+                            if line.startswith("data: "):
+                                d = json.loads(line[6:])
+                                failed_task_id = d.get("task_id")
+                    except Exception:
+                        pass
+                    phase_error = True
+                elif "phase:skip" in event_str:
+                    return {
+                        "phase_type": phase_type, "status": "skipped",
+                        "tasks_completed": 0, "tasks_failed": 0, "tasks_total": 0,
+                        "summary": "Phase skipped (disabled or no tasks)",
+                    }
+
+            if phase_error:
+                await self._recover_after_project_error(ws_id, phase_type, failed_task_id)
+                return {
+                    "phase_type": phase_type, "status": "failed",
+                    "tasks_completed": tasks_ok, "tasks_failed": tasks_fail,
+                    "tasks_total": tasks_ok + tasks_fail,
+                    "summary": f"{tasks_ok} ok, {tasks_fail} failed",
+                    "error": f"task {failed_task_id or '?'} failed",
+                }
+
+            gate_passed = await self._check_quality_gate(
+                ws_id, phase_type, sid, configs=pipeline_configs,
+            )
+
+            _completed_phases.append(phase_type)
+            status = "completed" if gate_passed else "gate_failed"
+            return {
+                "phase_type": phase_type, "status": status,
+                "tasks_completed": tasks_ok, "tasks_failed": tasks_fail,
+                "tasks_total": tasks_ok + tasks_fail,
+                "summary": f"{tasks_ok} task(s) completed",
+                "quality_gate": "passed" if gate_passed else "failed",
+            }
+
+        return _run
+
+    # ------------------------------------------------------------------
+    # _run_project_inner  (graph-based with linear fallback)
+    # ------------------------------------------------------------------
+
     async def _run_project_inner(self, workspace_id: str, user_message: str = "", *, start_phase: str | None = None) -> AsyncIterator[str]:
         sid = await self.sm.create(
             "workflow_project", workspace_id, user_message=user_message,
@@ -1193,6 +1385,158 @@ class WorkflowEngine:
         yield self.sm.session_start(sid, "workflow_project", workspace_id)
 
         pipeline_configs = await self._resolve_pipeline_configs(workspace_id)
+
+        use_graph = self.graph_executor is not None and HAS_LANGGRAPH
+        if use_graph:
+            async for evt in self._run_project_via_graph(
+                workspace_id, user_message, sid, pipeline_configs,
+                start_phase=start_phase,
+            ):
+                yield evt
+        else:
+            async for evt in self._run_project_linear(
+                workspace_id, user_message, sid, pipeline_configs,
+                start_phase=start_phase,
+            ):
+                yield evt
+
+    async def _run_project_via_graph(
+        self,
+        workspace_id: str,
+        user_message: str,
+        sid: str,
+        pipeline_configs: list[dict[str, Any]],
+        *,
+        start_phase: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Execute the project lifecycle by traversing the project-level DCG."""
+        assert self.graph_executor is not None
+
+        project_graph = await self._fetch_project_graph(workspace_id)
+        phase_nodes = [
+            n["id"] for n in project_graph.get("nodes", [])
+            if n.get("type") == "phase"
+        ]
+
+        payload_start = {"workspace_id": workspace_id, "phases": phase_nodes}
+        yield self._trace_ev(sid, "project", "start", payload_start)
+        await self.sm.broadcast(workspace_id, sid, "project", "start", payload_start)
+        await self.ws_gw.publish_agent_status(
+            workspace_id, AgentType.PM, AgentStatus.RUNNING,
+            detail="Running full project lifecycle (graph)",
+        )
+
+        phase_runner = self._make_phase_runner(
+            workspace_id, sid, pipeline_configs, start_phase=start_phase,
+        )
+        self.graph_executor.set_phase_runner(phase_runner)
+
+        input_state = {
+            "workspace_id": workspace_id,
+            "user_message": user_message,
+        }
+
+        phases_completed: list[str] = []
+        skipped_phases: list[str] = []
+        total_tasks = 0
+        has_error = False
+
+        try:
+            async for event in self.graph_executor.execute(project_graph, input_state):
+                evt_type = event.get("event", "")
+                data = event.get("data", {})
+
+                if evt_type == "graph:node_complete":
+                    output = data.get("output", {})
+                    if not isinstance(output, dict):
+                        continue
+                    phase_result = output.get("_result")
+                    if not isinstance(phase_result, dict) or "phase_type" not in phase_result:
+                        continue
+
+                    pt = phase_result["phase_type"]
+                    status = phase_result.get("status", "unknown")
+
+                    if status == "skipped":
+                        skipped_phases.append(pt)
+                        yield self._trace_ev(sid, "phase", "skip", {
+                            "phase": pt, "reason": phase_result.get("summary", ""),
+                        })
+                        await self.sm.broadcast(workspace_id, sid, "phase", "skip", {
+                            "phase": pt, "reason": phase_result.get("summary", ""),
+                        })
+                    elif status in ("failed", "gate_failed"):
+                        has_error = True
+                        err_payload = {
+                            "phase": pt,
+                            "error": phase_result.get("error") or f"phase {status}",
+                        }
+                        yield self._trace_ev(sid, "project", "error", err_payload)
+                        await self.sm.broadcast(workspace_id, sid, "project", "error", err_payload)
+                        break
+                    else:
+                        tasks_done = phase_result.get("tasks_completed", 0)
+                        phases_completed.append(pt)
+                        total_tasks += tasks_done
+                        yield self._trace_ev(sid, "phase", "complete", {
+                            "phase": pt,
+                            "tasks_executed": tasks_done,
+                            "tasks_total": phase_result.get("tasks_total", tasks_done),
+                            "source": "project_graph",
+                        })
+
+                elif evt_type == "graph:node_awaiting_approval":
+                    yield self._trace_ev(sid, "phase", "awaiting_approval", data)
+                    await self.sm.broadcast(
+                        workspace_id, sid, "phase", "awaiting_approval", data,
+                    )
+
+                elif evt_type == "graph:error":
+                    has_error = True
+                    yield self._trace_ev(sid, "project", "error", {
+                        "error": data.get("error", "graph execution error"),
+                    })
+        finally:
+            self.graph_executor.set_phase_runner(None)
+
+        summary_payload = {
+            "blockType": "project_summary",
+            "phases_completed": phases_completed,
+            "phases_skipped": skipped_phases,
+            "total_tasks": total_tasks,
+            "success": not has_error,
+        }
+        yield self._trace_ev(sid, "content", "payload", summary_payload)
+
+        payload_done = {"workspace_id": workspace_id, "success": not has_error}
+        yield self._trace_ev(sid, "project", "complete", payload_done)
+        await self.sm.broadcast(workspace_id, sid, "project", "complete", payload_done)
+        await self.ws_gw.publish_agent_status(workspace_id, AgentType.PM, AgentStatus.IDLE)
+        await self.ws_gw.publish_log(
+            workspace_id, "pm",
+            "Full project lifecycle complete" if not has_error else "Project stopped due to errors",
+            level="success" if not has_error else "error",
+        )
+
+        if not has_error:
+            asyncio.create_task(_trigger_distill(workspace_id))
+
+        status_str = "success" if not has_error else "failed"
+        yield self.sm.session_complete(sid, status_str)
+        await self.sm.finish(
+            sid, workspace_id, status_str, steps=self._dump_trace(sid),
+        )
+
+    async def _run_project_linear(
+        self,
+        workspace_id: str,
+        user_message: str,
+        sid: str,
+        pipeline_configs: list[dict[str, Any]],
+        *,
+        start_phase: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Fallback linear phase loop when GraphExecutor is unavailable."""
         phase_order = self._phase_order_from_configs(pipeline_configs)
 
         payload_start = {"workspace_id": workspace_id, "phases": phase_order}
@@ -1478,6 +1822,9 @@ class WorkflowEngine:
             contract.preferred_model = agent_cfg.get("preferredModel")
             if agent_cfg.get("graphId"):
                 contract.graph_id = agent_cfg["graphId"]
+            raw_cc = agent_cfg.get("contextConfig") or agent_cfg.get("context_config")
+            if raw_cc and isinstance(raw_cc, dict):
+                contract.context_config = raw_cc
 
         return contract
 

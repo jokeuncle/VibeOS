@@ -33,7 +33,7 @@ func scanAgent(s rowScanner) (*models.Agent, error) {
 	err := s.Scan(&a.ID, &a.WorkspaceID, &agentType, &a.Name, &status,
 		&a.PreferredModel, &a.SystemPromptTemplate, &a.ToolManifest, &a.Capabilities,
 		&a.Avatar, &a.Enabled, &a.RequireApproval, &a.QualityGate, &a.GraphID,
-		&a.TrustThreshold, &a.CreatedAt, &a.UpdatedAt)
+		&a.TrustThreshold, &a.ContextConfig, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +353,7 @@ func (s *PostgresStore) queryAgents(ctx context.Context, wsIDs []string) ([]mode
 		`SELECT id, workspace_id, type, name, status, preferred_model,
 		        system_prompt_template, tool_manifest, capabilities,
 		        avatar, enabled, require_approval, quality_gate, graph_id,
-		        trust_threshold, created_at, updated_at
+		        trust_threshold, context_config, created_at, updated_at
 		 FROM agents WHERE workspace_id = ANY($1) ORDER BY type`, wsIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query agents: %w", err)
@@ -382,14 +382,14 @@ func (s *PostgresStore) CreateAgent(ctx context.Context, a models.Agent) (*model
 		RETURNING id, workspace_id, type, name, status, preferred_model,
 		          system_prompt_template, tool_manifest, capabilities,
 		          avatar, enabled, require_approval, quality_gate, graph_id,
-		          trust_threshold, created_at, updated_at`
+		          trust_threshold, context_config, created_at, updated_at`
 	var out models.Agent
 	var agentType, status string
 	err := s.pool.QueryRow(ctx, q, a.ID, a.WorkspaceID, string(a.Type), a.Name, a.Avatar).Scan(
 		&out.ID, &out.WorkspaceID, &agentType, &out.Name, &status,
 		&out.PreferredModel, &out.SystemPromptTemplate, &out.ToolManifest, &out.Capabilities,
 		&out.Avatar, &out.Enabled, &out.RequireApproval, &out.QualityGate, &out.GraphID,
-		&out.TrustThreshold, &out.CreatedAt, &out.UpdatedAt,
+		&out.TrustThreshold, &out.ContextConfig, &out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert agent: %w", err)

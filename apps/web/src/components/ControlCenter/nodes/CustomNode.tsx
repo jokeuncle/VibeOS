@@ -1,14 +1,14 @@
 import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
-import { Cpu, Zap, GitFork, UserCheck, MessageSquare, Layers, Bot } from 'lucide-react'
+import { Cpu, Zap, GitFork, UserCheck, MessageSquare, Layers, Bot, Workflow, AlertTriangle, Clock } from 'lucide-react'
 import type { GraphNodeData } from '../useGraphStore'
 import { useGraphStore } from '../useGraphStore'
 
 interface TypeCfg {
   icon: typeof Cpu
-  dot: string          // dot color
-  ring: string         // selected ring color
-  badge: string        // badge pill
+  dot: string
+  ring: string
+  badge: string
   label: string
 }
 
@@ -62,12 +62,49 @@ const TYPE_CONFIG: Record<string, TypeCfg> = {
     badge: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
     label: 'Agentic',
   },
+  phase: {
+    icon: Workflow,
+    dot:   'bg-indigo-400',
+    ring:  'ring-indigo-400/60',
+    badge: 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400',
+    label: 'Phase',
+  },
 }
+
+type NodeExecStatus = 'idle' | 'running' | 'completed' | 'failed' | 'awaiting_approval'
 
 interface CustomNodeProps {
   id: string
   data: GraphNodeData
   selected?: boolean
+}
+
+function deriveExecStatus(
+  id: string,
+  running: boolean,
+  log: { category: string; action: string; data: Record<string, unknown> }[],
+): NodeExecStatus {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i]
+    if (e.data?.node !== id) continue
+    if (e.category === 'graph' && e.action === 'node_error') return 'failed'
+    if (e.category === 'graph' && e.action === 'node_complete') return 'completed'
+    if (e.category === 'graph' && e.action === 'node_awaiting_approval') return 'awaiting_approval'
+    if (e.category === 'phase' && e.action === 'complete') return 'completed'
+    if (e.category === 'phase' && e.action === 'error') return 'failed'
+    if (e.category === 'phase' && e.action === 'awaiting_approval') return 'awaiting_approval'
+    if (e.category === 'phase' && e.action === 'start') return 'running'
+    if (e.category === 'graph' && e.action === 'node_start') return 'running'
+  }
+  return running ? 'idle' : 'idle'
+}
+
+const STATUS_GLOW: Record<NodeExecStatus, string> = {
+  idle: '',
+  running: 'shadow-[0_0_12px_2px_rgba(99,102,241,0.25)]',
+  completed: '',
+  failed: 'shadow-[0_0_12px_2px_rgba(239,68,68,0.25)]',
+  awaiting_approval: 'shadow-[0_0_12px_2px_rgba(245,158,11,0.25)]',
 }
 
 function CustomNodeComponent({ id, data, selected }: CustomNodeProps) {
@@ -77,28 +114,21 @@ function CustomNodeComponent({ id, data, selected }: CustomNodeProps) {
 
   const cfg = TYPE_CONFIG[data.nodeType] ?? TYPE_CONFIG.capability
   const Icon = cfg.icon
-
-  const isDone = executionLog.some(
-    (e) => e.category === 'graph' && e.action === 'node_complete' && e.data?.node === id,
-  )
-  const isRunning = running && !isDone
+  const status = deriveExecStatus(id, running, executionLog)
 
   return (
     <div
       onClick={() => selectNode(id)}
       className={[
         'relative rounded-xl border bg-surface-2 transition-all cursor-pointer select-none',
-        'min-w-[160px] max-w-[220px]',
-        // border: muted by default, accent when selected
+        data.nodeType === 'phase' ? 'min-w-[180px] max-w-[240px]' : 'min-w-[160px] max-w-[220px]',
         selected
           ? `border-border-default ${cfg.ring} ring-2`
           : 'border-border-subtle hover:border-border-default',
-        // running pulse glow
-        isRunning ? 'shadow-[0_0_12px_2px_rgba(99,102,241,0.25)]' : '',
-        isDone    ? 'opacity-80' : '',
+        STATUS_GLOW[status],
+        status === 'completed' ? 'opacity-80' : '',
       ].join(' ')}
     >
-      {/* top handle */}
       <Handle
         type="target"
         position={Position.Top}
@@ -106,40 +136,33 @@ function CustomNodeComponent({ id, data, selected }: CustomNodeProps) {
         style={{ top: -5 }}
       />
 
-      {/* node body */}
       <div className="px-3 pt-2.5 pb-2.5">
-        {/* type badge row */}
         <div className="flex items-center gap-1.5 mb-2">
           <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9px] font-semibold uppercase tracking-wide ${cfg.badge}`}>
             <Icon className="w-2.5 h-2.5 shrink-0" />
             {cfg.label}
           </span>
-          {/* running pulse dot */}
-          {isRunning && (
-            <span className="ml-auto flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-accent opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-            </span>
-          )}
-          {isDone && (
-            <span className={`ml-auto w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-          )}
+          <StatusIndicator status={status} dotClass={cfg.dot} />
         </div>
 
-        {/* label */}
         <div className="text-[12px] font-semibold text-text-primary leading-snug truncate">
           {data.label}
         </div>
 
-        {/* capability ref */}
         {data.capabilityRef && (
           <div className="mt-0.5 text-[10px] text-text-tertiary truncate font-mono">
             {data.capabilityRef}
           </div>
         )}
+
+        {data.nodeType === 'phase' && data.config?.quality_gate && (
+          <div className="mt-1 text-[9px] text-text-tertiary flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+            Gate: {String(data.config.quality_gate)}
+          </div>
+        )}
       </div>
 
-      {/* bottom handle */}
       <Handle
         type="source"
         position={Position.Bottom}
@@ -148,6 +171,27 @@ function CustomNodeComponent({ id, data, selected }: CustomNodeProps) {
       />
     </div>
   )
+}
+
+function StatusIndicator({ status, dotClass }: { status: NodeExecStatus; dotClass: string }) {
+  if (status === 'running') {
+    return (
+      <span className="ml-auto flex h-2 w-2 shrink-0">
+        <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-accent opacity-60" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+      </span>
+    )
+  }
+  if (status === 'completed') {
+    return <span className={`ml-auto w-2 h-2 rounded-full shrink-0 ${dotClass}`} />
+  }
+  if (status === 'failed') {
+    return <AlertTriangle className="ml-auto w-3 h-3 shrink-0 text-red-400" />
+  }
+  if (status === 'awaiting_approval') {
+    return <Clock className="ml-auto w-3 h-3 shrink-0 text-amber-400 animate-pulse" />
+  }
+  return null
 }
 
 export default memo(CustomNodeComponent)

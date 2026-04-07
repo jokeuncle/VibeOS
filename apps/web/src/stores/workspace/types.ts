@@ -160,6 +160,7 @@ export interface WorkspaceState {
   sendToolConfirmation: (confirmationKey: string, approved: boolean, toolName: string, args?: Record<string, unknown>) => void
   clearHomeMessages: () => void
   clearWorkspaceConversation: () => void
+  injectWorkflowStepToChat: (event: { category: string; action: string; data: Record<string, unknown> }) => void
 
   executions: AgentExecution[]
   upsertExecution: (exec: AgentExecution) => void

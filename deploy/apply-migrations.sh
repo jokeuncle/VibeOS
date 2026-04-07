@@ -25,6 +25,8 @@ MIGRATIONS=(
   "018_agent_profile_unify.sql"
   "019_chat_segments.sql"
   "020_graph_task_link.sql"
+  "021_graph_scope.sql"
+  "022_agent_context_config.sql"
 )
 
 run_psql() {

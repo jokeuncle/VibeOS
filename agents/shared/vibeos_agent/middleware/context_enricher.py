@@ -55,10 +55,16 @@ class ContextEnricherMiddleware(Middleware):
         if ctx.repo_context and ctx.repo_context.get("gitlab_primary_project"):
             sections.append(self._build_repo_section(ctx.repo_context))
 
+        cc = self._resolve_context_config(ctx)
+        sources = cc.get("sources") or {}
+
         await self._append_upstream_artifacts(sections, ctx)
-        await self._append_memory(sections, ctx)
-        await self._append_rag(sections, ctx)
-        await self._append_knowledge(sections, ctx)
+        if sources.get("memory", True):
+            await self._append_memory(sections, ctx)
+        if sources.get("rag", True):
+            await self._append_rag(sections, ctx)
+        if sources.get("knowledge", True):
+            await self._append_knowledge(sections, ctx)
         await self._append_extensibility(sections, ctx)
 
         return "\n\n".join(sections)
@@ -99,14 +105,26 @@ class ContextEnricherMiddleware(Middleware):
             section += f"\nAdditional repos (secondary):\n{lines}\n"
         return section
 
+    def _resolve_context_config(self, ctx: InvocationContext) -> dict[str, Any]:
+        """Read context_config from task_context (set by agent DB row)."""
+        tc = ctx.task_context or {}
+        return tc.get("context_config") or {}
+
     async def _append_upstream_artifacts(
         self, sections: list[str], ctx: InvocationContext
     ) -> None:
         agent_key = _enum_val(ctx.agent_type)
         phase_key = AGENT_PHASE_MAP.get(agent_key, agent_key)
-        up_phases = PHASE_CONTEXT.get(phase_key, [])
+        cc = self._resolve_context_config(ctx)
+
+        up_phases = cc.get("upstream_phases") or PHASE_CONTEXT.get(phase_key, [])
         if not up_phases:
             return
+
+        artifact_type_filter: list[str] | None = cc.get("artifact_types")
+        max_artifacts = cc.get("max_artifacts", 5)
+        max_chars = cc.get("max_chars_per_artifact", 2000)
+
         parts: list[str] = []
         for up_phase in up_phases:
             upstream_agent = agent_for_phase(up_phase)
@@ -114,10 +132,12 @@ class ContextEnricherMiddleware(Middleware):
                 artifacts = await self._workspace.list_artifacts(
                     ctx.workspace_id, agent_type=upstream_agent
                 )
-                for art in artifacts[:5]:
-                    title = art.get("title", "untitled")
-                    content = art.get("content", "")[:2000]
+                for art in artifacts[:max_artifacts]:
                     art_type = art.get("type", "unknown")
+                    if artifact_type_filter and art_type not in artifact_type_filter:
+                        continue
+                    title = art.get("title", "untitled")
+                    content = art.get("content", "")[:max_chars]
                     parts.append(f"### [{up_phase}] {title} ({art_type})\n{content}")
             except Exception:
                 logger.warning("Upstream artifacts fetch failed phase=%s", up_phase, exc_info=True)

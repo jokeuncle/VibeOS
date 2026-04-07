@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Annotated, AsyncIterator, ClassVar, cast
 
@@ -63,10 +64,14 @@ def _ensure_langgraph_loaded() -> None:
 # Graph definition dataclasses (parsed from graph_def JSON)
 # ---------------------------------------------------------------------------
 
+PhaseRunnerFn = Callable[[str, str, str], Awaitable[dict[str, Any]]]
+"""async (workspace_id, phase_type, user_message) -> PhaseResult-compatible dict."""
+
+
 @dataclass
 class GraphNodeDef:
     id: str
-    type: str  # capability | llm_call | human_in_loop | condition | subgraph | intent | agentic
+    type: str  # capability | llm_call | human_in_loop | condition | subgraph | intent | agentic | phase
     capability_ref: str = ""
     config: dict[str, Any] = field(default_factory=dict)
     position: dict[str, float] = field(default_factory=dict)
@@ -156,6 +161,11 @@ class GraphExecutor:
         self._endpoint_overrides = endpoint_overrides or {}
         self._capability_cache: dict[str, dict[str, Any]] = {}
         self._checkpointers: dict[str, Any] = {}  # thread_id -> checkpointer
+        self._phase_runner: PhaseRunnerFn | None = None
+
+    def set_phase_runner(self, runner: PhaseRunnerFn | None) -> None:
+        """Inject a callback that executes an SDLC phase for ``phase`` node types."""
+        self._phase_runner = runner
 
     async def _resolve_capability(self, ref: str) -> dict[str, Any] | None:
         if ref in self._capability_cache:
@@ -178,6 +188,10 @@ class GraphExecutor:
         "_phase_artifacts": (list, []),
         "_passthrough": (dict, {}),
         "_node_visits": (dict, {}),
+        "_phase_results": (list, []),
+        "rework_needed": (bool, False),
+        "bugs_found": (bool, False),
+        "design_gap": (bool, False),
         "llm_output": (str, ""),
         "upstream_artifacts": (list, []),
         "workspace_id": (str, ""),
@@ -519,6 +533,55 @@ class GraphExecutor:
                 "_result": result.get("result", ""),
             }
 
+        async def _phase_node(state: dict[str, Any]) -> dict[str, Any]:
+            """Execute an SDLC phase via the injected phase runner callback.
+
+            Used by project-level DCGs where each node represents a full
+            phase (requirement, architecture, …).  The runner is provided
+            by ``WorkflowEngine`` and wraps ``_run_phase_inner``.
+            """
+            if not self._phase_runner:
+                return {"_last_node": node_def.id, "_error": "No phase runner configured"}
+
+            phase_type = node_config.get("phase_type", node_def.id)
+            workspace_id = state.get("workspace_id", "")
+            user_message = state.get("user_message", "")
+
+            prior_results: list[dict[str, Any]] = list(state.get("_phase_results", []))
+            if prior_results:
+                ctx_lines = []
+                for pr in prior_results[-3:]:
+                    ctx_lines.append(
+                        f"- {pr.get('phase_type', '?')}: {pr.get('status', '?')} "
+                        f"({pr.get('tasks_completed', 0)} tasks — "
+                        f"{pr.get('summary', 'N/A')[:500]})"
+                    )
+                user_message = f"{user_message}\n\nPrevious phase results:\n" + "\n".join(ctx_lines)
+
+            try:
+                result = await self._phase_runner(workspace_id, phase_type, user_message)
+            except Exception as exc:
+                logger.error("Phase %s execution failed: %s", phase_type, exc)
+                return {"_last_node": node_def.id, "_error": str(exc)}
+
+            output: dict[str, Any] = {
+                "_last_node": node_def.id,
+                "_result": result,
+                "_summary": result.get("summary", f"Phase {phase_type}: {result.get('status', '?')}"),
+            }
+
+            prior_results.append(result)
+            output["_phase_results"] = prior_results
+
+            if result.get("tasks_failed", 0) > 0:
+                output["bugs_found"] = True
+            if result.get("rework_needed"):
+                output["rework_needed"] = True
+            if result.get("design_gap"):
+                output["design_gap"] = True
+
+            return output
+
         async def _passthrough_node(state: dict[str, Any]) -> dict[str, Any]:
             return {"_last_node": node_def.id}
 
@@ -529,6 +592,7 @@ class GraphExecutor:
             "intent": _intent_node,
             "subgraph": _subgraph_node,
             "agentic": _agentic_node,
+            "phase": _phase_node,
         }
         raw_fn = dispatch.get(node_type, _passthrough_node)
 
